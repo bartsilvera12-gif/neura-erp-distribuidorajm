@@ -1,17 +1,16 @@
 -- =============================================================================
--- 02 · CATÁLOGO DE MÓDULOS  <schema_origen>.modulos → distribuidorajmerp.modulos
+-- 02 · CATÁLOGO DE MÓDULOS  zentra_erp.modulos → distribuidorajmerp.modulos
 -- =============================================================================
 -- `modulos` es catálogo DE PRODUCTO (la lista de módulos que existen en el ERP),
 -- no datos de negocio: sin estas filas el sidebar no puede resolver permisos.
 -- Copia SOLO esa tabla. No copia empresas, usuarios ni ninguna tabla de negocio.
 --
--- Ajustar v_src si el origen no es 'zentra_erp'.
 -- Es idempotente: se puede volver a correr (ON CONFLICT DO NOTHING).
 -- =============================================================================
 
 DO $seed$
 DECLARE
-  v_src text := 'zentra_erp';           -- <<<<<< AJUSTAR
+  v_src text := 'zentra_erp';           -- origen: schema del ERP sistemas-propio
   v_tgt text := 'distribuidorajmerp';
   v_cols text;
   v_n int;

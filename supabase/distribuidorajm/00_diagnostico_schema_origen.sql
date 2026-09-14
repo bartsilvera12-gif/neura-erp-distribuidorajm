@@ -1,12 +1,13 @@
 -- =============================================================================
--- 00 · DIAGNÓSTICO (solo lectura) — identificar el schema ORIGEN a clonar
+-- 00 · DIAGNÓSTICO (solo lectura) — confirmar el schema ORIGEN antes de clonar
 -- =============================================================================
--- Ejecutar PRIMERO en el SQL Editor de Supabase self-hosted.
--- No modifica nada. Sirve para confirmar el nombre exacto del schema del ERP
--- "sistemas propio" (candidatos: zentra_erp, neura, sistemas_erp, ...).
+-- OPCIONAL. No modifica nada.
 --
--- El schema origen correcto es el que tenga las tablas: empresas, usuarios,
--- modulos, empresa_modulos, usuario_modulos.
+-- El origen es `zentra_erp` (el schema del ERP sistemas-propio), y así está
+-- fijado en los scripts 01, 02 y 04. Este script sirve para confirmarlo antes
+-- de correr el 01: `zentra_erp` tiene que aparecer con las tablas empresas,
+-- usuarios, modulos, empresa_modulos y usuario_modulos, y varias decenas de
+-- funciones.
 -- =============================================================================
 
 SELECT

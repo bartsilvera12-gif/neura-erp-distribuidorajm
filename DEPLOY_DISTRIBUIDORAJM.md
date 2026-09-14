@@ -7,7 +7,7 @@ git con el ERP original.
 | | |
 |---|---|
 | Repo | `bartsilvera12-gif/neura-erp-distribuidorajm` |
-| Schema de datos | `distribuidorajmerp` |
+| Schema de datos | `distribuidorajmerp` (clonado de `zentra_erp`) |
 | URL | `http://distribuidorajm.neura.com.py` (HTTP: el TLS lo termina Cloudflare) |
 | Empresa id | `058efef5-e1b5-4cab-8a65-238f81823917` |
 | Login admin | `admin@distribuidorajm.com` (rol `admin`) |
@@ -22,20 +22,21 @@ devuelve cada uno.
 
 | # | Archivo | Qué hace |
 |---|---|---|
-| 00 | `00_diagnostico_schema_origen.sql` | Solo lectura. Dice cuál es el schema del ERP actual. |
-| 01 | `01_clonar_schema.sql` | Crea `distribuidorajmerp` como copia estructural **sin datos**. |
+| 00 | `00_diagnostico_schema_origen.sql` | Opcional, solo lectura. Confirma que `zentra_erp` es el origen. |
+| 01 | `01_clonar_schema.sql` | Crea `distribuidorajmerp` como copia estructural de `zentra_erp`, **sin datos**. |
 | 02 | `02_catalogo_modulos.sql` | Copia el catálogo `modulos` (lista de módulos del producto). |
 | 03 | `03_empresa_admin_modulos.sql` | Empresa + usuario admin + los módulos habilitados. |
 | 04 | `04_verificacion.sql` | Solo lectura. Compara origen vs destino y busca fugas. |
 
 ### Antes de ejecutar
 
-1. **Correr el 00 primero.** Los scripts 01, 02 y 04 tienen arriba
-   `v_src := 'zentra_erp'` (y el 04 lo tiene escrito en el texto de las
-   consultas). Si el 00 devuelve otro nombre, reemplazalo en los tres.
-   `zentra_erp` es el valor por defecto del repo, pero el deploy de
-   sistemas-propio puede estar corriendo con otro (`neura`, por ejemplo).
-2. **En el 03, cambiar `v_password`** antes de ejecutarlo.
+El schema origen es **`zentra_erp`** y ya está fijado en los scripts 01, 02 y
+04: no hay nada que ajustar ahí. Lo único que tenés que tocar es
+**`v_password` en el 03**, antes de ejecutarlo.
+
+Si querés confirmar el origen antes de arrancar, corré el 00: `zentra_erp` tiene
+que aparecer con las tablas `empresas`, `usuarios`, `modulos`,
+`empresa_modulos` y `usuario_modulos`.
 
 ### Garantías de aislamiento
 

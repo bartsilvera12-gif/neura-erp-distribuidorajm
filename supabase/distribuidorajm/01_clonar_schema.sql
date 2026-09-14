@@ -1,5 +1,5 @@
 -- =============================================================================
--- 01 · CLON ESTRUCTURAL COMPLETO  <schema_origen>  →  distribuidorajmerp
+-- 01 · CLON ESTRUCTURAL COMPLETO  zentra_erp  →  distribuidorajmerp
 -- =============================================================================
 -- Copia SOLO la estructura (0 filas): tablas, secuencias, PK/UNIQUE/CHECK,
 -- índices, FKs, triggers, RLS + policies, vistas, vistas materializadas,
@@ -13,7 +13,6 @@
 --   · Las referencias a `auth.users` se mantienen (son de Supabase, compartidas).
 --   · Aborta si `distribuidorajmerp` ya existe (no pisa nada).
 --
--- ANTES DE EJECUTAR: poner en `v_src` el schema que devolvió el script 00.
 -- Correr como `postgres` / service_role. Es una sola transacción: si algo
 -- crítico falla, no queda nada a medias.
 -- =============================================================================
@@ -21,7 +20,7 @@
 DO $clone$
 DECLARE
   ---------------------------------------------------------------------------
-  v_src  text := 'zentra_erp';          -- <<<<<< AJUSTAR con el resultado del 00
+  v_src  text := 'zentra_erp';          -- origen: schema del ERP sistemas-propio
   v_tgt  text := 'distribuidorajmerp';  -- destino (no cambiar)
   ---------------------------------------------------------------------------
   v_tables  text[];
@@ -50,7 +49,7 @@ BEGIN
     RAISE EXCEPTION 'destino reservado: %', v_tgt;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = v_src) THEN
-    RAISE EXCEPTION 'el schema origen "%" no existe — corré antes 00_diagnostico_schema_origen.sql', v_src;
+    RAISE EXCEPTION 'el schema origen "%" no existe — verificalo con 00_diagnostico_schema_origen.sql', v_src;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = v_tgt) THEN
     RAISE EXCEPTION 'el schema destino "%" ya existe. Si querés rehacerlo: DROP SCHEMA %I CASCADE;', v_tgt, v_tgt;

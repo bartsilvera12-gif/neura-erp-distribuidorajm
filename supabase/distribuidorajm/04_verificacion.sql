@@ -4,7 +4,7 @@
 -- 1) Comparación estructural origen vs destino (deben coincidir tabla/vista/func)
 -- 2) Fugas: cualquier referencia residual al schema origen desde el nuevo
 -- 3) Conteo de filas (todas las tablas de negocio deben estar en 0)
--- Ajustar 'zentra_erp' por el schema origen real.
+-- Origen: zentra_erp · Destino: distribuidorajmerp
 -- =============================================================================
 
 -- 1) Conteos por tipo de objeto -------------------------------------------------
