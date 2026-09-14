@@ -16,12 +16,13 @@
  *                             a cada ERP descifrar los del otro).
  *   · el resto             -> se copia tal cual (misma instancia de Supabase).
  *
- * USO (CMD de Windows)
- *   set "COOLIFY_URL=http://34.193.107.9:8000"
- *   set "COOLIFY_TOKEN=..."
- *   node scripts\coolify-clonar-env.mjs listar
- *   node scripts\coolify-clonar-env.mjs plan    --origen <uuid> --destino <uuid>
- *   node scripts\coolify-clonar-env.mjs aplicar --origen <uuid> --destino <uuid>
+ * USO (CMD de Windows) — con flags, así no depende de la ventana:
+ *   node scripts\coolify-clonar-env.mjs listar  --url http://34.193.107.9:8000 --token "14|..."
+ *   node scripts\coolify-clonar-env.mjs plan    --url ... --token "..." --origen <uuid> --destino <uuid>
+ *   node scripts\coolify-clonar-env.mjs aplicar --url ... --token "..." --origen <uuid> --destino <uuid>
+ *
+ * El token lleva comillas en CMD porque contiene un `|` (que CMD toma como pipe).
+ * También se aceptan las variables COOLIFY_URL y COOLIFY_TOKEN del entorno.
  */
 import { randomBytes } from "node:crypto";
 
@@ -54,9 +55,16 @@ function salir(msg) {
 }
 
 async function api(metodo, ruta, cuerpo) {
-  const base = (process.env.COOLIFY_URL ?? "").replace(/\/+$/, "");
-  const token = process.env.COOLIFY_TOKEN ?? "";
-  if (!base || !token) salir("Faltan COOLIFY_URL y/o COOLIFY_TOKEN en el entorno.");
+  const base = (arg("url") ?? process.env.COOLIFY_URL ?? "").replace(/\/+$/, "");
+  const token = arg("token") ?? process.env.COOLIFY_TOKEN ?? "";
+  if (!base || !token) {
+    salir(
+      "Falta la URL y/o el token. Pasalos como flags (no dependen de la ventana):\n" +
+        '  node scripts/coolify-clonar-env.mjs listar --url http://34.193.107.9:8000 --token "14|..."\n' +
+        "Las comillas del token son necesarias en CMD porque contiene un `|`.\n" +
+        "Alternativa: definir COOLIFY_URL y COOLIFY_TOKEN en la misma ventana."
+    );
+  }
 
   let res;
   try {
@@ -133,7 +141,13 @@ async function main() {
   }
 
   if (cmd !== "plan" && cmd !== "aplicar") {
-    salir("Uso: node scripts/coolify-clonar-env.mjs listar | plan | aplicar [--origen <uuid> --destino <uuid>]");
+    salir(
+      "Uso:\n" +
+        "  node scripts/coolify-clonar-env.mjs listar  --url <url> --token <token>\n" +
+        "  node scripts/coolify-clonar-env.mjs plan    --url <url> --token <token> --origen <uuid> --destino <uuid>\n" +
+        "  node scripts/coolify-clonar-env.mjs aplicar --url <url> --token <token> --origen <uuid> --destino <uuid>\n" +
+        "\n--url y --token se pueden omitir si están COOLIFY_URL y COOLIFY_TOKEN en el entorno."
+    );
   }
 
   const origen = arg("origen");

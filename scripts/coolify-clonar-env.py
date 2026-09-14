@@ -62,11 +62,18 @@ REGENERAR = {
 }
 
 
+OPCIONES = {}  # --url / --token, si se pasaron por línea de comandos
+
+
 def api(metodo, ruta, cuerpo=None):
-    base = os.environ.get("COOLIFY_URL", "").rstrip("/")
-    token = os.environ.get("COOLIFY_TOKEN", "")
+    base = (OPCIONES.get("url") or os.environ.get("COOLIFY_URL", "")).rstrip("/")
+    token = OPCIONES.get("token") or os.environ.get("COOLIFY_TOKEN", "")
     if not base or not token:
-        sys.exit("Faltan COOLIFY_URL y/o COOLIFY_TOKEN en el entorno.")
+        sys.exit(
+            "Falta la URL y/o el token. Pasalos como flags (no dependen de la ventana):\n"
+            '  python scripts/coolify-clonar-env.py listar --url http://34.193.107.9:8000 --token "14|..."\n'
+            "Alternativa: definir COOLIFY_URL y COOLIFY_TOKEN en la misma ventana."
+        )
     req = urllib.request.Request(
         f"{base}/api/v1{ruta}",
         method=metodo,
@@ -128,6 +135,8 @@ def censurar(k, v):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--url")
+    ap.add_argument("--token")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("listar")
     for nombre in ("plan", "aplicar"):
@@ -135,6 +144,8 @@ def main():
         p.add_argument("--origen", required=True)
         p.add_argument("--destino", required=True)
     args = ap.parse_args()
+    OPCIONES["url"] = args.url
+    OPCIONES["token"] = args.token
 
     if args.cmd == "listar":
         apps = api("GET", "/applications")
