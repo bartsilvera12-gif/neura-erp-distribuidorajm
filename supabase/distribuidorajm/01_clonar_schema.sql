@@ -1,5 +1,5 @@
 -- =============================================================================
--- 01 · CLON ESTRUCTURAL COMPLETO  zentra_erp  →  distribuidorajmerp
+-- 01 · CLON ESTRUCTURAL COMPLETO  instemaq  →  distribuidorajmerp
 -- =============================================================================
 -- Copia SOLO la estructura (0 filas): tablas, secuencias, PK/UNIQUE/CHECK,
 -- índices, FKs, triggers, RLS + policies, vistas, vistas materializadas,
@@ -20,7 +20,7 @@
 DO $clone$
 DECLARE
   ---------------------------------------------------------------------------
-  v_src  text := 'zentra_erp';          -- origen: schema del ERP sistemas-propio
+  v_src  text := 'instemaq';            -- origen: schema del ERP sistemas-propio
   v_tgt  text := 'distribuidorajmerp';  -- destino (no cambiar)
   ---------------------------------------------------------------------------
   v_tables  text[];

@@ -7,7 +7,7 @@ git con el ERP original.
 | | |
 |---|---|
 | Repo | `bartsilvera12-gif/neura-erp-distribuidorajm` |
-| Schema de datos | `distribuidorajmerp` (clonado de `zentra_erp`) |
+| Schema de datos | `distribuidorajmerp` (clonado de `instemaq`) |
 | URL | `http://distribuidorajm.neura.com.py` (HTTP: el TLS lo termina Cloudflare) |
 | Empresa id | `058efef5-e1b5-4cab-8a65-238f81823917` |
 | Login admin | `admin@distribuidorajm.com` (rol `admin`) |
@@ -22,21 +22,36 @@ devuelve cada uno.
 
 | # | Archivo | Qué hace |
 |---|---|---|
-| 00 | `00_diagnostico_schema_origen.sql` | Opcional, solo lectura. Confirma que `zentra_erp` es el origen. |
-| 01 | `01_clonar_schema.sql` | Crea `distribuidorajmerp` como copia estructural de `zentra_erp`, **sin datos**. |
+| 00 | `00_diagnostico_schema_origen.sql` | Opcional, solo lectura. Confirma que `instemaq` es el origen. |
+| 01 | `01_clonar_schema.sql` | Crea `distribuidorajmerp` como copia estructural de `instemaq`, **sin datos**. |
 | 02 | `02_catalogo_modulos.sql` | Copia el catálogo `modulos` (lista de módulos del producto). |
 | 03 | `03_empresa_admin_modulos.sql` | Empresa + usuario admin + los módulos habilitados. |
 | 04 | `04_verificacion.sql` | Solo lectura. Compara origen vs destino y busca fugas. |
 
 ### Antes de ejecutar
 
-El schema origen es **`zentra_erp`** y ya está fijado en los scripts 01, 02 y
+El schema origen es **`instemaq`** y ya está fijado en los scripts 01, 02 y
 04: no hay nada que ajustar ahí. Lo único que tenés que tocar es
 **`v_password` en el 03**, antes de ejecutarlo.
 
-Si querés confirmar el origen antes de arrancar, corré el 00: `zentra_erp` tiene
+Si querés confirmar el origen antes de arrancar, corré el 00: `instemaq` tiene
 que aparecer con las tablas `empresas`, `usuarios`, `modulos`,
 `empresa_modulos` y `usuario_modulos`.
+
+### Cómo está organizada la base
+
+La instancia usa **un schema autocontenido por cliente**: cada schema tiene sus
+propias `empresas`, `usuarios`, `modulos`, `empresa_modulos`, `usuario_modulos`
+y sus propias funciones RLS (`empresa_id_actual`, `puede_acceder_empresa`). No
+hay un catálogo central compartido.
+
+`instemaq` es el schema del ERP sistemas-propio y es el origen del clon.
+`zentra_erp` existe pero tiene solo 4 tablas: es un resto de una etapa anterior,
+no el ERP — clonarlo no sirve.
+
+Por eso el clon estructural completo alcanza para la independencia total que
+buscamos: `distribuidorajmerp` queda con su propia tabla de empresas y de
+usuarios, sin compartir nada con `instemaq`.
 
 ### Garantías de aislamiento
 

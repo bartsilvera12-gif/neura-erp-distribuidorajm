@@ -3,9 +3,9 @@
 -- =============================================================================
 -- OPCIONAL. No modifica nada.
 --
--- El origen es `zentra_erp` (el schema del ERP sistemas-propio), y así está
+-- El origen es `instemaq` (el schema del ERP sistemas-propio), y así está
 -- fijado en los scripts 01, 02 y 04. Este script sirve para confirmarlo antes
--- de correr el 01: `zentra_erp` tiene que aparecer con las tablas empresas,
+-- de correr el 01: `instemaq` tiene que aparecer con las tablas empresas,
 -- usuarios, modulos, empresa_modulos y usuario_modulos, y varias decenas de
 -- funciones.
 -- =============================================================================

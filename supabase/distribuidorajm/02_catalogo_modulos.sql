@@ -1,5 +1,5 @@
 -- =============================================================================
--- 02 · CATÁLOGO DE MÓDULOS  zentra_erp.modulos → distribuidorajmerp.modulos
+-- 02 · CATÁLOGO DE MÓDULOS  instemaq.modulos → distribuidorajmerp.modulos
 -- =============================================================================
 -- `modulos` es catálogo DE PRODUCTO (la lista de módulos que existen en el ERP),
 -- no datos de negocio: sin estas filas el sidebar no puede resolver permisos.
@@ -10,7 +10,7 @@
 
 DO $seed$
 DECLARE
-  v_src text := 'zentra_erp';           -- origen: schema del ERP sistemas-propio
+  v_src text := 'instemaq';             -- origen: schema del ERP sistemas-propio
   v_tgt text := 'distribuidorajmerp';
   v_cols text;
   v_n int;
