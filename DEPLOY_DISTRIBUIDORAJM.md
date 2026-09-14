@@ -27,6 +27,7 @@ devuelve cada uno.
 | 02 | `02_catalogo_modulos.sql` | Copia el catálogo `modulos` (lista de módulos del producto). |
 | 03 | `03_empresa_admin_modulos.sql` | Empresa + usuario admin + los módulos habilitados. |
 | 04 | `04_verificacion.sql` | Solo lectura. Compara origen vs destino y busca fugas. |
+| 05 | `05_camion_seed.sql` | Alta del primer camión de reparto. Correr **después** de aplicar la migración `20260914130000_repartos_modulo.sql`. |
 
 ### Antes de ejecutar
 
