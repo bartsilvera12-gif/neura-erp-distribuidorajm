@@ -168,12 +168,21 @@ def main():
         for k, motivo in omitidas:
             print(f"  {k:38}   {motivo}")
 
+    # Si la app destino se creó clonando la de origen, ya arrastra las variables
+    # de empresa con el id viejo. No alcanza con no copiarlas: hay que borrarlas.
+    en_destino = envs(args.destino)
+    a_borrar = [v for v in en_destino if v.get("key") and RE_EMPRESA.search(v["key"])]
+    if a_borrar:
+        print("\n  SE BORRAN del destino (identidad de empresa heredada):")
+        for v in a_borrar:
+            print(f"  {v['key']:38}   = {v.get('value','')}")
+
     if args.cmd == "plan":
         print("\n(plan: no se escribió nada; usá `aplicar` para ejecutarlo)")
         return
 
-    existentes = {v.get("key") for v in envs(args.destino)}
-    creadas = actualizadas = 0
+    existentes = {v.get("key") for v in en_destino}
+    creadas = actualizadas = borradas = 0
     for e in plan:
         cuerpo = {"key": e["key"], "value": e["value"], "is_preview": False}
         if e["key"] in existentes:
@@ -182,7 +191,14 @@ def main():
         else:
             api("POST", f"/applications/{args.destino}/envs", cuerpo)
             creadas += 1
-    print(f"\nListo: {creadas} creadas, {actualizadas} actualizadas.")
+    for v in a_borrar:
+        if not v.get("uuid"):
+            print(f"  ! {v['key']}: la API no devolvió uuid, borrala a mano en Coolify.")
+            continue
+        api("DELETE", f"/applications/{args.destino}/envs/{v['uuid']}")
+        borradas += 1
+
+    print(f"\nListo: {creadas} creadas, {actualizadas} actualizadas, {borradas} borradas.")
     print("Revisá en Coolify y redeployá la aplicación.")
 
 

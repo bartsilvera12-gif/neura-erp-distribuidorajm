@@ -167,14 +167,25 @@ async function main() {
     for (const [k, motivo] of omitidas) console.log(`  ${k.padEnd(38)}   ${motivo}`);
   }
 
+  // Si la app destino se creó clonando la de origen, ya arrastra las
+  // variables de empresa con el id viejo. No alcanza con no copiarlas: hay
+  // que borrarlas, o este ERP escribiría sobre la empresa del otro.
+  const enDestino = await envs(destino);
+  const aBorrar = enDestino.filter((v) => v?.key && RE_EMPRESA.test(v.key));
+  if (aBorrar.length > 0) {
+    console.log("\n  SE BORRAN del destino (identidad de empresa heredada):");
+    for (const v of aBorrar) console.log(`  ${v.key.padEnd(38)}   = ${v.value ?? ""}`);
+  }
+
   if (cmd === "plan") {
     console.log("\n(plan: no se escribió nada; usá `aplicar` para ejecutarlo)");
     return;
   }
 
-  const existentes = new Set((await envs(destino)).map((v) => v.key));
+  const existentes = new Set(enDestino.map((v) => v.key));
   let creadas = 0;
   let actualizadas = 0;
+  let borradas = 0;
   for (const e of plan) {
     const cuerpo = { key: e.key, value: e.value, is_preview: false };
     if (existentes.has(e.key)) {
@@ -185,7 +196,16 @@ async function main() {
       creadas++;
     }
   }
-  console.log(`\nListo: ${creadas} creadas, ${actualizadas} actualizadas.`);
+  for (const v of aBorrar) {
+    if (!v.uuid) {
+      console.log(`  ! ${v.key}: la API no devolvió uuid, borrala a mano en Coolify.`);
+      continue;
+    }
+    await api("DELETE", `/applications/${destino}/envs/${v.uuid}`);
+    borradas++;
+  }
+
+  console.log(`\nListo: ${creadas} creadas, ${actualizadas} actualizadas, ${borradas} borradas.`);
   console.log("Revisá en Coolify y redeployá la aplicación.");
 }
 
