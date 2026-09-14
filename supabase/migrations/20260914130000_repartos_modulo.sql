@@ -29,6 +29,12 @@
 --     ver el reparto de otro camión consultando PostgREST directo.
 -- =============================================================================
 
+-- Si otra transacción (PostgREST, un job) está leyendo alguna tabla que hay que
+-- alterar, en vez de deadlockear preferimos fallar rápido: se reintenta el
+-- script y listo. Sin esto, el ALTER TABLE se queda esperando el
+-- AccessExclusiveLock y el planner elige a alguien como víctima del deadlock.
+SET LOCAL lock_timeout = '5s';
+
 DO $$
 DECLARE
   r   RECORD;
