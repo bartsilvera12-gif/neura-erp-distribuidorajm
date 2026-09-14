@@ -26,15 +26,31 @@ DECLARE
   v_email      text := 'admin@distribuidorajm.com';
   v_password   text := 'CambiarEsto123!';   -- <<<<<< CAMBIAR ANTES DE EJECUTAR
   ---------------------------------------------------------------------------
-  -- Módulos pedidos. `usuarios` es el slug del módulo que en el menú se llama
-  -- "RRHH"; "Movimientos" es la vista hija de Inventario (/inventario/movimientos)
-  -- y "Contabilidad" es el permiso de libros contables bajo Reportes/Configuración.
-  -- Los slugs que no existan en el catálogo se informan y se omiten.
+  -- Los 18 módulos pedidos, con los slugs que el CÓDIGO realmente evalúa
+  -- (Sidebar.tsx + route-slug-map.ts). Dos equivalencias:
+  --   · "RRHH"        → slug `usuarios` (así se llama la entrada del menú).
+  --   · "Movimientos" → no es módulo: es la vista hija /inventario/movimientos,
+  --                     y entra con `inventario`.
   v_slugs text[] := ARRAY[
     'agenda', 'clientes', 'cobranzas', 'comisiones', 'compras', 'configuracion',
     'contabilidad', 'dashboard', 'gastos', 'gerencia', 'gestion-clientes',
-    'inventario', 'movimientos', 'notas_credito', 'pagos', 'reportes',
-    'usuarios', 'rrhh', 'ventas'
+    'inventario', 'notas_credito', 'pagos', 'reportes', 'usuarios', 'ventas'
+  ];
+
+  -- El catálogo de instemaq está desactualizado respecto del código: estos
+  -- cuatro módulos existen en la app pero nunca se insertaron en ese schema
+  -- (las migraciones que los crean apuntaban a `neura` / `zentra_erp`). Se dan
+  -- de alta acá, con el slug exacto que evalúa el código.
+  --
+  -- OJO con `cobros`: instemaq tiene esa fila y parece "Cobranzas", pero el
+  -- slug no aparece en ninguna parte del código — el que se evalúa es
+  -- `cobranzas`. Lo mismo con presupuestos/recepcion/recibos/remision/recetas:
+  -- son filas muertas del catálogo y no se otorgan.
+  v_faltantes text[][] := ARRAY[
+    ARRAY['agenda',       'Agenda'],
+    ARRAY['cobranzas',    'Cobranzas'],
+    ARRAY['contabilidad', 'Contabilidad'],
+    ARRAY['gerencia',     'Gerencia']
   ];
   ---------------------------------------------------------------------------
   v_auth_id   uuid;
@@ -44,6 +60,7 @@ DECLARE
   v_vals      text;
   v_faltan    text;
   v_n         int;
+  v_i         int;
   r           RECORD;
   v_payload   jsonb;
 BEGIN
@@ -192,7 +209,17 @@ BEGIN
     RAISE NOTICE 'usuario ERP: ya existía, se reenlazó a la empresa (%)', v_usuario_id;
   END IF;
 
-  -- ------------------------------------------------------ 4. empresa_modulos
+  -- ------------------------- 4. altas de catálogo que faltan en el origen
+  FOR v_i IN 1 .. array_length(v_faltantes, 1)
+  LOOP
+    EXECUTE format(
+      'INSERT INTO %I.modulos (nombre, slug) SELECT %L, %L '
+      || 'WHERE NOT EXISTS (SELECT 1 FROM %I.modulos WHERE lower(btrim(slug)) = %L)',
+      v_tgt, v_faltantes[v_i][2], v_faltantes[v_i][1], v_tgt, v_faltantes[v_i][1]
+    );
+  END LOOP;
+
+  -- ------------------------------------------------------ 5. empresa_modulos
   EXECUTE format(
     'INSERT INTO %I.empresa_modulos (empresa_id, modulo_id, activo) '
     || 'SELECT %L::uuid, m.id, true FROM %I.modulos m WHERE lower(btrim(m.slug)) = ANY (%L::text[]) '
