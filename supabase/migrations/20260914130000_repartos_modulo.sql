@@ -16,11 +16,17 @@
 --     la diferencia (inicial - vendido - devuelto) queda como `merma_kg` en la
 --     tabla `repartos`.
 --
--- Se respeta el patrón multi-schema del repo: se aplica a todo schema que ya
--- tenga `empresas`, `productos`, `ventas` y `usuarios`. No siembra camiones en
--- schemas ajenos: el seed puntual para Distribuidora JM va aparte
--- (`supabase/distribuidorajm/05_camion_seed.sql`) porque exige un empresa_id
--- concreto y este archivo no puede adivinarlo.
+-- Este repo es un fork dedicado a Distribuidora JM. Aunque la instancia Postgres
+-- es compartida (mismo Supabase que instemaq, alquiloya, etc.), el módulo de
+-- reparto es propio de este cliente: por eso la migración **sólo toca
+-- `distribuidorajmerp`**. Los otros tenants no ven ni las tablas nuevas ni la
+-- columna `usuarios.es_repartidor` ni `ventas.reparto_id`.
+--
+-- Si el módulo después se generaliza al ERP base, ese repo tendrá su propia
+-- migración multi-schema; acá no queremos alterar tablas ajenas.
+--
+-- El seed puntual del primer camión va aparte (`supabase/distribuidorajm/
+-- 05_camion_seed.sql`) porque necesita el empresa_id concreto.
 --
 -- Seguridad:
 --   · RLS activo y SIN políticas, y sin permisos para `anon` ni `authenticated`.
@@ -29,34 +35,39 @@
 --     ver el reparto de otro camión consultando PostgREST directo.
 -- =============================================================================
 
--- Si otra transacción (PostgREST, un job) está leyendo alguna tabla que hay que
--- alterar, en vez de deadlockear preferimos fallar rápido: se reintenta el
--- script y listo. Sin esto, el ALTER TABLE se queda esperando el
--- AccessExclusiveLock y el planner elige a alguien como víctima del deadlock.
-SET LOCAL lock_timeout = '5s';
-
 DO $$
 DECLARE
-  r   RECORD;
-  sch text;
+  sch constant text := 'distribuidorajmerp';
 BEGIN
-  FOR r IN
-    SELECT n.nspname AS sch
-    FROM pg_namespace n
-    WHERE EXISTS (SELECT 1 FROM pg_class c WHERE c.relnamespace = n.oid AND c.relname = 'empresas'  AND c.relkind = 'r')
-      AND EXISTS (SELECT 1 FROM pg_class c WHERE c.relnamespace = n.oid AND c.relname = 'productos' AND c.relkind = 'r')
-      AND EXISTS (SELECT 1 FROM pg_class c WHERE c.relnamespace = n.oid AND c.relname = 'ventas'    AND c.relkind = 'r')
-      AND EXISTS (SELECT 1 FROM pg_class c WHERE c.relnamespace = n.oid AND c.relname = 'usuarios'  AND c.relkind = 'r')
-    ORDER BY 1
-  LOOP
-    sch := r.sch;
+  -- Si otra transacción (PostgREST, un job) está leyendo alguna tabla que hay
+  -- que alterar, en vez de deadlockear preferimos fallar rápido: se reintenta
+  -- el script y listo. Sin esto, el ALTER TABLE se queda esperando el
+  -- AccessExclusiveLock y el planner elige a alguien como víctima del deadlock.
+  PERFORM set_config('lock_timeout', '5s', true);
+  -- Si en esta instancia todavía no existe el schema (por ejemplo, la
+  -- migración se corre antes que 01_clonar_schema.sql en un entorno nuevo), no
+  -- rompemos: salimos limpios. Al rehacerse tras el clon, entra acá.
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = sch) THEN
+    RAISE NOTICE 'Schema % no existe todavía, se omite la migración de repartos.', sch;
+    RETURN;
+  END IF;
 
-    -- Bandera `es_repartidor` en usuarios (mismo patrón que `es_tecnico`,
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = sch AND c.relname IN ('empresas','productos','ventas','usuarios') AND c.relkind = 'r'
+    GROUP BY n.nspname
+    HAVING COUNT(*) = 4
+  ) THEN
+    RAISE EXCEPTION 'Schema % no tiene todas las tablas base (empresas/productos/ventas/usuarios). ¿Corriste 01_clonar_schema.sql?', sch;
+  END IF;
+
+  -- Bandera `es_repartidor` en usuarios (mismo patrón que `es_tecnico`,
     -- `es_qa`, `es_project_manager`).
     EXECUTE format(
-      'ALTER TABLE %I.usuarios ADD COLUMN IF NOT EXISTS es_repartidor boolean NOT NULL DEFAULT false',
-      sch
-    );
+    'ALTER TABLE %I.usuarios ADD COLUMN IF NOT EXISTS es_repartidor boolean NOT NULL DEFAULT false',
+    sch
+  );
 
     -- ------------------------------------------------------------------ camiones
     EXECUTE format($f$
@@ -179,7 +190,6 @@ BEGIN
       sch
     );
 
-  END LOOP;
 END $$;
 
 NOTIFY pgrst, 'reload schema';
