@@ -34,12 +34,17 @@ DECLARE
   v_viewdef text;
   fdef      text;
   fn_oid    oid;
+  v_pending oid[];
+  v_still   oid[];
   v_round   int;
   v_now     int;
   v_pass    int;
   v_count   int;
 BEGIN
   PERFORM set_config('search_path', 'pg_catalog', true);
+  -- El SQL Editor de Supabase impone un statement_timeout corto y este bloque
+  -- puede tardar minutos en un schema grande. Se anula solo para esta transacción.
+  PERFORM set_config('statement_timeout', '0', true);
 
   -- ---------------------------------------------------------------- guardas
   IF v_src = v_tgt THEN
@@ -173,44 +178,57 @@ BEGIN
   END LOOP;
 
   -- ------------------------------------------- 7. funciones — 1ra pasada
-  -- (antes de vistas/triggers/policies, que las referencian). Varias rondas por deps.
+  -- (antes de vistas/triggers/policies, que las referencian).
+  -- Se retienen SOLO las que fallan y se reintentan esas: una función ya creada
+  -- no se vuelve a ejecutar. Con `CREATE OR REPLACE` un reintento ciego siempre
+  -- "tiene éxito", así que contar éxitos nunca cortaría el bucle.
+  SELECT coalesce(array_agg(p.oid), '{}')
+  INTO v_pending
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  JOIN pg_language l ON l.oid = p.prolang
+  WHERE n.nspname = v_src
+    AND p.prokind IN ('f','p')
+    AND l.lanname IN ('plpgsql','sql');
+
   FOR v_round IN 1..25
   LOOP
+    EXIT WHEN coalesce(cardinality(v_pending), 0) = 0;
     v_now := 0;
-    FOR fn_oid IN
-      SELECT p.oid
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-      JOIN pg_language l ON l.oid = p.prolang
-      WHERE n.nspname = v_src
-        AND p.prokind IN ('f','p')
-        AND l.lanname IN ('plpgsql','sql')
+    v_still := '{}';
+    FOREACH fn_oid IN ARRAY v_pending
     LOOP
       BEGIN
         fdef := pg_get_functiondef(fn_oid);
       EXCEPTION WHEN OTHERS THEN
-        CONTINUE;
+        CONTINUE;  -- función no representable: se descarta
       END;
       CONTINUE WHEN fdef IS NULL;
       fdef := regexp_replace(fdef, '(?<![a-zA-Z0-9_])' || v_src || '(?![a-zA-Z0-9_])', v_tgt, 'g');
-      -- pg_get_functiondef emite CREATE OR REPLACE: en rondas sucesivas es idempotente
       BEGIN
         EXECUTE fdef;
         v_now := v_now + 1;
       EXCEPTION WHEN OTHERS THEN
-        NULL;  -- dependencia aún no creada: se reintenta en la próxima ronda
+        v_still := v_still || fn_oid;  -- dependencia pendiente: próxima ronda
       END;
     END LOOP;
-    EXIT WHEN v_now = 0;
+    v_pending := v_still;
+    EXIT WHEN v_now = 0;  -- ninguna avanzó: el resto espera a las vistas
   END LOOP;
 
   SELECT count(*) INTO v_count
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = v_tgt;
-  RAISE NOTICE 'clon: % funciones creadas en %', v_count, v_tgt;
+  RAISE NOTICE 'clon: % funciones creadas en % (pendientes: %)',
+    v_count, v_tgt, coalesce(cardinality(v_pending), 0);
 
   -- -------------------------------------------------------- 8. vistas (deps)
   FOR v_pass IN 1..15
   LOOP
+    -- corte temprano: si ya están todas creadas, no hace falta otra pasada
+    EXIT WHEN (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = v_src AND c.relkind = 'v')
+            = (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = v_tgt AND c.relkind = 'v');
     FOR r IN
       SELECT c.relname::text AS vname
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -235,6 +253,10 @@ BEGIN
   -- --------------------------------------------- 9. vistas materializadas
   FOR v_pass IN 1..10
   LOOP
+    EXIT WHEN (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = v_src AND c.relkind = 'm')
+            = (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = v_tgt AND c.relkind = 'm');
     FOR r IN
       SELECT c.relname::text AS mname
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -256,18 +278,14 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  -- ------------------------------------------- 10. funciones — 2da pasada (resuelve las que dependen de vistas)
+  -- ----------------------- 10. funciones — 2da pasada: SOLO las que quedaron
+  -- pendientes arriba (típicamente las que dependen de una vista).
   FOR v_round IN 1..25
   LOOP
+    EXIT WHEN coalesce(cardinality(v_pending), 0) = 0;
     v_now := 0;
-    FOR fn_oid IN
-      SELECT p.oid
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-      JOIN pg_language l ON l.oid = p.prolang
-      WHERE n.nspname = v_src
-        AND p.prokind IN ('f','p')
-        AND l.lanname IN ('plpgsql','sql')
+    v_still := '{}';
+    FOREACH fn_oid IN ARRAY v_pending
     LOOP
       BEGIN
         fdef := pg_get_functiondef(fn_oid);
@@ -276,20 +294,21 @@ BEGIN
       END;
       CONTINUE WHEN fdef IS NULL;
       fdef := regexp_replace(fdef, '(?<![a-zA-Z0-9_])' || v_src || '(?![a-zA-Z0-9_])', v_tgt, 'g');
-      -- pg_get_functiondef emite CREATE OR REPLACE: en rondas sucesivas es idempotente
       BEGIN
         EXECUTE fdef;
         v_now := v_now + 1;
       EXCEPTION WHEN OTHERS THEN
-        NULL;  -- dependencia aún no creada: se reintenta en la próxima ronda
+        v_still := v_still || fn_oid;
       END;
     END LOOP;
+    v_pending := v_still;
     EXIT WHEN v_now = 0;
   END LOOP;
 
   SELECT count(*) INTO v_count
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = v_tgt;
-  RAISE NOTICE 'clon: % funciones creadas en %', v_count, v_tgt;
+  RAISE NOTICE 'clon: % funciones en % (no recreables: %)',
+    v_count, v_tgt, coalesce(cardinality(v_pending), 0);
 
   -- ------------------------------------------------------------ 11. triggers
   FOR r IN
