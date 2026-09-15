@@ -1,5 +1,5 @@
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { Camion, Reparto } from "./types";
+import type { Camion, Reparto, Ubicacion } from "./types";
 
 export type ResultadoReparto = { ok: true; repartoId: string } | { ok: false; error: string };
 
@@ -157,6 +157,57 @@ export async function setCamionActivo(
     const json = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !json.success) {
       return { ok: false, error: json.error ?? "No se pudo actualizar el camión." };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+/** Ubicaciones fijas (salón, depósitos) para elegir destino de transferencia. */
+export async function getUbicaciones(): Promise<Ubicacion[]> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/ubicaciones", { cache: "no-store" });
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { ubicaciones?: Ubicacion[] };
+      error?: string;
+    };
+    if (!res.ok || !json.success) {
+      console.error("[repartos] getUbicaciones:", json.error ?? res.statusText);
+      return [];
+    }
+    return json.data?.ubicaciones ?? [];
+  } catch (e) {
+    console.error("[repartos] getUbicaciones:", e);
+    return [];
+  }
+}
+
+/**
+ * Carga de proveedor o transferencia a un punto fijo, sobre el reparto abierto.
+ */
+export async function registrarMovimiento(
+  repartoId: string,
+  datos: {
+    tipo: "carga" | "transferencia";
+    items: { producto_id: string; cantidad: number }[];
+    destino_id?: string;
+    referencia?: string;
+  }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(
+      `/api/repartos/${encodeURIComponent(repartoId)}/movimientos`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(datos),
+      }
+    );
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudo registrar el movimiento." };
     }
     return { ok: true };
   } catch (e) {

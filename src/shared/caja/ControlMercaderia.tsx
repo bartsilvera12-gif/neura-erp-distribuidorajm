@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Check, Truck } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, Truck } from "lucide-react";
+import MovimientoMercaderia from "@/shared/caja/MovimientoMercaderia";
 import { cerrarReparto } from "@/lib/repartos/storage";
 import type { Reparto } from "@/lib/repartos/types";
 
@@ -27,11 +28,15 @@ function cant(v: number, unidad: string): string {
 export default function ControlMercaderia({
   reparto,
   onCerrado,
+  onActualizar,
 }: {
   reparto: Reparto;
   onCerrado?: () => void;
+  /** Se llama después de una carga o una descarga, para releer los saldos. */
+  onActualizar?: () => void;
 }) {
   const abierto = reparto.estado === "abierto";
+  const [accion, setAccion] = useState<"carga" | "transferencia" | null>(null);
 
   // Texto y no número, para distinguir "vacío" (sin contar) de "0" (contado y
   // no volvió nada).
@@ -142,12 +147,45 @@ export default function ControlMercaderia({
             </p>
           </div>
         </div>
-        {abierto ? null : (
+        {abierto ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setAccion(accion === "carga" ? null : "carga")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5" />
+              Cargar
+            </button>
+            <button
+              type="button"
+              onClick={() => setAccion(accion === "transferencia" ? null : "transferencia")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <ArrowUpFromLine className="h-3.5 w-3.5" />
+              Descargar
+            </button>
+          </div>
+        ) : (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
             <Check className="h-3 w-3" /> Cerrado
           </span>
         )}
       </header>
+
+      {accion ? (
+        <div className="border-b border-slate-100 bg-slate-50/60 p-3">
+          <MovimientoMercaderia
+            reparto={reparto}
+            tipo={accion}
+            onCerrar={() => setAccion(null)}
+            onHecho={() => {
+              setAccion(null);
+              onActualizar?.();
+            }}
+          />
+        </div>
+      ) : null}
 
       {reparto.items.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-slate-400">

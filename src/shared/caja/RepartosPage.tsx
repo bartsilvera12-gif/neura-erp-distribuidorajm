@@ -107,7 +107,12 @@ export default function RepartosPage() {
       ) : (
         <div className="space-y-4">
           {repartos.map((r) => (
-            <ControlMercaderia key={r.id} reparto={r} onCerrado={() => mutate()} />
+            <ControlMercaderia
+              key={r.id}
+              reparto={r}
+              onCerrado={() => mutate()}
+              onActualizar={() => mutate()}
+            />
           ))}
         </div>
       )}
