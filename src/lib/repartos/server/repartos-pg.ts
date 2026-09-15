@@ -69,6 +69,8 @@ export async function listarRepartos(opts: {
   empresaId: string;
   fecha?: string;
   soloAbiertos?: boolean;
+  /** Acota a los repartos de un repartidor: el alcance del vendedor móvil. */
+  soloDe?: string | null;
 }): Promise<Reparto[]> {
   const pool = getChatPostgresPool();
   if (!pool) return [];
@@ -89,6 +91,10 @@ export async function listarRepartos(opts: {
   } else if (opts.fecha) {
     params.push(opts.fecha);
     condiciones.push(`r.fecha = $${params.length}::date`);
+  }
+  if (opts.soloDe) {
+    params.push(opts.soloDe);
+    condiciones.push(`r.repartidor_id = $${params.length}::uuid`);
   }
 
   const repartosQ = await queryWithRetry<FilaReparto>(
@@ -220,4 +226,33 @@ export async function listarUbicacionesFijas(opts: {
     [opts.empresaId]
   );
   return q.rows;
+}
+
+/**
+ * Quién es el usuario logueado dentro del schema de la empresa, y con qué rol.
+ *
+ * Se resuelve por email y no por el id del catálogo: en despliegues donde el
+ * catálogo y los datos viven en schemas distintos, ese id no es el de
+ * `usuarios` de este schema, y `repartos.repartidor_id` apunta acá.
+ *
+ * El rol se lee de la fila de la empresa, que es la que el administrador edita
+ * desde RRHH.
+ */
+export async function usuarioDelSchema(opts: {
+  schema: string;
+  empresaId: string;
+  email: string | null | undefined;
+}): Promise<{ id: string; rol: string | null } | null> {
+  const pool = getChatPostgresPool();
+  if (!pool || !opts.email) return null;
+
+  const tU = quoteSchemaTable(opts.schema, "usuarios");
+  const q = await queryWithRetry<{ id: string; rol: string | null }>(
+    pool,
+    `SELECT id, rol FROM ${tU}
+      WHERE empresa_id = $1::uuid AND lower(btrim(email)) = lower(btrim($2))
+      LIMIT 1`,
+    [opts.empresaId, opts.email]
+  );
+  return q.rows[0] ?? null;
 }

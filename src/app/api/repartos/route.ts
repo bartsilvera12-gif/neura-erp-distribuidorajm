@@ -6,7 +6,12 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { hayTablasReparto, listarRepartos } from "@/lib/repartos/server/repartos-pg";
+import {
+  hayTablasReparto,
+  listarRepartos,
+  usuarioDelSchema,
+} from "@/lib/repartos/server/repartos-pg";
+import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,11 +52,17 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // El vendedor móvil solo ve los suyos. Se decide en el servidor: ocultarlos
+    // solo en la pantalla dejaría la API abierta.
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+    const soloDe = alcanceRepartos(yo?.rol) === "propios" ? (yo?.id ?? null) : null;
+
     const repartos = await listarRepartos({
       schema,
       empresaId,
       soloAbiertos,
       fecha: fecha || undefined,
+      soloDe,
     });
     return NextResponse.json(successResponse({ disponible: true, repartos }));
   } catch (err) {
@@ -93,7 +104,11 @@ export async function POST(request: NextRequest) {
     if (!UUID_RE.test(camionId)) {
       return NextResponse.json(errorResponse("Elegí el camión."), { status: 400 });
     }
-    const repartidorId = String(body?.repartidor_id ?? "").trim();
+    // Un vendedor móvil sale con su camión, no manda a otro: el reparto se abre
+    // siempre a su nombre, venga lo que venga en el body.
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+    const propio = alcanceRepartos(yo?.rol) === "propios";
+    const repartidorId = propio && yo ? yo.id : String(body?.repartidor_id ?? "").trim();
     if (!UUID_RE.test(repartidorId)) {
       return NextResponse.json(errorResponse("Elegí el repartidor."), { status: 400 });
     }

@@ -6,6 +6,8 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
+import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -98,6 +100,21 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     client = await pool.connect();
     await client.query("BEGIN");
+
+    // Alcance del rol: el vendedor móvil solo toca sus propios repartos. El
+    // chequeo va en el servidor porque ocultar el botón no impide la llamada.
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+    if (alcanceRepartos(yo?.rol) === "propios") {
+      const dueno = await client.query<{ ok: number }>(
+        `SELECT 1 AS ok FROM ${quoteSchemaTable(schema, "repartos")}
+          WHERE id = $1::uuid AND empresa_id = $2::uuid AND repartidor_id = $3::uuid`,
+        [id, empresaId, yo?.id ?? null]
+      );
+      if (dueno.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(errorResponse("Ese reparto no es tuyo."), { status: 403 });
+      }
+    }
 
     const repQ = await client.query<{
       estado: string;

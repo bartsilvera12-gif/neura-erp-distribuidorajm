@@ -92,6 +92,9 @@ export function nivelFromRolDb(rol: string | null | undefined): NivelUsuario {
   const r = (rol ?? "").trim().toLowerCase();
   if (r === "administrador" || r === "admin") return "administrador";
   if (r === "supervisor") return "supervisor";
+  if (r === "vendedor_movil" || r === "vendedor movil" || r === "vendedor móvil") {
+    return "vendedor_movil";
+  }
   return "usuario";
 }
 
@@ -127,7 +130,16 @@ const TIPO_CONTRATO_OPTIONS: FancySelectOption[] = [
 
 const NIVEL_OPTIONS: FancySelectOption[] = [
   { value: "usuario", label: "Usuario", description: "Acceso operativo estándar." },
-  { value: "supervisor", label: "Supervisor", description: "Supervisión de equipo y reportes acotados." },
+  {
+    value: "vendedor_movil",
+    label: "Vendedor Móvil",
+    description: "Sale con el camión. Solo ve y cierra sus propios repartos.",
+  },
+  {
+    value: "supervisor",
+    label: "Supervisor",
+    description: "Ve los repartos de todos los camiones, sus rendiciones y diferencias.",
+  },
   { value: "administrador", label: "Administrador", description: "Acceso total al sistema." },
 ];
 
@@ -307,7 +319,10 @@ export function UsuarioFormFields({
             ) : (
               <p className="mt-1 text-xs text-slate-400">
                 {form.nivel === "administrador" && "Acceso total al sistema."}
-                {form.nivel === "supervisor" && "Supervisión de equipo y reportes acotados."}
+                {form.nivel === "supervisor" &&
+                  "Ve los repartos de todos los camiones, sus rendiciones y diferencias."}
+                {form.nivel === "vendedor_movil" &&
+                  "Sale con el camión. Solo ve y cierra sus propios repartos."}
                 {form.nivel === "usuario" && "Acceso operativo estándar."}
               </p>
             )}
@@ -329,86 +344,6 @@ export function UsuarioFormFields({
               onChange={(v) => setField("estado", v)}
               ariaLabel="Estado"
             />
-          </div>
-          <div className="sm:col-span-2">
-            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
-              <input
-                type="checkbox"
-                id="es_qa"
-                name="es_qa"
-                checked={form.es_qa}
-                onChange={onChange}
-                disabled={nivelAccesoDisabled}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <label htmlFor="es_qa" className="cursor-pointer text-sm font-medium text-slate-700">
-                Es QA (control de calidad)
-                <span className="mt-0.5 block text-xs font-normal text-slate-400">
-                  Cuando un proyecto entra a QA, se le asigna automáticamente a esta persona. Es una función,
-                  no cambia el nivel de permisos.
-                </span>
-              </label>
-            </div>
-          </div>
-          <div className="sm:col-span-2">
-            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
-              <input
-                type="checkbox"
-                id="es_tecnico"
-                name="es_tecnico"
-                checked={form.es_tecnico}
-                onChange={onChange}
-                disabled={nivelAccesoDisabled}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <label htmlFor="es_tecnico" className="cursor-pointer text-sm font-medium text-slate-700">
-                Es técnico (desarrollo)
-                <span className="mt-0.5 block text-xs font-normal text-slate-400">
-                  Aparece en el selector de responsable técnico de un proyecto. Es una función, no cambia el
-                  nivel de permisos.
-                </span>
-              </label>
-            </div>
-          </div>
-          <div className="sm:col-span-2">
-            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
-              <input
-                type="checkbox"
-                id="es_project_manager"
-                name="es_project_manager"
-                checked={form.es_project_manager}
-                onChange={onChange}
-                disabled={nivelAccesoDisabled}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <label htmlFor="es_project_manager" className="cursor-pointer text-sm font-medium text-slate-700">
-                Es project manager
-                <span className="mt-0.5 block text-xs font-normal text-slate-400">
-                  Aparece en Gestión Project Manager, donde se le carga su cartera de clientes. Es una
-                  función, no cambia el nivel de permisos.
-                </span>
-              </label>
-            </div>
-          </div>
-          <div className="sm:col-span-2">
-            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
-              <input
-                type="checkbox"
-                id="notificar_entregas"
-                name="notificar_entregas"
-                checked={form.notificar_entregas}
-                onChange={onChange}
-                disabled={nivelAccesoDisabled}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <label htmlFor="notificar_entregas" className="cursor-pointer text-sm font-medium text-slate-700">
-                Avisarle de todas las entregas
-                <span className="mt-0.5 block text-xs font-normal text-slate-400">
-                  Recibe una notificación cada vez que cualquier proyecto llega a un estado final,
-                  no sólo los suyos. Para quien coordina las entregas.
-                </span>
-              </label>
-            </div>
           </div>
         </div>
       </SectionCard>

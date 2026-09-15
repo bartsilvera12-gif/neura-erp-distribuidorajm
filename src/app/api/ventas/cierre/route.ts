@@ -6,6 +6,8 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
+import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
 /** Zona del negocio: el día del cierre es el día calendario en Paraguay. */
 const TZ = "America/Asuncion";
@@ -97,6 +99,23 @@ export async function GET(request: NextRequest) {
       if (repQ.rows.length === 0) {
         return NextResponse.json(errorResponse("Reparto no encontrado."), { status: 404 });
       }
+
+      // El vendedor móvil no puede leer el cierre de otro camión: ahí están las
+      // ventas y la plata de un compañero.
+      const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+      if (alcanceRepartos(yo?.rol) === "propios") {
+        const tR2 = quoteSchemaTable(schema, "repartos");
+        const propio = await queryWithRetry<{ ok: number }>(
+          pool,
+          `SELECT 1 AS ok FROM ${tR2}
+            WHERE id = $1::uuid AND empresa_id = $2::uuid AND repartidor_id = $3::uuid`,
+          [repartoId, empresaId, yo?.id ?? null]
+        );
+        if (propio.rows.length === 0) {
+          return NextResponse.json(errorResponse("Ese reparto no es tuyo."), { status: 403 });
+        }
+      }
+
       reparto = repQ.rows[0];
     }
 
