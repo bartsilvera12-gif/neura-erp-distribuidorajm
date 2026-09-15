@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
@@ -47,23 +48,28 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/camiones — da de alta un camión.
+ * POST /api/camiones — da de alta un camión con su ubicación de inventario.
  * Body: { alias, patente? }
  *
- * El alias es lo que se ve en la Caja y en el control de mercadería, así que
- * no puede repetirse dentro de la empresa: dos "01" harían imposible saber de
- * cuál salió una venta.
+ * El camión no es solo un dato: es una ubicación de stock. Por eso el alta crea
+ * también su fila en `inventario_ubicaciones` y las dos cosas van en la misma
+ * transacción — un camión sin ubicación no podría cargar ni vender, y una
+ * ubicación huérfana quedaría suelta en el inventario.
+ *
+ * El alias no puede repetirse dentro de la empresa: dos "01" harían imposible
+ * saber de cuál salió una venta.
  */
 export async function POST(request: NextRequest) {
+  const pool = getChatPostgresPool();
+  if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
+
+  let client: PoolClient | null = null;
   try {
     const ctx = await getTenantSupabaseFromAuth(request);
     if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
 
     const empresaId = ctx.auth.empresa_id;
     const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
-
-    const pool = getChatPostgresPool();
-    if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const alias = String(body?.alias ?? "").trim();
@@ -78,15 +84,19 @@ export async function POST(request: NextRequest) {
     const patente = String(body?.patente ?? "").trim().toUpperCase() || null;
 
     const tC = quoteSchemaTable(schema, "camiones");
+    const tU = quoteSchemaTable(schema, "inventario_ubicaciones");
 
-    const repetido = await queryWithRetry<{ id: string; activo: boolean }>(
-      pool,
+    client = await pool.connect();
+    await client.query("BEGIN");
+
+    const repetido = await client.query<{ id: string; activo: boolean }>(
       `SELECT id, activo FROM ${tC}
         WHERE empresa_id = $1::uuid AND lower(btrim(alias)) = lower(btrim($2))
         LIMIT 1`,
       [empresaId, alias]
     );
     if (repetido.rows.length > 0) {
+      await client.query("ROLLBACK");
       return NextResponse.json(
         errorResponse(
           repetido.rows[0].activo
@@ -97,15 +107,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const alta = await queryWithRetry<{ id: string }>(
-      pool,
-      `INSERT INTO ${tC} (empresa_id, alias, patente) VALUES ($1::uuid, $2, $3) RETURNING id`,
-      [empresaId, alias, patente]
+    const ubic = await client.query<{ id: string }>(
+      `INSERT INTO ${tU} (empresa_id, nombre, tipo, activo)
+       VALUES ($1::uuid, $2, 'camion', true) RETURNING id`,
+      [empresaId, `Camión ${alias}`]
     );
 
-    return NextResponse.json(successResponse({ camion_id: alta.rows[0].id }));
+    const alta = await client.query<{ id: string }>(
+      `INSERT INTO ${tC} (empresa_id, alias, patente, ubicacion_id)
+       VALUES ($1::uuid, $2, $3, $4::uuid) RETURNING id`,
+      [empresaId, alias, patente, ubic.rows[0].id]
+    );
+
+    await client.query("COMMIT");
+    return NextResponse.json(
+      successResponse({ camion_id: alta.rows[0].id, ubicacion_id: ubic.rows[0].id })
+    );
   } catch (err) {
-    console.error("[/api/camiones POST]", err instanceof Error ? err.message : err);
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/api/camiones POST]", msg);
+    // Si todavía no corrieron la migración 09, el mensaje genérico no ayudaría.
+    if (/ubicacion_id|inventario_ubicaciones|tipo_check/i.test(msg)) {
+      return NextResponse.json(
+        errorResponse(
+          "Falta la migración del stock móvil (09_stock_movil.sql): el camión no puede tener su ubicación de inventario."
+        ),
+        { status: 409 }
+      );
+    }
     return NextResponse.json(errorResponse("No se pudo dar de alta el camión."), { status: 500 });
+  } finally {
+    client?.release();
   }
 }

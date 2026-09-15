@@ -99,6 +99,7 @@ export async function createVentaTransaccionalPg(
   const ventasT = qTable(params.schema, "ventas");
   const itemsT = qTable(params.schema, "ventas_items");
   const movT = qTable(params.schema, "movimientos_inventario");
+  const stockUbiT = qTable(params.schema, "inventario_stock_ubicacion");
   const prodT = qTable(params.schema, "productos");
   const cliT = qTable(params.schema, "clientes");
 
@@ -238,6 +239,42 @@ export async function createVentaTransaccionalPg(
 
     const ventaId = insVenta.rows[0].id;
 
+    // De qué camión sale la mercadería. El reparto apunta al camión y el camión
+    // a su ubicación de inventario: la venta móvil descuenta de ESE stock y no
+    // solo del global. Sin reparto es venta de mostrador y no hay ubicación.
+    //
+    // Todo esto es opcional: un schema sin la migración del stock móvil sigue
+    // vendiendo igual, solo que sin registrar la ubicación. Cobrar no puede
+    // depender de una migración pendiente.
+    const movColsQ = await client.query<{ columna: string }>(
+      `
+      SELECT column_name AS columna
+        FROM information_schema.columns
+       WHERE table_schema = $1 AND table_name = 'movimientos_inventario'
+         AND column_name = 'ubicacion_id'
+      `,
+      [params.schema]
+    );
+    const movTieneUbicacion = movColsQ.rows.length > 0;
+    const hayStockPorUbicacion = await tablaExiste(
+      client,
+      params.schema,
+      "inventario_stock_ubicacion"
+    );
+
+    let ubicacionId: string | null = null;
+    if (params.repartoId !== null && columnas.has("reparto_id") && movTieneUbicacion) {
+      const camT = quoteSchemaTable(params.schema, "camiones");
+      const repT = quoteSchemaTable(params.schema, "repartos");
+      const ubiQ = await client.query<{ ubicacion_id: string | null }>(
+        `SELECT c.ubicacion_id
+           FROM ${repT} r JOIN ${camT} c ON c.id = r.camion_id
+          WHERE r.id = $1::uuid AND r.empresa_id = $2::uuid`,
+        [params.repartoId, params.empresaId]
+      );
+      ubicacionId = ubiQ.rows[0]?.ubicacion_id ?? null;
+    }
+
     // Movimiento de caja del cobro. Solo para ventas de contado: una venta a
     // crédito no mete plata en la caja hoy, y registrarla descuadraría el arqueo.
     if (
@@ -306,9 +343,11 @@ export async function createVentaTransaccionalPg(
         INSERT INTO ${movT} (
           empresa_id, producto_id, producto_nombre, producto_sku,
           tipo, cantidad, costo_unitario, origen, referencia, fecha, venta_id
+          ${movTieneUbicacion ? ", ubicacion_id" : ""}
         ) VALUES (
           $1, $2, $3, $4,
           'SALIDA', $5, $6, 'venta', $7, $8::timestamptz, $9
+          ${movTieneUbicacion ? ", $10::uuid" : ""}
         )
         `,
         [
@@ -321,8 +360,25 @@ export async function createVentaTransaccionalPg(
           numeroControl,
           fechaIso,
           ventaId,
+          ...(movTieneUbicacion ? [ubicacionId] : []),
         ]
       );
+
+      // Stock de la ubicación del camión. El total global lo sigue llevando
+      // `productos.stock_actual` unas líneas más arriba: acá se registra en qué
+      // ubicación dejó de estar la mercadería.
+      if (ubicacionId !== null && hayStockPorUbicacion) {
+        await client.query(
+          `
+          INSERT INTO ${stockUbiT} (empresa_id, producto_id, ubicacion_id, stock_actual)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
+          ON CONFLICT (empresa_id, producto_id, ubicacion_id)
+          DO UPDATE SET stock_actual = ${stockUbiT}.stock_actual + EXCLUDED.stock_actual,
+                        updated_at = now()
+          `,
+          [params.empresaId, line.producto_id, ubicacionId, -line.cantidad]
+        );
+      }
     }
 
     // Acumulado de lo que salió del camión. Es un espejo: el control de
