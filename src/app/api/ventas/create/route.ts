@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
     // camión sale sin plata en el cajón—, y se cierra con el cierre de reparto.
     let cajaFinal = cajaId;
     if (tipoVenta === "CONTADO" && cajaFinal === null) {
-      cajaFinal = await asegurarCajaAbierta(schema, auth.empresa_id);
+      cajaFinal = await asegurarCajaAbierta(schema, auth.empresa_id, auth.usuarioCatalogId);
       if (cajaFinal === null) {
         return NextResponse.json(
           errorResponse("No se pudo abrir la caja para cobrar esta venta."),

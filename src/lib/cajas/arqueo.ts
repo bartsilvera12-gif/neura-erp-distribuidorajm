@@ -30,13 +30,18 @@ export interface Arqueo {
   /** `false` si el schema no tiene `cajas` / `caja_movimientos`. */
   disponible: boolean;
   fecha?: string;
+  /** `mia` = solo la caja propia (lo normal). `todas` = las del día. */
+  alcance?: "mia" | "todas";
   cajas: ArqueoCaja[];
 }
 
 /** Arqueo de las cajas de un día. Sin `fecha`, hoy en hora de Asunción. */
-export async function getArqueo(fecha?: string): Promise<Arqueo> {
+export async function getArqueo(fecha?: string, todas = false): Promise<Arqueo> {
   try {
-    const qs = fecha ? `?fecha=${encodeURIComponent(fecha)}` : "";
+    const params = new URLSearchParams();
+    if (fecha) params.set("fecha", fecha);
+    if (todas) params.set("alcance", "todas");
+    const qs = params.size > 0 ? `?${params.toString()}` : "";
     const res = await fetchWithSupabaseSession(`/api/cajas/arqueo${qs}`, { cache: "no-store" });
     const json = (await res.json()) as {
       success?: boolean;

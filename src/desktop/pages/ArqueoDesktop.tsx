@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
 import AperturaCaja from "@/shared/caja/AperturaCaja";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
@@ -12,7 +13,11 @@ import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/ar
 /** Arqueo de caja desktop: las cajas del día en grilla. */
 export default function ArqueoDesktop() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
-  const { arqueo, isLoading, mutate } = useArqueo(fecha);
+  // Lo normal es mirar la propia caja. La lista de todas las del día es para
+  // revisar el negocio, no para vender, así que se pide a mano.
+  const [todas, setTodas] = useState(false);
+  const { isAdmin } = useIsAdmin();
+  const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
   // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
   const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
 
@@ -70,13 +75,25 @@ export default function ArqueoDesktop() {
       </div>
 
 
+      {isAdmin ? (
+        <button
+          type="button"
+          onClick={() => setTodas((v) => !v)}
+          className="mb-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
+        </button>
+      ) : null}
+
       {isLoading && !arqueo ? (
         <p className="py-16 text-center text-sm text-slate-400">Cargando…</p>
       ) : arqueo && !arqueo.disponible ? (
         <AvisoSinCajas />
       ) : arqueo && arqueo.cajas.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-slate-200 py-16 text-center text-sm text-slate-500">
-          No hubo cajas abiertas este día.
+          {todas
+            ? "No hubo cajas abiertas este día."
+            : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">

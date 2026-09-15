@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
@@ -71,6 +72,35 @@ export async function GET(request: NextRequest) {
     const tC = quoteSchemaTable(schema, "cajas");
     const tM = quoteSchemaTable(schema, "caja_movimientos");
 
+    // Alcance. Por defecto se mira UNA caja: la propia. Ver la lista de todas
+    // las del día es otra cosa —la mira el dueño, no el que está vendiendo— y
+    // se pide explícitamente.
+    const todas = request.nextUrl.searchParams.get("alcance") === "todas";
+
+    // ¿La tabla guarda quién abrió la caja? Si la guarda, un vendedor ve las
+    // suyas y no las de los demás. Las abiertas automáticamente al cobrar antes
+    // de que esto existiera no tienen dueño: se cuentan como propias, porque
+    // esconderlas dejaría al vendedor sin ninguna caja a la vista.
+    const colsQ = await queryWithRetry<{ columna: string }>(
+      pool,
+      `SELECT column_name AS columna FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'cajas'`,
+      [schema]
+    );
+    const cols = new Set(colsQ.rows.map((r) => r.columna));
+    const colDueno = cols.has("abierta_por")
+      ? "abierta_por"
+      : cols.has("usuario_id")
+        ? "usuario_id"
+        : null;
+
+    const auth = await getUserAndEmpresa(request);
+    const yo = auth?.usuarioCatalogId ?? null;
+    const filtroDueno =
+      !todas && colDueno && yo ? ` AND (${colDueno} = $4::uuid OR ${colDueno} IS NULL)` : "";
+    const paramsCajas: unknown[] = [empresaId, TZ, fecha];
+    if (filtroDueno) paramsCajas.push(yo);
+
     // Una caja abierta ayer y todavía sin cerrar sigue siendo la caja de hoy:
     // se incluye aunque su apertura sea de otro día.
     const cajasQ = await queryWithRetry<{
@@ -96,12 +126,15 @@ export async function GET(request: NextRequest) {
         WHERE empresa_id = $1::uuid
           AND ( (fecha_apertura AT TIME ZONE $2)::date = $3::date
                 OR (estado = 'abierta' AND (fecha_apertura AT TIME ZONE $2)::date <= $3::date) )
-        ORDER BY fecha_apertura DESC`,
-      [empresaId, TZ, fecha]
+          ${filtroDueno}
+        -- La abierta primero: es la que se está usando ahora.
+        ORDER BY (estado = 'abierta') DESC, fecha_apertura DESC
+        ${todas ? "" : "LIMIT 1"}`,
+      paramsCajas
     );
 
     if (cajasQ.rows.length === 0) {
-      return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, cajas: [] } }));
+      return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", cajas: [] } }));
     }
 
     const ids = cajasQ.rows.map((c) => c.id);
@@ -193,7 +226,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, cajas } }));
+    return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", cajas } }));
   } catch (err) {
     console.error("[/api/cajas/arqueo GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo calcular el arqueo."), { status: 500 });

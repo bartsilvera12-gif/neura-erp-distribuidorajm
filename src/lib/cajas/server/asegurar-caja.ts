@@ -14,7 +14,8 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
  */
 export async function asegurarCajaAbierta(
   schema: string,
-  empresaId: string
+  empresaId: string,
+  usuarioId?: string | null
 ): Promise<string | null> {
   const pool = getChatPostgresPool();
   if (!pool) return null;
@@ -46,15 +47,33 @@ export async function asegurarCajaAbierta(
       return abierta.rows[0].id;
     }
 
+    // Quién la abrió, si la tabla lo guarda. Sin esto el arqueo no sabe de
+    // quién es la caja y el vendedor termina viendo las de todos.
+    const colsQ = await client.query<{ columna: string }>(
+      `SELECT column_name AS columna FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'cajas'`,
+      [schema]
+    );
+    const cols = new Set(colsQ.rows.map((r) => r.columna));
+    const colDueno = cols.has("abierta_por")
+      ? "abierta_por"
+      : cols.has("usuario_id")
+        ? "usuario_id"
+        : null;
+
     const sig = await client.query<{ n: string }>(
       `SELECT COALESCE(max(numero_caja), 0)::text AS n FROM ${tC} WHERE empresa_id = $1::uuid`,
       [empresaId]
     );
     const alta = await client.query<{ id: string }>(
-      `INSERT INTO ${tC} (empresa_id, numero_caja, estado, monto_apertura, fecha_apertura)
-       VALUES ($1::uuid, $2, 'abierta', 0, now())
+      `INSERT INTO ${tC} (empresa_id, numero_caja, estado, monto_apertura, fecha_apertura${
+        colDueno && usuarioId ? `, ${colDueno}` : ""
+      })
+       VALUES ($1::uuid, $2, 'abierta', 0, now()${colDueno && usuarioId ? ", $3::uuid" : ""})
        RETURNING id`,
-      [empresaId, Number(sig.rows[0].n) + 1]
+      colDueno && usuarioId
+        ? [empresaId, Number(sig.rows[0].n) + 1, usuarioId]
+        : [empresaId, Number(sig.rows[0].n) + 1]
     );
 
     await client.query("COMMIT");
