@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Home, Menu, Settings } from "lucide-react";
+import { BarChart3, Home, Settings } from "lucide-react";
 import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
 
 /**
@@ -12,8 +12,8 @@ import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
  * tiles), Reportes y Configuración. Todo lo demás se alcanza desde los tiles
  * de Inicio, que es como se usa en la calle: pocas opciones grandes.
  *
- * "Más" queda como salida al menú completo — el repartidor no lo necesita,
- * pero sin él la administración desde el celular no llegaría al resto del ERP.
+ * Sin botón "Más": el menú completo sigue a un toque del ☰ del header, así que
+ * la barra queda limpia sin dejar encerrado a quien administra desde el celular.
  *
  * Cada pestaña respeta los módulos de la empresa: ofrecer Reportes a quien no
  * los tiene es ofrecer una puerta cerrada.
@@ -37,7 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
+export default function BottomNav() {
   const pathname = usePathname() ?? "/";
   const { puedeVer } = useAccesoRuta();
 
@@ -75,17 +75,6 @@ export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
             </li>
           );
         })}
-        <li className="flex-1">
-          <button
-            type="button"
-            onClick={onOpenMenu}
-            className="flex h-full min-h-[44px] w-full flex-col items-center justify-center gap-0.5 px-1 text-slate-500 transition-colors hover:text-slate-700"
-            aria-label="Abrir menú completo"
-          >
-            <Menu className="h-5 w-5" aria-hidden />
-            <span className="text-[10px] font-medium tracking-tight">Más</span>
-          </button>
-        </li>
       </ul>
     </nav>
   );

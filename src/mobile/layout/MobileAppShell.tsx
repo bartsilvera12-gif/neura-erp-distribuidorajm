@@ -21,7 +21,7 @@ const STANDALONE_ROUTES = ["/login"];
  *  └──────────────────────────────┘
  *
  *  Menú lateral: MobileMenu (CSS-only) que se desliza desde la izquierda al tocar
- *  el ícono de menú del header o "Más" del bottom nav. NO usa el Sidebar desktop
+ *  el ícono de menú del header. NO usa el Sidebar desktop
  *  (que carga framer-motion + favoritos + búsqueda compleja).
  */
 export default function MobileAppShell({ children }: { children: React.ReactNode }) {
@@ -59,7 +59,7 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
         {children}
       </main>
 
-      <BottomNav onOpenMenu={() => setMenuOpen(true)} />
+      <BottomNav />
     </div>
   );
 }
