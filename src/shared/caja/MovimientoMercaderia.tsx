@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { ArrowDownToLine, ArrowUpFromLine, Search, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Search, Wand2, X } from "lucide-react";
 import { useProductos } from "@/shared/hooks/useInventario";
-import { getUbicaciones, registrarMovimiento } from "@/lib/repartos/storage";
-import type { Reparto, Ubicacion } from "@/lib/repartos/types";
+import { getObjetivos, getUbicaciones, registrarMovimiento } from "@/lib/repartos/storage";
+import type { ObjetivoCamion, Reparto, Ubicacion } from "@/lib/repartos/types";
 
 const TEAL = "#4FAEB2";
 
@@ -34,6 +34,13 @@ export default function MovimientoMercaderia({
     tipo === "transferencia" ? "repartos:ubicaciones" : null,
     () => getUbicaciones(),
     { revalidateOnFocus: false, dedupingInterval: 2 * 60_000 }
+  );
+  // Objetivo de carga: solo hace falta para cargar. El remanente lo trae el
+  // servidor, así que la sugerencia ya viene calculada.
+  const { data: objetivos } = useSWR<ObjetivoCamion[]>(
+    tipo === "carga" ? `repartos:objetivos:${reparto.camion_id}` : null,
+    () => getObjetivos(reparto.camion_id),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
   );
 
   const [query, setQuery] = useState("");
@@ -73,6 +80,25 @@ export default function MovimientoMercaderia({
     () => new Map(reparto.items.map((i) => [i.producto_id, { teorico: i.teorico, unidad: i.unidad }])),
     [reparto.items]
   );
+
+  const porObjetivo = useMemo(
+    () => new Map((objetivos ?? []).map((o) => [o.producto_id, o])),
+    [objetivos]
+  );
+  const conSugerencia = useMemo(
+    () => (objetivos ?? []).filter((o) => o.sugerido > 0),
+    [objetivos]
+  );
+
+  /** Completa las cantidades con objetivo − remanente. */
+  function usarSugerido() {
+    setError(null);
+    setCantidades((prev) => {
+      const next = { ...prev };
+      for (const o of conSugerencia) next[o.producto_id] = String(o.sugerido);
+      return next;
+    });
+  }
 
   async function handleGuardar() {
     if (guardando) return;
@@ -156,6 +182,24 @@ export default function MovimientoMercaderia({
         />
       </label>
 
+      {esCarga && conSugerencia.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#4FAEB2]/30 bg-[#4FAEB2]/5 p-3">
+          <p className="text-xs leading-relaxed text-slate-600">
+            {conSugerencia.length}{" "}
+            {conSugerencia.length === 1 ? "producto está" : "productos están"} por debajo del
+            objetivo del camión {reparto.camion}.
+          </p>
+          <button
+            type="button"
+            onClick={usarSugerido}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-[#3F8E91] hover:bg-white"
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Usar carga sugerida
+          </button>
+        </div>
+      ) : null}
+
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
@@ -176,6 +220,7 @@ export default function MovimientoMercaderia({
         <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
           {filtrados.map((p) => {
             const arriba = enCamion.get(p.id);
+            const obj = porObjetivo.get(p.id);
             return (
               <li
                 key={p.id}
@@ -189,6 +234,20 @@ export default function MovimientoMercaderia({
                     {esCarga
                       ? `En el camión: ${arriba?.teorico ?? 0} ${p.unidad_medida}`
                       : `Disponible: ${arriba?.teorico ?? 0} ${p.unidad_medida}`}
+                    {esCarga && obj?.objetivo !== null && obj?.objetivo !== undefined ? (
+                      <>
+                        {" · Objetivo "}
+                        {obj.objetivo}
+                        {obj.sugerido > 0 ? (
+                          <span className="font-semibold text-[#3F8E91]">
+                            {" · faltan "}
+                            {obj.sugerido}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600"> · completo</span>
+                        )}
+                      </>
+                    ) : null}
                   </span>
                 </span>
                 <input

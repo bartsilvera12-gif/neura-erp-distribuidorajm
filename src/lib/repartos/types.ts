@@ -60,3 +60,16 @@ export interface Ubicacion {
   nombre: string;
   tipo: string;
 }
+
+/** Objetivo de carga de un producto en un camión, con su sugerencia. */
+export interface ObjetivoCamion {
+  producto_id: string;
+  nombre: string;
+  unidad: string;
+  /** `null` = ese producto no se sugiere para este camión. */
+  objetivo: number | null;
+  /** Remanente actual en el camión. */
+  actual: number;
+  /** objetivo − actual, nunca negativo. */
+  sugerido: number;
+}

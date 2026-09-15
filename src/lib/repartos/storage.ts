@@ -1,5 +1,5 @@
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { Camion, Reparto, Ubicacion } from "./types";
+import type { Camion, ObjetivoCamion, Reparto, Ubicacion } from "./types";
 
 export type ResultadoReparto = { ok: true; repartoId: string } | { ok: false; error: string };
 
@@ -208,6 +208,53 @@ export async function registrarMovimiento(
     const json = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !json.success) {
       return { ok: false, error: json.error ?? "No se pudo registrar el movimiento." };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+/** Objetivo, remanente y sugerido de cada producto para un camión. */
+export async function getObjetivos(camionId: string): Promise<ObjetivoCamion[]> {
+  try {
+    const res = await fetchWithSupabaseSession(
+      `/api/camiones/${encodeURIComponent(camionId)}/objetivos`,
+      { cache: "no-store" }
+    );
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { productos?: ObjetivoCamion[] };
+      error?: string;
+    };
+    if (!res.ok || !json.success) {
+      console.error("[repartos] getObjetivos:", json.error ?? res.statusText);
+      return [];
+    }
+    return json.data?.productos ?? [];
+  } catch (e) {
+    console.error("[repartos] getObjetivos:", e);
+    return [];
+  }
+}
+
+/** Define el objetivo de carga por producto. `null` o 0 lo borra. */
+export async function guardarObjetivos(
+  camionId: string,
+  items: { producto_id: string; objetivo: number | null }[]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(
+      `/api/camiones/${encodeURIComponent(camionId)}/objetivos`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      }
+    );
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudieron guardar los objetivos." };
     }
     return { ok: true };
   } catch (e) {

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { Plus, Truck } from "lucide-react";
+import { Plus, Target, Truck } from "lucide-react";
+import ObjetivosCamion from "@/shared/caja/ObjetivosCamion";
 import { useCamiones } from "@/shared/hooks/useRepartos";
 import { crearCamion, setCamionActivo } from "@/lib/repartos/storage";
 
@@ -26,6 +27,7 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
   const [patente, setPatente] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [objetivosDe, setObjetivosDe] = useState<string | null>(null);
 
   async function handleAlta() {
     if (guardando) return;
@@ -74,8 +76,8 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
           {camiones.map((c) => (
-            <li key={c.id} className="flex items-center gap-3 px-3 py-2.5">
-              <span className="min-w-0 flex-1">
+            <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+              <span className="min-w-0 flex-1 basis-40">
                 <span
                   className={`block truncate text-sm font-medium ${
                     c.activo ? "text-slate-900" : "text-slate-400 line-through"
@@ -87,6 +89,16 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
                   <span className="block text-xs text-slate-500">{c.patente}</span>
                 ) : null}
               </span>
+              {c.activo ? (
+                <button
+                  type="button"
+                  onClick={() => setObjetivosDe(objetivosDe === c.id ? null : c.id)}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  <Target className="h-3.5 w-3.5" />
+                  Objetivo
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => handleActivo(c.id, !c.activo)}
@@ -98,6 +110,13 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
           ))}
         </ul>
       )}
+
+      {objetivosDe ? (
+        (() => {
+          const c = camiones.find((x) => x.id === objetivosDe);
+          return c ? <ObjetivosCamion camion={c} onCerrar={() => setObjetivosDe(null)} /> : null;
+        })()
+      ) : null}
 
       <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
         <input
