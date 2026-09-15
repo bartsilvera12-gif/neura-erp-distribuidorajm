@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Plus, Truck, X } from "lucide-react";
-import { useCamiones, useRepartos } from "@/shared/hooks/useRepartos";
-import { useUsuarios } from "@/shared/hooks/useUsuarios";
+import { useCamiones, useRepartidores, useRepartos } from "@/shared/hooks/useRepartos";
 import { abrirReparto } from "@/lib/repartos/storage";
 import { hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
 import ControlMercaderia from "@/shared/caja/ControlMercaderia";
@@ -136,7 +135,7 @@ function FormularioApertura({
   onCreado: () => void;
 }) {
   const { camiones, isLoading: cargandoCamiones } = useCamiones();
-  const { usuarios } = useUsuarios();
+  const { repartidores, isLoading: cargandoRepartidores } = useRepartidores();
 
   const [camionId, setCamionId] = useState("");
   const [repartidorId, setRepartidorId] = useState("");
@@ -209,7 +208,7 @@ function FormularioApertura({
             className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           >
             <option value="">Elegí un repartidor</option>
-            {usuarios.map((u) => (
+            {repartidores.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.nombre ?? u.email}
               </option>
@@ -221,6 +220,13 @@ function FormularioApertura({
       {!cargandoCamiones && camiones.length === 0 ? (
         <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
           No hay camiones activos cargados. Dalos de alta antes de abrir un reparto.
+        </p>
+      ) : null}
+
+      {!cargandoRepartidores && repartidores.length === 0 ? (
+        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+          No hay usuarios cargados para salir con el camión. Creá al repartidor en Usuarios y
+          volvé acá.
         </p>
       ) : null}
 

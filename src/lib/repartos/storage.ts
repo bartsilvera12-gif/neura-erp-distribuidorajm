@@ -1,5 +1,5 @@
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { Camion, ObjetivoCamion, Reparto, Ubicacion } from "./types";
+import type { Camion, ObjetivoCamion, RepartidorReparto, Reparto, Ubicacion } from "./types";
 
 export type ResultadoReparto = { ok: true; repartoId: string } | { ok: false; error: string };
 
@@ -261,5 +261,27 @@ export async function guardarObjetivos(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+/** Quién puede salir con un camión. Ids de la tabla `usuarios` del schema. */
+export async function getRepartidores(): Promise<RepartidorReparto[]> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/repartos/repartidores", {
+      cache: "no-store",
+    });
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { repartidores?: RepartidorReparto[] };
+      error?: string;
+    };
+    if (!res.ok || !json.success) {
+      console.error("[repartos] getRepartidores:", json.error ?? res.statusText);
+      return [];
+    }
+    return json.data?.repartidores ?? [];
+  } catch (e) {
+    console.error("[repartos] getRepartidores:", e);
+    return [];
   }
 }

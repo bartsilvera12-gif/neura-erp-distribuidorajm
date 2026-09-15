@@ -1,8 +1,8 @@
 "use client";
 
 import useSWR from "swr";
-import { getCamiones, getObjetivos, getRepartos } from "@/lib/repartos/storage";
-import type { Camion, ObjetivoCamion, Reparto } from "@/lib/repartos/types";
+import { getCamiones, getObjetivos, getRepartidores, getRepartos } from "@/lib/repartos/storage";
+import type { Camion, ObjetivoCamion, RepartidorReparto, Reparto } from "@/lib/repartos/types";
 
 /** Repartos de un día (`fecha`) o los abiertos (`abiertos`). */
 export function useRepartos(opts?: { fecha?: string; abiertos?: boolean }) {
@@ -53,5 +53,19 @@ export function useObjetivos(camionId: string | null) {
     isLoading: swr.isLoading,
     error: swr.error as Error | undefined,
     mutate: swr.mutate,
+  };
+}
+
+/** Quién puede salir con un camión, con los ids que el alta de reparto acepta. */
+export function useRepartidores() {
+  const swr = useSWR<RepartidorReparto[]>(
+    "repartos:repartidores",
+    () => getRepartidores(),
+    { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
+  );
+  return {
+    repartidores: swr.data ?? [],
+    isLoading: swr.isLoading,
+    error: swr.error as Error | undefined,
   };
 }

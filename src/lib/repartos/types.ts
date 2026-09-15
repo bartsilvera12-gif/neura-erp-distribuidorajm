@@ -73,3 +73,17 @@ export interface ObjetivoCamion {
   /** objetivo − actual, nunca negativo. */
   sugerido: number;
 }
+
+/**
+ * Candidato a repartidor.
+ *
+ * El `id` es de la tabla `usuarios` del schema del cliente, que es a la que
+ * apunta `repartos.repartidor_id`. No es el id del catálogo de usuarios: son
+ * dos tablas distintas y mezclarlas hace fallar el alta del reparto.
+ */
+export interface RepartidorReparto {
+  id: string;
+  email: string;
+  nombre: string | null;
+  rol: string | null;
+}
