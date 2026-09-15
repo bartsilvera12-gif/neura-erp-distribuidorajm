@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
+import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { useEffect, useState } from "react";
 import { getVentas } from "@/lib/ventas/storage";
 import type { Venta, TipoVenta, TipoIvaVenta } from "@/lib/ventas/types";
@@ -166,6 +168,13 @@ export default function VentasPage() {
   }, []);
 
   const metricas = calcularMetricas(todas);
+  // Abrir la caja es lo primero de la mañana: el estado va en esta pantalla y no
+  // escondido dentro del cobro de una venta.
+  const {
+    caja: cajaAbierta,
+    disponible: cajasDisponibles,
+    mutate: recargarCaja,
+  } = useCajaAbierta();
 
   const filtradas = todas.filter((v) => {
     // Búsqueda global: número de control, nombre o SKU de cualquier ítem
@@ -249,6 +258,15 @@ export default function VentasPage() {
           />
         </div>
       </section>
+
+      {/* ── Estado de la caja ─────────────────────────────────────────────────
+          Abrir la caja es lo primero de la mañana y sin eso no se cobra de
+          contado, así que va acá arriba y no escondido dentro de una venta. */}
+      {cajasDisponibles ? (
+        <section className="mb-6">
+          <AperturaCaja caja={cajaAbierta} onCambio={() => recargarCaja()} />
+        </section>
+      ) : null}
 
       {/* ── Tabla de ventas ───────────────────────────────────────────────────── */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

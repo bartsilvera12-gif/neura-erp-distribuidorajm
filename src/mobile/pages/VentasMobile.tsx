@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
+import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { useMemo, useState } from "react";
 import { Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
 import { useVentas } from "@/shared/hooks/useVentas";
@@ -36,6 +38,14 @@ export default function VentasMobile() {
         v.items.some((i) => i.producto_nombre.toLowerCase().includes(q))
     );
   }, [ventas, query]);
+
+  // Abrir la caja es lo primero de la mañana: va en esta pantalla y no escondido
+  // dentro del cobro de una venta.
+  const {
+    caja: cajaAbierta,
+    disponible: cajasDisponibles,
+    mutate: recargarCaja,
+  } = useCajaAbierta();
 
   return (
     <div className="mx-auto max-w-md p-4 pb-24">
@@ -93,6 +103,12 @@ export default function VentasMobile() {
           ) : null}
         </div>
       </header>
+
+      {cajasDisponibles ? (
+        <div className="mb-4">
+          <AperturaCaja caja={cajaAbierta} onCambio={() => recargarCaja()} />
+        </div>
+      ) : null}
 
       {/* Buscador */}
       <div className="relative mb-3">
