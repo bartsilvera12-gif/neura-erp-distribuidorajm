@@ -116,6 +116,28 @@ export async function POST(request: NextRequest) {
         ? null
         : String(o.observaciones).slice(0, 4000);
 
+    const FORMAS_PAGO_VALIDAS = ["efectivo", "transferencia", "cheque", "credito"] as const;
+    type FormaPago = (typeof FORMAS_PAGO_VALIDAS)[number];
+    const formaPagoRaw = String(o.forma_pago ?? "").trim().toLowerCase();
+    const formaPago = (FORMAS_PAGO_VALIDAS as readonly string[]).includes(formaPagoRaw)
+      ? (formaPagoRaw as FormaPago)
+      : null;
+
+    // Crédito y CONTADO son incompatibles: si llegan juntos, el payload está mal
+    // armado y la venta quedaría mal clasificada en cobranzas.
+    if (formaPago === "credito" && tipoVenta !== "CREDITO") {
+      return NextResponse.json(
+        errorResponse("Forma de pago `credito` requiere tipo_venta CREDITO."),
+        { status: 400 }
+      );
+    }
+    if (formaPago !== null && formaPago !== "credito" && tipoVenta === "CREDITO") {
+      return NextResponse.json(
+        errorResponse(`Una venta a crédito no puede cobrarse como ${formaPago}.`),
+        { status: 400 }
+      );
+    }
+
     const subtotalDeclarado = Number(o.subtotal);
     const montoIvaDeclarado = Number(o.monto_iva);
     const totalDeclarado = Number(o.total);
@@ -138,6 +160,7 @@ export async function POST(request: NextRequest) {
       moneda,
       tipoCambio,
       tipoVenta,
+      formaPago,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,

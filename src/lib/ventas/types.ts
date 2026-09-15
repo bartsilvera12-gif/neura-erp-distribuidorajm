@@ -2,6 +2,19 @@ export type TipoIvaVenta = "EXENTA" | "5%" | "10%";
 export type TipoVenta   = "CONTADO" | "CREDITO";
 export type MonedaVenta = "GS" | "USD";
 
+/**
+ * Cómo paga el cliente. `credito` es el único que cambia `tipo_venta`; los otros
+ * tres son todos CONTADO y se distinguen para el arqueo de caja.
+ */
+export type FormaPagoVenta = "efectivo" | "transferencia" | "cheque" | "credito";
+
+export const FORMAS_PAGO: { value: FormaPagoVenta; label: string }[] = [
+  { value: "efectivo",      label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "cheque",        label: "Cheque" },
+  { value: "credito",       label: "Crédito" },
+];
+
 /** Un ítem dentro de una venta (una línea de producto). */
 export interface LineaVenta {
   producto_id:           string;
@@ -33,6 +46,13 @@ export interface Venta {
 
   tipo_venta: TipoVenta;
   plazo_dias?: number;       // solo si tipo_venta === "CREDITO"
+
+  /** Medio de cobro. Puede venir null en ventas anteriores a la columna. */
+  forma_pago?: FormaPagoVenta | null;
+
+  /** Cliente de la venta. `null` = venta sin nombre. */
+  cliente_id?: string | null;
+  cliente_nombre?: string | null;
 
   fecha: string;             // ISO string, generado automáticamente
 }

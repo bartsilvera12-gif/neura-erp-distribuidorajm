@@ -23,6 +23,8 @@ export interface CreateVentaPgParams {
   tipoCambio: number;
   tipoVenta: "CONTADO" | "CREDITO";
   plazoDias: number | null;
+  /** Medio de cobro. Se guarda solo si el schema tiene la columna (ver 05_forma_pago.sql). */
+  formaPago: "efectivo" | "transferencia" | "cheque" | "credito" | null;
   items: CreateVentaItemInput[];
   /** Totales enviados por el cliente (se contrastan con el recálculo). */
   subtotalDeclarado: number;
@@ -160,14 +162,30 @@ export async function createVentaTransaccionalPg(
 
     const fechaIso = new Date().toISOString();
 
+    // `forma_pago` es una columna agregada después (05_forma_pago.sql). Si el
+    // schema todavía no la tiene, la venta se guarda igual sin ese dato en vez
+    // de fallar: cobrar no puede depender de una migración pendiente.
+    const colFormaPago = await client.query<{ existe: boolean }>(
+      `
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'ventas' AND column_name = 'forma_pago'
+      ) AS existe
+      `,
+      [params.schema]
+    );
+    const guardaFormaPago = colFormaPago.rows[0]?.existe === true;
+
     const insVenta = await client.query<{ id: string }>(
       `
       INSERT INTO ${ventasT} (
         empresa_id, cliente_id, numero_control, moneda, tipo_cambio,
         subtotal, monto_iva, total, estado, tipo_venta, plazo_dias, fecha, observaciones
+        ${guardaFormaPago ? ", forma_pago" : ""}
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, 'completada', $9, $10, $11::timestamptz, $12
+        ${guardaFormaPago ? ", $13" : ""}
       )
       RETURNING id
       `,
@@ -184,6 +202,7 @@ export async function createVentaTransaccionalPg(
         params.plazoDias,
         fechaIso,
         params.observaciones,
+        ...(guardaFormaPago ? [params.formaPago] : []),
       ]
     );
 
