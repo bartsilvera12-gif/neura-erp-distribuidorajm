@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SelectorUnidad from "@/components/inventario/SelectorUnidad";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
@@ -328,13 +329,14 @@ export default function EditarProductoPage() {
               />
             </div>
             <div>
-              <label className={labelClass}>Unidad de medida</label>
-              <input
-                type="text"
-                name="unidad_medida"
+              <label className={labelClass} htmlFor="unidad_medida">
+                Unidad de medida
+              </label>
+              <SelectorUnidad
+                id="unidad_medida"
                 value={form.unidad_medida}
-                onChange={handleChange}
-                className={`${inputClass} uppercase`}
+                onChange={(unidad_medida) => setForm((f) => ({ ...f, unidad_medida }))}
+                className={inputClass}
                 required
               />
             </div>
