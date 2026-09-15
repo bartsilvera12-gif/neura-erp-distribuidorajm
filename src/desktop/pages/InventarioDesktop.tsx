@@ -5,6 +5,7 @@ import Link from "next/link";
 import { deleteProducto, getProductos } from "@/lib/inventario/storage";
 import type { Producto } from "@/lib/inventario/types";
 import { Pencil, Trash2 } from "lucide-react";
+import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import ImportExcelButton from "@/components/ui/ImportExcelButton";
@@ -236,7 +237,15 @@ export default function InventarioPage() {
                 const margen = calcularMargenVenta(p.costo_promedio, p.precio_venta);
                 return (
                   <tr key={p.id} className="border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors">
-                    <td className="py-4 pr-4 font-medium text-gray-800">{p.nombre}</td>
+                    {/* La foto va dentro de la columna del nombre y no en una
+                        propia: la tabla ya es ancha y una columna más obligaría
+                        a scrollear para llegar a los botones. */}
+                    <td className="py-3 pr-4 font-medium text-gray-800">
+                      <div className="flex items-center gap-3">
+                        <MiniaturaProducto producto={p} size="sm" />
+                        <span>{p.nombre}</span>
+                      </div>
+                    </td>
                     <td className="py-4 pr-4 text-gray-500 font-mono">{p.sku}</td>
                     <td className="py-4 pr-4 text-gray-700">{formatGs(p.costo_promedio)}</td>
                     <td className="py-4 pr-4 text-gray-700">{formatGs(p.precio_venta)}</td>
