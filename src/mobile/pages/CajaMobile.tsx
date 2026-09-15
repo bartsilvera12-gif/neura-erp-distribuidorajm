@@ -22,6 +22,8 @@ import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
+import FacturaVenta from "@/shared/caja/FacturaVenta";
+import { useEmisor } from "@/shared/hooks/useEmisor";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
@@ -638,59 +640,48 @@ function BarraAccion({ caja }: { caja: CajaVenta }) {
 
 function Comprobante({ caja }: { caja: CajaVenta }) {
   const venta = caja.ventaCreada!;
-  const fecha = new Date(venta.fecha);
+  const { emisor } = useEmisor();
+
+  // La unidad de cada producto no viaja en la venta, pero sí está en el
+  // carrito que la acaba de generar: sin ella, 1,5 KG se lee como 1,5 a secas.
+  const unidades = Object.fromEntries(
+    caja.carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
+  );
 
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-[#F8FAFC] px-4 py-10">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
-          <CheckCircle2 className="h-9 w-9 text-emerald-500" />
-        </div>
-        <h1 className="mt-4 text-lg font-bold text-slate-900">¡Venta registrada!</h1>
+    <div className="min-h-full bg-[#F8FAFC] pb-8">
+      <div className="no-imprimir flex items-center gap-2 bg-[var(--zentra-sidebar)] px-4 py-3 text-white">
+        <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+        <h1 className="text-base font-semibold">Venta registrada</h1>
+      </div>
 
-        <dl className="mt-5 space-y-2 text-left">
-          <Dato label="N.° de venta" valor={venta.numero_control} />
-          <Dato
-            label="Fecha y hora"
-            valor={`${fecha.toLocaleDateString("es-PY")} ${fecha.toLocaleTimeString("es-PY", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}`}
-          />
-          <Dato label="Cliente" valor={caja.nombreCliente} />
-          <Dato label="Cobro" valor={etiquetaCobro(caja)} />
-          <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-            <dt className="text-sm font-semibold text-slate-900">Total</dt>
-            <dd className="text-xl font-bold tabular-nums text-slate-900">
-              {formatGs(venta.total)}
-            </dd>
-          </div>
-        </dl>
+      <FacturaVenta
+        datos={{
+          venta,
+          emisor,
+          cliente: caja.nombreCliente,
+          formaPago: etiquetaCobro(caja),
+          unidades,
+        }}
+        telefonoCliente={caja.cliente?.telefono ?? null}
+      />
 
+      <div className="no-imprimir space-y-2 px-4">
         <button
           type="button"
           onClick={caja.reiniciar}
-          className="mt-6 w-full rounded-xl py-3.5 text-sm font-semibold text-white"
+          className="w-full rounded-xl py-3.5 text-sm font-semibold text-white"
           style={{ backgroundColor: TEAL }}
         >
           Nueva venta
         </button>
         <Link
           href="/ventas/arqueo"
-          className="mt-2 block w-full rounded-xl border border-slate-200 py-3.5 text-sm font-medium text-slate-600"
+          className="block w-full rounded-xl border border-slate-200 bg-white py-3.5 text-center text-sm font-medium text-slate-600"
         >
           Ver arqueo del día
         </Link>
       </div>
-    </div>
-  );
-}
-
-function Dato({ label, valor }: { label: string; valor: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-sm text-slate-500">{label}</dt>
-      <dd className="truncate text-sm font-medium text-slate-900">{valor}</dd>
     </div>
   );
 }

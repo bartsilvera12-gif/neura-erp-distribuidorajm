@@ -36,8 +36,8 @@ export interface LineaVenta {
   precio_venta:          number;  // siempre en GS
   tipo_iva:              TipoIvaVenta;
   subtotal:              number;  // precio_venta × cantidad
-  monto_iva:             number;
-  total_linea:           number;  // subtotal + monto_iva
+  monto_iva:             number;  // IVA CONTENIDO en el subtotal, no agregado
+  total_linea:           number;  // = subtotal: el precio ya lleva el IVA
 }
 
 /** Cabecera de venta: condiciones comerciales + totales consolidados. */
@@ -52,8 +52,8 @@ export interface Venta {
   tipo_cambio: number;       // 1 si moneda === "GS"
 
   subtotal:  number;         // Σ subtotal de ítems
-  monto_iva: number;         // Σ monto_iva de ítems
-  total:     number;         // Σ total_linea de ítems
+  monto_iva: number;         // Σ monto_iva de ítems (IVA incluido en el precio)
+  total:     number;         // Σ total_linea de ítems = subtotal
 
   tipo_venta: TipoVenta;
   plazo_dias?: number;       // solo si tipo_venta === "CREDITO"
