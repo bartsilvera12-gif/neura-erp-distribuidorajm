@@ -39,10 +39,12 @@ export async function getRepartos(opts?: {
   }
 }
 
-/** Camiones activos de la empresa. */
-export async function getCamiones(): Promise<Camion[]> {
+/** Camiones de la empresa. `todos` incluye los dados de baja. */
+export async function getCamiones(todos = false): Promise<Camion[]> {
   try {
-    const res = await fetchWithSupabaseSession("/api/camiones", { cache: "no-store" });
+    const res = await fetchWithSupabaseSession(`/api/camiones${todos ? "?todos=1" : ""}`, {
+      cache: "no-store",
+    });
     const json = (await res.json()) as {
       success?: boolean;
       data?: { camiones?: Camion[] };
@@ -105,6 +107,52 @@ export async function cerrarReparto(
       return { ok: false, error: json.error ?? "No se pudo cerrar el reparto." };
     }
     return { ok: true, repartoId };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+/** Da de alta un camión. */
+export async function crearCamion(datos: {
+  alias: string;
+  patente?: string;
+}): Promise<{ ok: true; camionId: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/camiones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(datos),
+    });
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { camion_id?: string };
+      error?: string;
+    };
+    if (!res.ok || !json.success || !json.data?.camion_id) {
+      return { ok: false, error: json.error ?? "No se pudo dar de alta el camión." };
+    }
+    return { ok: true, camionId: json.data.camion_id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+/** Da de baja (o reactiva) un camión. */
+export async function setCamionActivo(
+  camionId: string,
+  activo: boolean
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(`/api/camiones/${encodeURIComponent(camionId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo }),
+    });
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudo actualizar el camión." };
+    }
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }

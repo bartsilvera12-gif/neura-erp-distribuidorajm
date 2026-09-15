@@ -162,10 +162,15 @@ export async function listarRepartos(opts: {
   }));
 }
 
-/** Camiones activos de la empresa, para elegir en el alta del reparto. */
+/**
+ * Camiones de la empresa. Por defecto solo los activos, que es lo que hace
+ * falta para abrir un reparto; con `incluirInactivos` vienen también los dados
+ * de baja, para poder verlos y reactivarlos desde la administración.
+ */
 export async function listarCamiones(opts: {
   schema: string;
   empresaId: string;
+  incluirInactivos?: boolean;
 }): Promise<Camion[]> {
   const pool = getChatPostgresPool();
   if (!pool) return [];
@@ -173,9 +178,10 @@ export async function listarCamiones(opts: {
   const tC = quoteSchemaTable(opts.schema, "camiones");
   const q = await queryWithRetry<Camion>(
     pool,
-    `SELECT id, alias, patente FROM ${tC}
-      WHERE empresa_id = $1::uuid AND activo = true
-      ORDER BY alias`,
+    `SELECT id, alias, patente, activo FROM ${tC}
+      WHERE empresa_id = $1::uuid
+        ${opts.incluirInactivos ? "" : "AND activo = true"}
+      ORDER BY activo DESC, alias`,
     [opts.empresaId]
   );
   return q.rows;

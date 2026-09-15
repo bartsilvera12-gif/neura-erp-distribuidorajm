@@ -21,16 +21,17 @@ export function useRepartos(opts?: { fecha?: string; abiertos?: boolean }) {
   };
 }
 
-/** Camiones activos, para elegir en el alta del reparto. */
-export function useCamiones() {
-  const swr = useSWR<Camion[]>("repartos:camiones", () => getCamiones(), {
-    revalidateOnFocus: false,
-    dedupingInterval: 2 * 60_000,
-    keepPreviousData: true,
-  });
+/** Camiones. `todos` trae también los dados de baja, para administrarlos. */
+export function useCamiones(todos = false) {
+  const swr = useSWR<Camion[]>(
+    `repartos:camiones:${todos ? "todos" : "activos"}`,
+    () => getCamiones(todos),
+    { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
+  );
   return {
     camiones: swr.data ?? [],
     isLoading: swr.isLoading,
     error: swr.error as Error | undefined,
+    mutate: swr.mutate,
   };
 }

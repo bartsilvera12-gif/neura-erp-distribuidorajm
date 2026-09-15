@@ -52,6 +52,12 @@ export default function VentasMobile() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Link
+              href="/ventas/repartos"
+              className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 active:bg-slate-50"
+            >
+              Repartos
+            </Link>
+            <Link
               href="/ventas/arqueo"
               className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 active:bg-slate-50"
             >

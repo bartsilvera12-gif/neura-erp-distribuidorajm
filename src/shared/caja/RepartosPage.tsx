@@ -9,6 +9,7 @@ import { useUsuarios } from "@/shared/hooks/useUsuarios";
 import { abrirReparto } from "@/lib/repartos/storage";
 import { hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
 import ControlMercaderia from "@/shared/caja/ControlMercaderia";
+import CamionesPanel from "@/shared/caja/CamionesPanel";
 
 const TEAL = "#4FAEB2";
 
@@ -22,7 +23,14 @@ const TEAL = "#4FAEB2";
 export default function RepartosPage() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   const { repartos, disponible, isLoading, mutate } = useRepartos({ fecha });
+  const { camiones, isLoading: cargandoCamiones } = useCamiones();
   const [abriendo, setAbriendo] = useState(false);
+  const [administrando, setAdministrando] = useState(false);
+
+  // Sin camiones activos no se puede abrir nada, así que el panel se abre solo:
+  // ofrecer "Abrir reparto" con el select vacío sería un callejón sin salida.
+  const sinCamiones = disponible && !cargandoCamiones && camiones.length === 0;
+  const mostrarCamiones = administrando || sinCamiones;
 
   return (
     <div className="mx-auto max-w-5xl p-4 pb-24 sm:p-6">
@@ -42,6 +50,13 @@ export default function RepartosPage() {
             aria-label="Fecha de los repartos"
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           />
+          <button
+            type="button"
+            onClick={() => setAdministrando((v) => !v)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Camiones
+          </button>
           <Link
             href="/ventas/cierre"
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
@@ -59,7 +74,9 @@ export default function RepartosPage() {
         </p>
       ) : null}
 
-      {disponible && !abriendo ? (
+      {mostrarCamiones ? <CamionesPanel /> : null}
+
+      {disponible && !abriendo && camiones.length > 0 ? (
         <button
           type="button"
           onClick={() => setAbriendo(true)}

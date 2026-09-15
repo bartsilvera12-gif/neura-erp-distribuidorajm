@@ -44,4 +44,5 @@ export interface Camion {
   id: string;
   alias: string;
   patente: string | null;
+  activo: boolean;
 }
