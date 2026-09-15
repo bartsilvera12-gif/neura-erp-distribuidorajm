@@ -1,21 +1,21 @@
 import "server-only";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
-import type { Camion, ItemReparto, Reparto } from "@/lib/repartos/types";
+import type { Camion, ItemReparto, Reparto, Ubicacion } from "@/lib/repartos/types";
 
 /**
- * Consultas de repartos, sobre las tablas que el schema ya tenía:
- * `repartos`, `camiones`, `reparto_stock`.
+ * Consultas de repartos sobre las tablas del schema: `repartos`, `camiones`,
+ * `reparto_stock`, más el stock por ubicación.
  *
- * Por producto:
- *   esperado = cantidad_inicial − vendido + cantidad_devuelta
+ * El teórico —lo que debería estar arriba del camión— NO se calcula sumando y
+ * restando columnas de `reparto_stock`: es el saldo de la ubicación del camión
+ * en `inventario_stock_ubicacion`. Calcularlo daría mal en cuanto hubiera una
+ * carga de proveedor o una transferencia al salón en el medio de la jornada; el
+ * saldo de la ubicación ya las tiene todas.
  *
- * `cantidad_devuelta` es lo que el cliente rechaza: vuelve en el camión, así
- * que SUMA a lo que debería volver.
- *
- * El vendido se calcula desde `ventas` estampadas con el reparto y no desde
- * `reparto_stock.cantidad_vendida`, que es un acumulado: si algo cargó una
- * venta sin actualizarlo, el acumulado miente y las ventas no.
+ * El vendido sí se lee desde `ventas`, y no desde el acumulado
+ * `reparto_stock.cantidad_vendida`: si algo cargó una venta sin actualizarlo, el
+ * acumulado miente y las ventas no.
  */
 
 function num(v: string | number | null): number {
@@ -40,6 +40,7 @@ type FilaReparto = {
   id: string;
   camion_id: string;
   camion: string;
+  ubicacion_id: string | null;
   repartidor_id: string;
   repartidor: string | null;
   estado: string;
@@ -58,6 +59,9 @@ type FilaItem = {
   cargado: string;
   devuelto: string;
   vendido: string;
+  teorico: string;
+  contado: string | null;
+  motivo: string | null;
 };
 
 export async function listarRepartos(opts: {
@@ -76,6 +80,7 @@ export async function listarRepartos(opts: {
   const tP = quoteSchemaTable(opts.schema, "productos");
   const tV = quoteSchemaTable(opts.schema, "ventas");
   const tVI = quoteSchemaTable(opts.schema, "ventas_items");
+  const tSU = quoteSchemaTable(opts.schema, "inventario_stock_ubicacion");
 
   const condiciones = ["r.empresa_id = $1::uuid"];
   const params: unknown[] = [opts.empresaId];
@@ -88,7 +93,7 @@ export async function listarRepartos(opts: {
 
   const repartosQ = await queryWithRetry<FilaReparto>(
     pool,
-    `SELECT r.id, r.camion_id, c.alias AS camion,
+    `SELECT r.id, r.camion_id, c.alias AS camion, c.ubicacion_id,
             r.repartidor_id,
             COALESCE(u.nombre, u.email) AS repartidor,
             r.estado, r.fecha::text AS fecha,
@@ -113,6 +118,9 @@ export async function listarRepartos(opts: {
             COALESCE(NULLIF(rs.unidad_medida, ''), p.unidad_medida, '') AS unidad,
             rs.cantidad_inicial::text  AS cargado,
             rs.cantidad_devuelta::text AS devuelto,
+            rs.cantidad_contada::text  AS contado,
+            rs.motivo_diferencia       AS motivo,
+            COALESCE(su.stock_actual, 0)::text AS teorico,
             COALESCE((
               SELECT sum(vi.cantidad)
                 FROM ${tVI} vi
@@ -123,6 +131,11 @@ export async function listarRepartos(opts: {
             ), 0)::text AS vendido
        FROM ${tS} rs
        JOIN ${tP} p ON p.id = rs.producto_id
+       JOIN ${tR} r ON r.id = rs.reparto_id
+       JOIN ${tC} c ON c.id = r.camion_id
+       LEFT JOIN ${tSU} su
+              ON su.producto_id = rs.producto_id
+             AND su.ubicacion_id = c.ubicacion_id
       WHERE rs.reparto_id = ANY($1::uuid[])
       ORDER BY p.nombre`,
     [ids]
@@ -130,18 +143,20 @@ export async function listarRepartos(opts: {
 
   const porReparto = new Map<string, ItemReparto[]>();
   for (const row of itemsQ.rows) {
-    const cargado = num(row.cargado);
-    const vendido = num(row.vendido);
-    const devuelto = num(row.devuelto);
+    const teorico = num(row.teorico);
+    const contado = row.contado === null ? null : num(row.contado);
     const lista = porReparto.get(row.reparto_id) ?? [];
     lista.push({
       producto_id: row.producto_id,
       nombre: row.nombre,
       unidad: row.unidad,
-      cargado,
-      vendido,
-      devuelto,
-      esperado: cargado - vendido + devuelto,
+      cargado: num(row.cargado),
+      vendido: num(row.vendido),
+      devuelto: num(row.devuelto),
+      teorico,
+      contado,
+      diferencia: contado === null ? null : contado - teorico,
+      motivo: row.motivo,
     });
     porReparto.set(row.reparto_id, lista);
   }
@@ -150,6 +165,7 @@ export async function listarRepartos(opts: {
     id: r.id,
     camion_id: r.camion_id,
     camion: r.camion,
+    ubicacion_id: r.ubicacion_id,
     repartidor_id: r.repartidor_id,
     repartidor: r.repartidor,
     estado: r.estado === "cerrado" ? ("cerrado" as const) : ("abierto" as const),
@@ -164,8 +180,8 @@ export async function listarRepartos(opts: {
 
 /**
  * Camiones de la empresa. Por defecto solo los activos, que es lo que hace
- * falta para abrir un reparto; con `incluirInactivos` vienen también los dados
- * de baja, para poder verlos y reactivarlos desde la administración.
+ * falta para abrir un reparto; con `incluirInactivos` vienen también los de
+ * baja, para poder verlos y reactivarlos.
  */
 export async function listarCamiones(opts: {
   schema: string;
@@ -178,10 +194,29 @@ export async function listarCamiones(opts: {
   const tC = quoteSchemaTable(opts.schema, "camiones");
   const q = await queryWithRetry<Camion>(
     pool,
-    `SELECT id, alias, patente, activo FROM ${tC}
+    `SELECT id, alias, patente, activo, ubicacion_id FROM ${tC}
       WHERE empresa_id = $1::uuid
         ${opts.incluirInactivos ? "" : "AND activo = true"}
       ORDER BY activo DESC, alias`,
+    [opts.empresaId]
+  );
+  return q.rows;
+}
+
+/** Ubicaciones que NO son camiones: salón y depósitos, para las transferencias. */
+export async function listarUbicacionesFijas(opts: {
+  schema: string;
+  empresaId: string;
+}): Promise<Ubicacion[]> {
+  const pool = getChatPostgresPool();
+  if (!pool) return [];
+
+  const tU = quoteSchemaTable(opts.schema, "inventario_ubicaciones");
+  const q = await queryWithRetry<Ubicacion>(
+    pool,
+    `SELECT id, nombre, tipo FROM ${tU}
+      WHERE empresa_id = $1::uuid AND activo = true AND tipo <> 'camion'
+      ORDER BY nombre`,
     [opts.empresaId]
   );
   return q.rows;

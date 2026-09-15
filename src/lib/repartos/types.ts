@@ -1,25 +1,32 @@
 /**
- * Tipos del control de mercadería, sobre las tablas que el schema ya tenía:
- * `repartos`, `camiones`, `reparto_stock`.
+ * Tipos del control de mercadería.
  *
- * Por producto:
- *   esperado = cantidad_inicial − vendido + cantidad_devuelta
+ * El camión es una ubicación de inventario (`camiones.ubicacion_id`), así que
+ * lo que "debería estar arriba del camión" no se calcula: es el saldo de esa
+ * ubicación en `inventario_stock_ubicacion`. Eso es lo que el documento de
+ * relevamiento llama stock teórico, y sale bien sin importar cuántas cargas,
+ * transferencias o ventas hubo en el medio.
  *
- * `cantidad_devuelta` es lo que el cliente rechaza: vuelve en el camión, así
- * que suma a lo que debería volver al depósito.
+ * `reparto_stock` guarda la foto de la jornada: con cuánto salió, cuánto se
+ * vendió, cuánto rechazó el cliente y cuánto se contó al volver.
  */
 
 export interface ItemReparto {
   producto_id: string;
   nombre: string;
   unidad: string;
-  /** `reparto_stock.cantidad_inicial`: lo que salió en el camión. */
+  /** `cantidad_inicial`: el saldo del camión cuando se abrió el reparto. */
   cargado: number;
   vendido: number;
-  /** `reparto_stock.cantidad_devuelta`: lo que el cliente rechazó. */
+  /** Lo que el cliente rechazó y volvió en el camión. */
   devuelto: number;
-  /** cargado − vendido + devuelto: lo que debería volver en el camión. */
-  esperado: number;
+  /** Saldo actual de la ubicación del camión: lo que debería estar arriba. */
+  teorico: number;
+  /** Conteo físico del cierre. `null` mientras no se contó. */
+  contado: number | null;
+  /** contado − teórico. `null` si no se contó. */
+  diferencia: number | null;
+  motivo: string | null;
 }
 
 export interface Reparto {
@@ -27,14 +34,13 @@ export interface Reparto {
   camion_id: string;
   /** `camiones.alias`. */
   camion: string;
+  ubicacion_id: string | null;
   repartidor_id: string;
-  /** Nombre del repartidor, o su email si no tiene nombre cargado. */
   repartidor: string | null;
   estado: "abierto" | "cerrado";
   fecha: string;
   abierto_at: string;
   cerrado_at: string | null;
-  /** Merma total declarada al cerrar. `null` mientras está abierto. */
   merma_kg: number | null;
   notas_cierre: string | null;
   items: ItemReparto[];
@@ -45,4 +51,12 @@ export interface Camion {
   alias: string;
   patente: string | null;
   activo: boolean;
+  ubicacion_id: string | null;
+}
+
+/** Una ubicación de inventario: salón, depósito o camión. */
+export interface Ubicacion {
+  id: string;
+  nombre: string;
+  tipo: string;
 }

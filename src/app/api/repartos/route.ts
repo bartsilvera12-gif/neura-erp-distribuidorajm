@@ -47,36 +47,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
-type ItemEntrada = { producto_id: string; cantidad_inicial: number };
-
-function parseItems(body: unknown): ItemEntrada[] | null {
-  if (!body || typeof body !== "object") return null;
-  const raw = (body as { items?: unknown }).items;
-  if (!Array.isArray(raw)) return null;
-
-  const items = new Map<string, number>();
-  for (const it of raw) {
-    if (!it || typeof it !== "object") return null;
-    const o = it as Record<string, unknown>;
-    const producto_id = String(o.producto_id ?? "").trim();
-    const cantidad = Number(o.cantidad_inicial);
-    if (!UUID_RE.test(producto_id)) return null;
-    if (!Number.isFinite(cantidad) || cantidad < 0) return null;
-    // Cargar 0 de un producto es no cargarlo: se descarta en vez de guardar ruido.
-    if (cantidad === 0) continue;
-    // `reparto_stock` es único por (reparto_id, producto_id): si el formulario
-    // mandó el mismo producto dos veces, se suma en vez de chocar contra el índice.
-    items.set(producto_id, (items.get(producto_id) ?? 0) + cantidad);
-  }
-  return [...items].map(([producto_id, cantidad_inicial]) => ({ producto_id, cantidad_inicial }));
-}
-
 /**
- * POST /api/repartos — abre un reparto con la carga del camión.
- * Body: { camion_id, repartidor_id, fecha?, items: [{producto_id, cantidad_inicial}] }
+ * POST /api/repartos — abre la jornada del camión.
+ * Body: { camion_id, repartidor_id, fecha? }
  *
- * No mueve el stock del depósito: la salida se descuenta cuando la venta se
- * confirma. Descontarla también acá contaría dos veces la misma mercadería.
+ * No se carga mercadería a mano: el camión ya tiene su stock, que es el
+ * remanente del cierre anterior (documento v0.2, paso 1 del ciclo diario). La
+ * apertura solo saca la foto de ese saldo en `reparto_stock.cantidad_inicial`,
+ * para después poder decir con cuánto salió.
+ *
+ * Reponer se hace con la carga de proveedor, que es otro documento.
  */
 export async function POST(request: NextRequest) {
   const pool = getChatPostgresPool();
@@ -111,27 +91,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const items = parseItems(body);
-    if (items === null) {
-      return NextResponse.json(errorResponse("Carga inválida: revisá las cantidades."), {
-        status: 400,
-      });
-    }
-    if (items.length === 0) {
-      return NextResponse.json(errorResponse("Cargá al menos un producto."), { status: 400 });
-    }
-
     const tR = quoteSchemaTable(schema, "repartos");
     const tC = quoteSchemaTable(schema, "camiones");
     const tU = quoteSchemaTable(schema, "usuarios");
     const tP = quoteSchemaTable(schema, "productos");
     const tS = quoteSchemaTable(schema, "reparto_stock");
+    const tSU = quoteSchemaTable(schema, "inventario_stock_ubicacion");
 
     client = await pool.connect();
     await client.query("BEGIN");
 
-    const camionQ = await client.query<{ alias: string; activo: boolean }>(
-      `SELECT alias, activo FROM ${tC} WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+    const camionQ = await client.query<{
+      alias: string;
+      activo: boolean;
+      ubicacion_id: string | null;
+    }>(
+      `SELECT alias, activo, ubicacion_id FROM ${tC}
+        WHERE id = $1::uuid AND empresa_id = $2::uuid`,
       [camionId, empresaId]
     );
     if (camionQ.rows.length === 0) {
@@ -140,11 +116,20 @@ export async function POST(request: NextRequest) {
         status: 400,
       });
     }
-    if (!camionQ.rows[0].activo) {
+    const { alias, activo, ubicacion_id: ubicacionId } = camionQ.rows[0];
+    if (!activo) {
       await client.query("ROLLBACK");
       return NextResponse.json(errorResponse("Ese camión está dado de baja."), { status: 400 });
     }
-    const alias = camionQ.rows[0].alias;
+    if (!ubicacionId) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        errorResponse(
+          `El camión ${alias} no tiene ubicación de inventario. Corré 09_stock_movil.sql para vincularlo.`
+        ),
+        { status: 409 }
+      );
+    }
 
     const repartidorQ = await client.query<{ ok: number }>(
       `SELECT 1 AS ok FROM ${tU} WHERE id = $1::uuid AND empresa_id = $2::uuid`,
@@ -157,10 +142,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Un camión no puede tener dos repartos abiertos: las ventas se estampan
-    // con un reparto y no se sabría a cuál de los dos descontarle la carga.
-    // La tabla no tiene índice parcial que lo impida, así que se valida acá,
-    // dentro de la transacción y bloqueando las filas del camión.
+    // Un camión no puede tener dos repartos abiertos: las ventas se estampan con
+    // un reparto y no se sabría a cuál de los dos atribuir el movimiento. La
+    // tabla no tiene índice parcial que lo impida, así que se valida acá,
+    // bloqueando las filas del camión dentro de la transacción.
     const abiertoQ = await client.query<{ id: string }>(
       `SELECT id FROM ${tR}
         WHERE empresa_id = $1::uuid AND camion_id = $2::uuid AND estado = 'abierto'
@@ -175,41 +160,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // La unidad se toma del producto y no del cliente: `reparto_stock.unidad_medida`
-    // es NOT NULL y tiene que coincidir con la del inventario para que el
-    // esperado se pueda comparar contra lo que vuelve.
-    const unidadesQ = await client.query<{ id: string; unidad_medida: string | null }>(
-      `SELECT id, unidad_medida FROM ${tP}
-        WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
-      [empresaId, items.map((i) => i.producto_id)]
-    );
-    if (unidadesQ.rows.length !== items.length) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        errorResponse("Hay productos en la carga que no pertenecen a esta empresa."),
-        { status: 400 }
-      );
-    }
-    const unidades = new Map(unidadesQ.rows.map((r) => [r.id, r.unidad_medida ?? "UN"]));
-
     const repartoQ = await client.query<{ id: string }>(
       `INSERT INTO ${tR} (empresa_id, camion_id, repartidor_id, fecha)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, COALESCE($4::date, (now() AT TIME ZONE 'America/Asuncion')::date))
+       VALUES ($1::uuid, $2::uuid, $3::uuid,
+               COALESCE($4::date, (now() AT TIME ZONE 'America/Asuncion')::date))
        RETURNING id`,
       [empresaId, camionId, repartidorId, fecha || null]
     );
     const repartoId = repartoQ.rows[0].id;
 
-    for (const it of items) {
-      await client.query(
-        `INSERT INTO ${tS} (empresa_id, reparto_id, producto_id, unidad_medida, cantidad_inicial)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)`,
-        [empresaId, repartoId, it.producto_id, unidades.get(it.producto_id) || "UN", it.cantidad_inicial]
-      );
-    }
+    // La foto del saldo con el que arranca la jornada. Los saldos en 0 no se
+    // fotografían: serían filas de ruido en el control de mercadería.
+    const foto = await client.query<{ n: string }>(
+      `WITH copiado AS (
+         INSERT INTO ${tS} (empresa_id, reparto_id, producto_id, unidad_medida, cantidad_inicial)
+         SELECT $1::uuid, $2::uuid, su.producto_id,
+                COALESCE(NULLIF(p.unidad_medida, ''), 'Unidad'), su.stock_actual
+           FROM ${tSU} su
+           JOIN ${tP} p ON p.id = su.producto_id
+          WHERE su.empresa_id = $1::uuid AND su.ubicacion_id = $3::uuid
+            AND su.stock_actual > 0
+         RETURNING 1
+       )
+       SELECT count(*)::text AS n FROM copiado`,
+      [empresaId, repartoId, ubicacionId]
+    );
 
     await client.query("COMMIT");
-    return NextResponse.json(successResponse({ reparto_id: repartoId }));
+    return NextResponse.json(
+      successResponse({ reparto_id: repartoId, productos: Number(foto.rows[0]?.n ?? 0) })
+    );
   } catch (err) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("[/api/repartos POST]", err instanceof Error ? err.message : err);

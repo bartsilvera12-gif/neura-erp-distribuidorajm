@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Plus, Search, Truck, X } from "lucide-react";
-import { useProductos } from "@/shared/hooks/useInventario";
+import { useState } from "react";
+import { Plus, Truck, X } from "lucide-react";
 import { useCamiones, useRepartos } from "@/shared/hooks/useRepartos";
 import { useUsuarios } from "@/shared/hooks/useUsuarios";
 import { abrirReparto } from "@/lib/repartos/storage";
@@ -89,7 +88,7 @@ export default function RepartosPage() {
       ) : null}
 
       {abriendo ? (
-        <FormularioCarga
+        <FormularioApertura
           onCancelar={() => setAbriendo(false)}
           onCreado={() => {
             setAbriendo(false);
@@ -116,46 +115,28 @@ export default function RepartosPage() {
   );
 }
 
-// ── Alta de reparto con su carga ─────────────────────────────────────────────
+// ── Apertura de la jornada ───────────────────────────────────────────────────
 
 /**
- * El camión y el repartidor se eligen de las tablas del ERP (`camiones`,
- * `usuarios`) y no se escriben a mano: `repartos` los guarda por id, y un texto
- * libre no se podría ligar al camión que después hay que cerrar.
+ * Abrir un reparto no carga mercadería: el camión ya tiene su stock, que es el
+ * remanente del cierre anterior. Solo se elige quién sale y con qué camión.
+ *
+ * Reponer es otra cosa —la carga de proveedor— y tiene su propia pantalla.
  */
-function FormularioCarga({
+function FormularioApertura({
   onCancelar,
   onCreado,
 }: {
   onCancelar: () => void;
   onCreado: () => void;
 }) {
-  const { productos, isLoading } = useProductos();
   const { camiones, isLoading: cargandoCamiones } = useCamiones();
   const { usuarios } = useUsuarios();
 
   const [camionId, setCamionId] = useState("");
   const [repartidorId, setRepartidorId] = useState("");
-  const [query, setQuery] = useState("");
-  const [cargas, setCargas] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return productos;
-    return productos.filter(
-      (p) => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-    );
-  }, [productos, query]);
-
-  const items = useMemo(
-    () =>
-      Object.entries(cargas)
-        .map(([producto_id, v]) => ({ producto_id, cantidad_inicial: Number(v) }))
-        .filter((i) => Number.isFinite(i.cantidad_inicial) && i.cantidad_inicial > 0),
-    [cargas]
-  );
 
   async function handleGuardar() {
     if (guardando) return;
@@ -167,13 +148,9 @@ function FormularioCarga({
       setError("Elegí el repartidor.");
       return;
     }
-    if (items.length === 0) {
-      setError("Cargá al menos un producto.");
-      return;
-    }
     setGuardando(true);
     setError(null);
-    const res = await abrirReparto({ camion_id: camionId, repartidor_id: repartidorId, items });
+    const res = await abrirReparto({ camion_id: camionId, repartidor_id: repartidorId });
     setGuardando(false);
     if (!res.ok) {
       setError(res.error);
@@ -207,9 +184,7 @@ function FormularioCarga({
             }}
             className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           >
-            <option value="">
-              {cargandoCamiones ? "Cargando camiones…" : "Elegí un camión"}
-            </option>
+            <option value="">{cargandoCamiones ? "Cargando camiones…" : "Elegí un camión"}</option>
             {camiones.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.alias}
@@ -244,49 +219,10 @@ function FormularioCarga({
         </p>
       ) : null}
 
-      <div className="relative mt-4">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar producto para cargar…"
-          className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-        />
-      </div>
-
-      {isLoading ? (
-        <p className="py-8 text-center text-sm text-slate-400">Cargando productos…</p>
-      ) : (
-        <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
-          {filtrados.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-900">
-                  {p.nombre}
-                </span>
-                <span className="block text-xs text-slate-500">
-                  Stock en depósito: {p.stock_actual} {p.unidad_medida}
-                </span>
-              </span>
-              <input
-                inputMode="decimal"
-                placeholder="0"
-                value={cargas[p.id] ?? ""}
-                onChange={(e) => {
-                  setError(null);
-                  setCargas((prev) => ({ ...prev, [p.id]: e.target.value }));
-                }}
-                aria-label={`Cantidad a cargar de ${p.nombre}`}
-                className="h-9 w-24 shrink-0 rounded-lg border border-slate-200 px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-              />
-              <span className="w-8 shrink-0 text-xs text-slate-400">{p.unidad_medida}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+        El reparto arranca con lo que quedó arriba del camión en el cierre anterior. Para reponer,
+        registrá una carga de proveedor.
+      </p>
 
       {error ? (
         <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-700">
@@ -294,10 +230,7 @@ function FormularioCarga({
         </p>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">
-          {items.length} {items.length === 1 ? "producto" : "productos"} en la carga
-        </p>
+      <div className="mt-4 flex justify-end">
         <button
           type="button"
           onClick={handleGuardar}

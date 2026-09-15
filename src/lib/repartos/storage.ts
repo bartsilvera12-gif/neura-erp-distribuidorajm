@@ -61,12 +61,14 @@ export async function getCamiones(todos = false): Promise<Camion[]> {
   }
 }
 
-/** Abre un reparto con la carga del camión. */
+/**
+ * Abre la jornada del camión. No lleva mercadería: el camión ya tiene su stock
+ * y la apertura solo saca la foto de ese saldo.
+ */
 export async function abrirReparto(datos: {
   camion_id: string;
   repartidor_id: string;
   fecha?: string;
-  items: { producto_id: string; cantidad_inicial: number }[];
 }): Promise<ResultadoReparto> {
   try {
     const res = await fetchWithSupabaseSession("/api/repartos", {
@@ -88,10 +90,14 @@ export async function abrirReparto(datos: {
   }
 }
 
-/** Cierra el reparto con la merma total declarada. */
+/** Rendición de ruta: conteo físico por producto, merma y notas. */
 export async function cerrarReparto(
   repartoId: string,
-  datos: { merma_kg: number; notas_cierre?: string }
+  datos: {
+    items: { producto_id: string; contado: number; motivo?: string }[];
+    merma_kg: number;
+    notas_cierre?: string;
+  }
 ): Promise<ResultadoReparto> {
   try {
     const res = await fetchWithSupabaseSession(
@@ -112,7 +118,7 @@ export async function cerrarReparto(
   }
 }
 
-/** Da de alta un camión. */
+/** Da de alta un camión. Su ubicación de inventario la crea el servidor. */
 export async function crearCamion(datos: {
   alias: string;
   patente?: string;
