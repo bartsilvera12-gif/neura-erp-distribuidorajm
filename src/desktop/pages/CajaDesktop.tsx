@@ -224,13 +224,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
 
         <div className="border-t border-slate-100 p-5">
           <div className="flex items-center justify-between py-0.5">
-            <span className="text-sm text-slate-500">Subtotal</span>
-            <span className="text-sm tabular-nums text-slate-700">
-              {formatGs(caja.totales.subtotal)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between py-0.5">
-            <span className="text-sm text-slate-500">IVA</span>
+            <span className="text-sm text-slate-500">IVA incluido</span>
             <span className="text-sm tabular-nums text-slate-700">
               {formatGs(caja.totales.montoIva)}
             </span>

@@ -210,6 +210,29 @@ export async function updateProductoPrecios(
   await updateProducto(productoId, datos);
 }
 
+/**
+ * Borra un producto (DELETE /api/productos/[id]).
+ *
+ * Devuelve cómo terminó: `eliminado` si no tenía historial y se fue de la base,
+ * `desactivado` si lo tenía y solo se le dio de baja. La pantalla lo dice,
+ * porque no es lo mismo para quien después busca ese producto en un informe.
+ */
+export async function deleteProducto(
+  id: string
+): Promise<{ modo: "eliminado" | "desactivado"; nombre: string }> {
+  const res = await fetch(`/api/productos/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  const json = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (!res.ok || !json?.success) {
+    throw new Error(
+      (json as { error?: string })?.error ?? `Error ${res.status} al borrar el producto.`
+    );
+  }
+  return (json as { data: { modo: "eliminado" | "desactivado"; nombre: string } }).data;
+}
+
 /** Actualiza producto via API server-side (PATCH /api/productos/[id]). */
 export async function updateProducto(
   id: string,

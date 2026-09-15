@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import SelectFromList from "@/components/inventario/SelectFromList";
 import { productoExiste, saveProducto } from "@/lib/inventario/storage";
-import type { MetodoValuacion } from "@/lib/inventario/types";
 
 interface CatRow { id: string; nombre: string }
 interface UbiRow { id: string; nombre: string; tipo: string }
@@ -28,7 +27,6 @@ export default function NuevoProductoPage() {
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
-    metodo_valuacion: "CPP" as MetodoValuacion,
   });
   const [submitting, setSubmitting] = useState(false);
   const [generandoCodigo, setGenerandoCodigo] = useState(false);
@@ -258,7 +256,10 @@ export default function NuevoProductoPage() {
           stock_actual: parseInt(form.stock_actual) || 0,
           stock_minimo: parseInt(form.stock_minimo) || 0,
           unidad_medida: form.unidad_medida.trim().toUpperCase(),
-          metodo_valuacion: form.metodo_valuacion,
+          // Valuación: siempre costo promedio. Era un selector en el formulario,
+          // pero la distribuidora no lleva FIFO ni LIFO y elegir mal el método
+          // cambia el costo de todo el inventario sin que nadie lo note.
+          metodo_valuacion: "CPP",
           codigo_barras: codigo,
           codigo_barras_interno: interno,
           categoria_principal_id: categoriaId,
@@ -697,21 +698,6 @@ export default function NuevoProductoPage() {
                 Se generará automáticamente un movimiento de inventario inicial con {form.stock_actual} unidades al guardar.
               </p>
             )}
-          </div>
-
-          {/* Método de valuación */}
-          <div>
-            <label className={labelClass}>Método de valuación</label>
-            <select
-              name="metodo_valuacion"
-              value={form.metodo_valuacion}
-              onChange={handleChange}
-              className={inputClass}
-            >
-              <option value="CPP">CPP — Costo Promedio Ponderado</option>
-              <option value="FIFO">FIFO — Primero en entrar, primero en salir</option>
-              <option value="LIFO">LIFO — Último en entrar, primero en salir</option>
-            </select>
           </div>
 
           {/* Acciones */}

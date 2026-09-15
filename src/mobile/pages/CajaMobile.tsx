@@ -412,8 +412,7 @@ function PasoResumen({ caja }: { caja: CajaVenta }) {
       </ul>
 
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-        <Fila label="Subtotal" valor={formatGs(caja.totales.subtotal)} />
-        <Fila label="IVA" valor={formatGs(caja.totales.montoIva)} />
+        <Fila label="IVA incluido" valor={formatGs(caja.totales.montoIva)} />
         <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
           <span className="text-sm font-semibold text-slate-900">Total</span>
           <span className="text-xl font-bold tabular-nums text-slate-900">

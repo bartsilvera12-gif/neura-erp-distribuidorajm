@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import { getProducto, productoExiste, updateProducto } from "@/lib/inventario/storage";
-import type { MetodoValuacion } from "@/lib/inventario/types";
 import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
 
@@ -34,7 +33,6 @@ export default function EditarProductoPage() {
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
-    metodo_valuacion: "CPP" as MetodoValuacion,
   });
   const [imagenPath, setImagenPath] = useState<string | null>(null);
   const [imagenUrl, setImagenUrl] = useState<string | null>(null);
@@ -119,7 +117,6 @@ export default function EditarProductoPage() {
         stock_actual: String(p.stock_actual),
         stock_minimo: String(p.stock_minimo),
         unidad_medida: p.unidad_medida,
-        metodo_valuacion: p.metodo_valuacion,
       });
       setCodigoOriginal(p.codigo_barras ?? null);
       setImagenPath(p.imagen_path ?? null);
@@ -234,7 +231,6 @@ export default function EditarProductoPage() {
         stock_actual: parseInt(form.stock_actual) || 0,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida.trim().toUpperCase(),
-        metodo_valuacion: form.metodo_valuacion,
         categoria_principal_id: categoriaId,
         ubicacion_principal_id: ubicacionId,
         proveedor_principal_id: proveedorId,
@@ -546,20 +542,6 @@ export default function EditarProductoPage() {
                 required
               />
             </div>
-          </div>
-
-          <div>
-            <label className={labelClass}>Método de valuación</label>
-            <select
-              name="metodo_valuacion"
-              value={form.metodo_valuacion}
-              onChange={handleChange}
-              className={inputClass}
-            >
-              <option value="CPP">CPP — Costo Promedio Ponderado</option>
-              <option value="FIFO">FIFO — Primero en entrar, primero en salir</option>
-              <option value="LIFO">LIFO — Último en entrar, primero en salir</option>
-            </select>
           </div>
 
           <div className="flex gap-4 pt-2">

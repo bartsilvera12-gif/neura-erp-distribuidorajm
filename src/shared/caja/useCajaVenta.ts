@@ -38,10 +38,20 @@ export type ItemCarrito = {
   tipoIva: TipoIvaVenta;
 };
 
-export function calcIva(tipo: TipoIvaVenta, base: number): number {
+/**
+ * IVA **contenido** en un importe, no agregado sobre él.
+ *
+ * En Paraguay el precio de lista ya lleva el IVA adentro: si el kilo de muslo
+ * está Gs. 60.000, el cliente paga 60.000, no 66.000. Lo que la factura muestra
+ * como IVA es la parte de esos 60.000 que le corresponde al fisco.
+ *
+ * De ahí la división y no la multiplicación: con 10%, el importe es 110% de la
+ * base, así que el IVA es importe / 11. Con 5%, importe / 21.
+ */
+export function calcIva(tipo: TipoIvaVenta, importe: number): number {
   if (tipo === "EXENTA") return 0;
-  if (tipo === "5%") return base * 0.05;
-  return base * 0.1;
+  if (tipo === "5%") return importe / 21;
+  return importe / 11;
 }
 
 export function formatGs(valor: number): string {
@@ -168,6 +178,8 @@ export function useCajaVenta() {
       const precioOriginal =
         moneda === "USD" && tipoCambioNum > 0 ? precioGs / tipoCambioNum : precioGs;
 
+      // El importe de la línea es el precio por la cantidad, y nada más: el IVA
+      // ya está adentro de ese precio.
       const subtotal = precioGs * item.cantidad;
       const montoIva = calcIva(item.tipoIva, subtotal);
 
@@ -181,7 +193,7 @@ export function useCajaVenta() {
         tipo_iva: item.tipoIva,
         subtotal,
         monto_iva: montoIva,
-        total_linea: subtotal + montoIva,
+        total_linea: subtotal,
       };
     });
   }, [carrito, moneda, tipoCambioNum]);
@@ -192,7 +204,8 @@ export function useCajaVenta() {
     return {
       subtotal,
       montoIva,
-      total: subtotal + montoIva,
+      // El total es el subtotal: el IVA no se suma, ya estaba contado.
+      total: subtotal,
       // Sólo cuenta lo que se vende de a uno: sumar 1,350 KG de carne con 3
       // gaseosas da un número que no significa nada.
       unidades: carrito.reduce(

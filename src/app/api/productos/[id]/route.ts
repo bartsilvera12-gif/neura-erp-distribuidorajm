@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { getTenantSupabaseFromAuth, getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
@@ -34,6 +34,8 @@ import { setCategoriaPrincipal } from "@/lib/inventario/server/catalogos-pg";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
+import { borrarProducto } from "@/lib/inventario/server/borrar-producto";
 
 async function existsInTenant(
   schema: string,
@@ -170,6 +172,46 @@ export async function PATCH(
     console.error("[/api/productos/[id] PATCH] outer", err instanceof Error ? err.message : err);
     return NextResponse.json(
       errorResponse("No se pudo actualizar el producto."),
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/productos/[id]
+ *
+ * Borra el producto si nunca se usó; lo desactiva si tiene historial. La
+ * diferencia la explica `borrarProducto`. Solo un administrador: dar de baja
+ * un producto le cambia la lista a todos los vendedores.
+ */
+export async function DELETE(
+  request: NextRequest,
+  ctxParams: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await ctxParams.params;
+    const ctx = await getTenantSupabaseFromAuthWithRol(request);
+    if (!ctx) {
+      return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+    }
+    if (!esRolAdminEmpresa(ctx.auth.rol)) {
+      return NextResponse.json(
+        errorResponse("Solo un administrador puede borrar productos."),
+        { status: 403 }
+      );
+    }
+    const empresaId = ctx.auth.empresa_id;
+    const schema = await fetchDataSchemaForEmpresaId(empresaId);
+
+    const res = await borrarProducto(schema, empresaId, id);
+    if (!res.ok) {
+      return NextResponse.json(errorResponse("El producto no existe."), { status: 404 });
+    }
+    return NextResponse.json(successResponse({ modo: res.modo, nombre: res.nombre }));
+  } catch (err) {
+    console.error("[/api/productos/[id] DELETE]", err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      errorResponse("No se pudo borrar el producto."),
       { status: 500 }
     );
   }
