@@ -6,6 +6,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { isErpRolVendedorMovil } from "@/lib/usuarios/erp-rol-normalize";
 
 /**
  * GET /api/repartos/repartidores — quién puede salir con un camión.
@@ -15,9 +16,10 @@ import { API_ERRORS } from "@/lib/api/errors";
  * del reparto se rechaza con "ese repartidor no existe en esta empresa" aunque
  * la persona esté en pantalla.
  *
- * Devuelve a todos los usuarios activos, no solo a los de rol repartidor: en
- * una distribuidora chica el dueño también sale a repartir, y filtrar por rol
- * dejaría la lista vacía justo el día que falta alguien.
+ * Solo los de rol vendedor móvil: es el rol de quien sale con el camión, y el
+ * único al que el sistema le acota los repartos a los suyos. Si la lista sale
+ * vacía, lo que falta es asignarle ese rol a alguien en Usuarios, y la pantalla
+ * lo dice en vez de dejar un select mudo.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -76,7 +78,12 @@ export async function GET(request: NextRequest) {
       [empresaId]
     );
 
-    return NextResponse.json(successResponse({ repartidores: q.rows }));
+    // El filtro por rol se hace acá y no en SQL porque `rol` viene con casing y
+    // acentos distintos según cómo se haya cargado el usuario ("vendedor_movil",
+    // "Vendedor Móvil"), y el normalizador ya sabe leer las tres formas.
+    const repartidores = q.rows.filter((u) => isErpRolVendedorMovil(u.rol));
+
+    return NextResponse.json(successResponse({ repartidores }));
   } catch (err) {
     console.error("[/api/repartos/repartidores GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(

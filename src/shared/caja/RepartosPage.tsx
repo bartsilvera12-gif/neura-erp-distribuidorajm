@@ -225,8 +225,8 @@ function FormularioApertura({
 
       {!cargandoRepartidores && repartidores.length === 0 ? (
         <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-          No hay usuarios cargados para salir con el camión. Creá al repartidor en Usuarios y
-          volvé acá.
+          Ningún usuario tiene el rol <strong>Vendedor móvil</strong>, que es el que sale con el
+          camión. Asignáselo en Usuarios y volvé acá.
         </p>
       ) : null}
 
