@@ -8,7 +8,6 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
-import GuardiasBoton from "@/components/layout/GuardiasBoton";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -117,11 +116,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
           <HelpCircle className="h-5 w-5 shrink-0" />
           <span className="hidden lg:inline">Ayuda en línea</span>
         </Link>
-
-        {/* Guardias: visible para todo el equipo. Ver quién está de turno no
-            pide permisos; asignar sigue siendo de administradores (el enlace
-            "Asignar" del modal y el PUT de la API lo controlan). */}
-        <GuardiasBoton />
 
         {/* Notificaciones */}
         <NotificacionesBell />

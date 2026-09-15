@@ -43,7 +43,7 @@ export const CANAL_AVISOS = "chat-interno-avisos";
 /** Rebote hacia el chat abierto, que refresca su bandeja y su conversación. */
 export const EVENTO_CHAT_NOVEDAD = "chat-interno:novedad";
 
-const TITULO_BASE = "Neura ERP";
+const TITULO_BASE = "Distribuidora JM";
 
 /** Dibuja el globito rojo con el número sobre el ícono original. */
 function pintarFavicon(base: HTMLImageElement, n: number): string | null {
