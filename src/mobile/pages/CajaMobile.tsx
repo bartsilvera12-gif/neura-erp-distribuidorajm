@@ -21,6 +21,7 @@ import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
+import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
@@ -319,6 +320,8 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
                   cantidad > 0 ? "border-[#4FAEB2]" : "border-slate-200"
                 }`}
               >
+                <MiniaturaProducto producto={p} />
+
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{p.nombre}</p>
                   <p className="text-xs text-slate-500">
@@ -365,7 +368,8 @@ function PasoResumen({ caja }: { caja: CajaVenta }) {
           return (
             <li key={item.producto.id} className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+                <MiniaturaProducto producto={item.producto} size="sm" />
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">
                     {item.producto.nombre}
                   </p>

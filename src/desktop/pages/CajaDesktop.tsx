@@ -18,6 +18,7 @@ import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
+import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
@@ -121,8 +122,11 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
                   cantidad > 0 ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
                 }`}
               >
-                <p className="line-clamp-2 text-sm font-semibold text-slate-900">{p.nombre}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <div className="flex items-start gap-3">
+                  <MiniaturaProducto producto={p} />
+                  <p className="line-clamp-2 text-sm font-semibold text-slate-900">{p.nombre}</p>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
                   Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
                 </p>
                 <p className="mt-1 text-base font-bold text-[#4FAEB2]">

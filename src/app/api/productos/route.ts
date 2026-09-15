@@ -13,6 +13,7 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
+import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 
 /**
  * GET /api/productos — lista todos los productos activos via PG directo
@@ -42,7 +43,18 @@ export async function GET(request: NextRequest) {
         ORDER BY nombre`,
       [empresaId]
     );
-    return NextResponse.json(successResponse({ productos: rows }));
+    // La imagen vive en un bucket privado y se mira con una URL firmada que
+    // dura una hora. La columna `imagen_url` de la tabla queda siempre en NULL
+    // a propósito (una URL vencida guardada en la base es una imagen rota), así
+    // que la firma se genera acá, en cada lectura, a partir de `imagen_path`.
+    const firmadas = await Promise.all(
+      rows.map((r) =>
+        r.imagen_path ? signProductoImagen(ctx.supabase, r.imagen_path, 3600) : null
+      )
+    );
+    const productos = rows.map((r, i) => ({ ...r, imagen_url: firmadas[i] ?? null }));
+
+    return NextResponse.json(successResponse({ productos }));
   } catch (err) {
     console.error("[/api/productos GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudieron cargar los productos."), { status: 500 });
