@@ -49,6 +49,7 @@ export default function ControlMercaderia({
     )
   );
   const [merma, setMerma] = useState("");
+  const [efectivo, setEfectivo] = useState("");
   const [notas, setNotas] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +89,9 @@ export default function ControlMercaderia({
 
   const mermaNum = merma.trim() === "" ? 0 : Number(merma);
   const mermaValida = Number.isFinite(mermaNum) && mermaNum >= 0;
+  const efectivoNum = efectivo.trim() === "" ? null : Number(efectivo);
+  const efectivoValido =
+    efectivoNum === null || (Number.isFinite(efectivoNum) && efectivoNum >= 0);
 
   async function handleCerrar() {
     if (guardando) return;
@@ -112,6 +116,10 @@ export default function ControlMercaderia({
       setError("La merma tiene que ser un número mayor o igual a 0.");
       return;
     }
+    if (!efectivoValido) {
+      setError("El efectivo contado tiene que ser un número mayor o igual a 0.");
+      return;
+    }
 
     setGuardando(true);
     setError(null);
@@ -123,6 +131,7 @@ export default function ControlMercaderia({
       })),
       merma_kg: mermaNum,
       notas_cierre: notas.trim() || undefined,
+      efectivo_contado: efectivoNum ?? undefined,
     });
     setGuardando(false);
 
@@ -270,7 +279,7 @@ export default function ControlMercaderia({
 
         {abierto ? (
           <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+            <div className="grid gap-3 sm:grid-cols-[10rem_10rem_1fr]">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Merma (kg)</span>
                 <input
@@ -284,6 +293,24 @@ export default function ControlMercaderia({
                   aria-label={`Merma total del camión ${reparto.camion}`}
                   className={`h-10 w-full rounded-lg border px-3 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2] ${
                     mermaValida ? "border-slate-200" : "border-red-300 bg-red-50"
+                  }`}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">
+                  Efectivo contado
+                </span>
+                <input
+                  inputMode="numeric"
+                  placeholder="Lo esperado"
+                  value={efectivo}
+                  onChange={(e) => {
+                    setError(null);
+                    setEfectivo(e.target.value);
+                  }}
+                  aria-label="Efectivo contado en el cajón"
+                  className={`h-10 w-full rounded-lg border px-3 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2] ${
+                    efectivoValido ? "border-slate-200" : "border-red-300 bg-red-50"
                   }`}
                 />
               </label>
@@ -308,6 +335,10 @@ export default function ControlMercaderia({
             >
               {guardando ? "Cerrando…" : "Finalizar reparto"}
             </button>
+            <p className="text-xs leading-relaxed text-slate-500">
+              Finalizar también cierra la caja de la jornada. Dejá el efectivo vacío para
+              cerrarla con lo que el sistema esperaba.
+            </p>
           </div>
         ) : (
           <div className="space-y-1 text-xs text-slate-500">

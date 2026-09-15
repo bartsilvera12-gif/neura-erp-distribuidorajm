@@ -97,6 +97,8 @@ export async function cerrarReparto(
     items: { producto_id: string; contado: number; motivo?: string }[];
     merma_kg: number;
     notas_cierre?: string;
+    /** Efectivo contado en el cajón. Sin esto se cierra con lo esperado. */
+    efectivo_contado?: number;
   }
 ): Promise<ResultadoReparto> {
   try {

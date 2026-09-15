@@ -47,6 +47,10 @@ function parseConteos(body: unknown): Conteo[] | null {
  * es la regla de oro del documento — la mercadería sigue físicamente arriba del
  * camión y mañana es su apertura. Cada diferencia deja un AJUSTE en el kardex
  * con su motivo, que es la trazabilidad que pide la página 10.
+ *
+ * Cierra también la caja: se abrió al abrir el reparto y se cierra acá, que es
+ * el único final de jornada que el repartidor conoce. `efectivo_contado` es lo
+ * que se contó en el cajón; sin él se cierra con lo que el sistema esperaba.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const pool = getChatPostgresPool();
@@ -267,9 +271,86 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       [id, merma, notas]
     );
 
+    // ── La caja de la jornada ───────────────────────────────────────────────
+    const tCajas = quoteSchemaTable(schema, "cajas");
+    const tMov = quoteSchemaTable(schema, "caja_movimientos");
+    let caja: { numero: number; esperado: number; contado: number; diferencia: number } | null =
+      null;
+
+    const hayCajas = await client.query<{ existe: string | null }>(
+      `SELECT to_regclass($1)::text AS existe`,
+      [`${schema}.cajas`]
+    );
+    if (hayCajas.rows[0]?.existe !== null) {
+      const abiertaQ = await client.query<{
+        id: string;
+        numero_caja: number;
+        monto_apertura: string;
+      }>(
+        `SELECT id, numero_caja, monto_apertura::text AS monto_apertura
+           FROM ${tCajas}
+          WHERE empresa_id = $1::uuid AND estado = 'abierta'
+          ORDER BY fecha_apertura DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [empresaId]
+      );
+      if (abiertaQ.rows.length > 0) {
+        const c = abiertaQ.rows[0];
+        const movs = await client.query<{ tipo: string; total: string }>(
+          `SELECT tipo, COALESCE(sum(monto), 0)::text AS total
+             FROM ${tMov}
+            WHERE empresa_id = $1::uuid AND caja_id = $2::uuid
+              AND anulado_at IS NULL
+              AND lower(btrim(COALESCE(medio_pago, ''))) = 'efectivo'
+            GROUP BY tipo`,
+          [empresaId, c.id]
+        );
+        const porTipo = new Map(movs.rows.map((r) => [r.tipo, Number(r.total)]));
+        const esperado =
+          Number(c.monto_apertura) +
+          (porTipo.get("ingreso") ?? 0) -
+          (porTipo.get("egreso") ?? 0) -
+          (porTipo.get("retiro") ?? 0) +
+          (porTipo.get("ajuste") ?? 0);
+
+        const crudoEfectivo = body?.efectivo_contado;
+        const contado =
+          crudoEfectivo === undefined || crudoEfectivo === null || crudoEfectivo === ""
+            ? esperado
+            : Number(crudoEfectivo);
+        if (!Number.isFinite(contado) || contado < 0) {
+          await client.query("ROLLBACK");
+          return NextResponse.json(
+            errorResponse("El efectivo contado tiene que ser un número mayor o igual a 0."),
+            { status: 400 }
+          );
+        }
+
+        await client.query(
+          `UPDATE ${tCajas}
+              SET estado = 'cerrada', fecha_cierre = now(),
+                  monto_cierre_contado = $2, monto_esperado_efectivo = $3
+            WHERE id = $1::uuid`,
+          [c.id, contado, esperado]
+        );
+        caja = {
+          numero: Number(c.numero_caja),
+          esperado,
+          contado,
+          diferencia: contado - esperado,
+        };
+      }
+    }
+
     await client.query("COMMIT");
     return NextResponse.json(
-      successResponse({ reparto_id: id, estado: "cerrado", con_diferencia: conDiferencia })
+      successResponse({
+        reparto_id: id,
+        estado: "cerrado",
+        con_diferencia: conDiferencia,
+        caja,
+      })
     );
   } catch (err) {
     if (client) await client.query("ROLLBACK").catch(() => {});

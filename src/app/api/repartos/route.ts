@@ -13,6 +13,19 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const SIN_TABLAS = "Este schema no tiene el dominio de repartos (repartos / reparto_stock).";
 
+/** `true` si la tabla existe en el schema. */
+async function tablaExiste(
+  client: { query: PoolClient["query"] },
+  schema: string,
+  tabla: string
+): Promise<boolean> {
+  const q = await client.query<{ existe: string | null }>(
+    `SELECT to_regclass($1)::text AS existe`,
+    [`${schema}.${tabla}`]
+  );
+  return q.rows[0]?.existe !== null;
+}
+
 /** GET /api/repartos?fecha=YYYY-MM-DD | ?abiertos=1 */
 export async function GET(request: NextRequest) {
   try {
@@ -186,9 +199,38 @@ export async function POST(request: NextRequest) {
       [empresaId, repartoId, ubicacionId]
     );
 
+    // La caja del reparto se abre sola. El camión sale sin plata en el cajón y
+    // la junta en la calle, así que el monto de apertura es 0 de verdad: no es
+    // un valor de relleno. Y el repartidor no tiene por qué entrar a otra
+    // pantalla para poder cobrar.
+    let cajaAbierta = false;
+    if (await tablaExiste(client, schema, "cajas")) {
+      const tCajas = quoteSchemaTable(schema, "cajas");
+      const yaHay = await client.query<{ id: string }>(
+        `SELECT id FROM ${tCajas} WHERE empresa_id = $1::uuid AND estado = 'abierta' FOR UPDATE`,
+        [empresaId]
+      );
+      if (yaHay.rows.length === 0) {
+        const sig = await client.query<{ n: string }>(
+          `SELECT COALESCE(max(numero_caja), 0)::text AS n FROM ${tCajas} WHERE empresa_id = $1::uuid`,
+          [empresaId]
+        );
+        await client.query(
+          `INSERT INTO ${tCajas} (empresa_id, numero_caja, estado, monto_apertura, fecha_apertura)
+           VALUES ($1::uuid, $2, 'abierta', 0, now())`,
+          [empresaId, Number(sig.rows[0].n) + 1]
+        );
+        cajaAbierta = true;
+      }
+    }
+
     await client.query("COMMIT");
     return NextResponse.json(
-      successResponse({ reparto_id: repartoId, productos: Number(foto.rows[0]?.n ?? 0) })
+      successResponse({
+        reparto_id: repartoId,
+        productos: Number(foto.rows[0]?.n ?? 0),
+        caja_abierta: cajaAbierta,
+      })
     );
   } catch (err) {
     if (client) await client.query("ROLLBACK").catch(() => {});
