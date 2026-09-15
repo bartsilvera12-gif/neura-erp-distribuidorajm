@@ -7,8 +7,6 @@ import {
   CheckCircle2,
   CreditCard,
   Landmark,
-  Minus,
-  Plus,
   Receipt,
   Search,
   Trash2,
@@ -19,6 +17,8 @@ import {
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
+import SelectorCantidad from "@/shared/caja/SelectorCantidad";
+import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
@@ -123,41 +123,20 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
               >
                 <p className="line-clamp-2 text-sm font-semibold text-slate-900">{p.nombre}</p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Stock: {p.stock_actual} {p.unidad_medida}
+                  Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
                 </p>
                 <p className="mt-1 text-base font-bold text-[#4FAEB2]">
                   {formatGs(p.precio_venta)}
                 </p>
 
                 <div className="mt-3 flex items-center gap-2">
-                  {cantidad > 0 ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => caja.cambiarCantidad(p, -1)}
-                        aria-label={`Quitar una unidad de ${p.nombre}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-                      >
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <input
-                        inputMode="numeric"
-                        value={cantidad}
-                        onChange={(e) => caja.fijarCantidad(p, Number(e.target.value))}
-                        aria-label={`Cantidad de ${p.nombre}`}
-                        className="h-8 w-14 rounded-lg border border-slate-200 text-center text-sm font-bold tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => caja.cambiarCantidad(p, 1)}
-                        disabled={cantidad >= p.stock_actual}
-                        aria-label={`Agregar una unidad de ${p.nombre}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-white disabled:opacity-30"
-                        style={{ backgroundColor: TEAL }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </>
+                  {cantidad > 0 || esPesable(p.unidad_medida) ? (
+                    <SelectorCantidad
+                      producto={p}
+                      cantidad={cantidad}
+                      cambiarCantidad={caja.cambiarCantidad}
+                      fijarCantidad={caja.fijarCantidad}
+                    />
                   ) : (
                     <button
                       type="button"
@@ -212,7 +191,8 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-500">
-                        {item.cantidad} × {formatGs(item.producto.precio_venta)}
+                        {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
+                        {item.producto.unidad_medida} × {formatGs(item.producto.precio_venta)}
                       </span>
                       <span className="text-sm font-semibold tabular-nums text-slate-900">
                         {formatGs(linea?.total_linea ?? 0)}

@@ -12,8 +12,6 @@ import {
   CreditCard,
   FileText,
   Landmark,
-  Minus,
-  Plus,
   Receipt,
   Search,
   User,
@@ -22,6 +20,8 @@ import {
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
+import SelectorCantidad from "@/shared/caja/SelectorCantidad";
+import { formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
@@ -312,7 +312,6 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
         <ul className="mt-3 space-y-2">
           {filtrados.map((p) => {
             const cantidad = caja.cantidadDe(p.id);
-            const sinStock = cantidad >= p.stock_actual;
             return (
               <li
                 key={p.id}
@@ -323,36 +322,20 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{p.nombre}</p>
                   <p className="text-xs text-slate-500">
-                    Stock: {p.stock_actual} {p.unidad_medida}
+                    Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
                   </p>
                   <p className="mt-0.5 text-sm font-bold text-[#4FAEB2]">
                     {formatGs(p.precio_venta)}
                   </p>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => caja.cambiarCantidad(p, -1)}
-                    disabled={cantidad === 0}
-                    aria-label={`Quitar una unidad de ${p.nombre}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30"
-                  >
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <span className="w-7 text-center text-sm font-bold tabular-nums text-slate-900">
-                    {cantidad}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => caja.cambiarCantidad(p, 1)}
-                    disabled={sinStock}
-                    aria-label={`Agregar una unidad de ${p.nombre}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-white disabled:opacity-30"
-                    style={{ backgroundColor: TEAL }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
+                <div className="flex shrink-0 items-center">
+                  <SelectorCantidad
+                    producto={p}
+                    cantidad={cantidad}
+                    cambiarCantidad={caja.cambiarCantidad}
+                    fijarCantidad={caja.fijarCantidad}
+                  />
                 </div>
               </li>
             );
@@ -387,7 +370,8 @@ function PasoResumen({ caja }: { caja: CajaVenta }) {
                     {item.producto.nombre}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {item.cantidad} × {formatGs(item.producto.precio_venta)}
+                    {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
+                    {item.producto.unidad_medida} × {formatGs(item.producto.precio_venta)}
                   </p>
                 </div>
                 <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
@@ -396,29 +380,13 @@ function PasoResumen({ caja }: { caja: CajaVenta }) {
               </div>
 
               <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => caja.cambiarCantidad(item.producto, -1)}
-                    aria-label={`Quitar una unidad de ${item.producto.nombre}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-600"
-                  >
-                    <Minus className="h-3.5 w-3.5" />
-                  </button>
-                  <span className="w-6 text-center text-xs font-bold tabular-nums">
-                    {item.cantidad}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => caja.cambiarCantidad(item.producto, 1)}
-                    disabled={item.cantidad >= item.producto.stock_actual}
-                    aria-label={`Agregar una unidad de ${item.producto.nombre}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-white disabled:opacity-30"
-                    style={{ backgroundColor: TEAL }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                <SelectorCantidad
+                  producto={item.producto}
+                  cantidad={item.cantidad}
+                  cambiarCantidad={caja.cambiarCantidad}
+                  fijarCantidad={caja.fijarCantidad}
+                  size="sm"
+                />
 
                 <label className="flex items-center gap-1.5 text-xs text-slate-500">
                   IVA
@@ -641,7 +609,8 @@ function BarraAccion({ caja }: { caja: CajaVenta }) {
       {caja.paso === "productos" && caja.totales.renglones > 0 ? (
         <div className="mb-2 flex items-center justify-between text-sm">
           <span className="text-slate-500">
-            {caja.totales.unidades} {caja.totales.unidades === 1 ? "ítem" : "ítems"}
+            {caja.totales.renglones}{" "}
+            {caja.totales.renglones === 1 ? "producto" : "productos"}
           </span>
           <span className="font-bold tabular-nums text-slate-900">
             {formatGs(caja.totales.total)}

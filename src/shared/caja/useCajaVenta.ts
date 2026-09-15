@@ -6,6 +6,7 @@ import { saveVenta } from "@/lib/ventas/storage";
 import { clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Producto } from "@/lib/inventario/types";
+import { esPesable, normalizarCantidad } from "@/lib/inventario/unidades";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import type {
   LineaVenta,
@@ -116,7 +117,10 @@ export function useCajaVenta() {
 
       // El tope es el stock: la venta la rechazaría el servidor igual, y es mejor
       // que el cajero lo vea al tocar el botón y no al confirmar.
-      const siguiente = Math.max(0, Math.min(propuesta, producto.stock_actual));
+      const siguiente = normalizarCantidad(
+        Math.min(propuesta, producto.stock_actual),
+        producto.unidad_medida
+      );
 
       if (siguiente === 0) return prev.filter((i) => i.producto.id !== producto.id);
       if (idx === -1) return [...prev, { producto, cantidad: siguiente, tipoIva: "10%" }];
@@ -128,7 +132,12 @@ export function useCajaVenta() {
 
   const fijarCantidad = useCallback((producto: Producto, cantidad: number) => {
     setError(null);
-    const limpia = Math.max(0, Math.min(Math.floor(cantidad) || 0, producto.stock_actual));
+    // Un producto pesable conserva los decimales: 1,350 KG es una venta normal.
+    // Uno discreto se sigue redondeando para abajo, porque media caja no existe.
+    const limpia = normalizarCantidad(
+      Math.min(cantidad, producto.stock_actual),
+      producto.unidad_medida
+    );
     setCarrito((prev) => {
       if (limpia === 0) return prev.filter((i) => i.producto.id !== producto.id);
       const idx = prev.findIndex((i) => i.producto.id === producto.id);
@@ -184,7 +193,12 @@ export function useCajaVenta() {
       subtotal,
       montoIva,
       total: subtotal + montoIva,
-      unidades: carrito.reduce((acc, i) => acc + i.cantidad, 0),
+      // Sólo cuenta lo que se vende de a uno: sumar 1,350 KG de carne con 3
+      // gaseosas da un número que no significa nada.
+      unidades: carrito.reduce(
+        (acc, i) => acc + (esPesable(i.producto.unidad_medida) ? 0 : i.cantidad),
+        0
+      ),
       renglones: carrito.length,
     };
   }, [lineas, carrito]);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { UNIDADES } from "@/lib/inventario/unidades";
 
 /**
  * Unidad de medida de un producto.
@@ -19,20 +20,9 @@ import { useMemo, useState } from "react";
  * el formulario le cambie el valor por su cuenta.
  */
 
-export const UNIDADES = [
-  "UNIDAD",
-  "KG",
-  "GR",
-  "LT",
-  "ML",
-  "CAJA",
-  "DOCENA",
-  "BANDEJA",
-  "PAQUETE",
-  "BOLSA",
-  "PAR",
-  "METRO",
-] as const;
+// La lista vive en `@/lib/inventario/unidades` porque el flujo de venta también
+// la necesita para saber qué productos se venden al peso.
+export { UNIDADES };
 
 const OTRA = "__otra__";
 
