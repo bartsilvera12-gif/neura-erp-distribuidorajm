@@ -12,7 +12,18 @@ interface Ubicacion {
   activo: boolean;
 }
 
-const TIPOS = ["deposito", "salon", "pasillo", "gondola", "estante", "zona", "otro"] as const;
+// `camion` no se ofrece para crear: una ubicación de camión la crea el alta del
+// camión, para que queden vinculados. Está en el tipo para no perderlo al
+// editar una que ya existe.
+const TIPOS = [
+  "deposito",
+  "salon",
+  "pasillo",
+  "gondola",
+  "estante",
+  "zona",
+  "otro",
+] as const;
 
 const inputCls =
   "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] focus:outline-none";

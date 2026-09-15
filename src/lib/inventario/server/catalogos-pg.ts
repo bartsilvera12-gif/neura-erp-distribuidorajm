@@ -152,7 +152,20 @@ export async function updateCategoriaProducto(
 
 // ─── Ubicaciones ──────────────────────────────────────────────────────────
 
-const TIPOS_UBICACION = ["deposito", "salon", "pasillo", "gondola", "estante", "zona", "otro"] as const;
+// `camion` está en la lista para que editar una ubicación de camión desde la
+// pantalla de ubicaciones no le cambie el tipo en silencio: normTipo cae a
+// "deposito" para cualquier valor que no conozca, y eso dejaría al camión
+// figurando como destino válido de una transferencia.
+const TIPOS_UBICACION = [
+  "deposito",
+  "salon",
+  "pasillo",
+  "gondola",
+  "estante",
+  "zona",
+  "camion",
+  "otro",
+] as const;
 export type TipoUbicacion = typeof TIPOS_UBICACION[number];
 function normTipo(t: unknown): TipoUbicacion {
   return TIPOS_UBICACION.includes(t as TipoUbicacion) ? (t as TipoUbicacion) : "deposito";
