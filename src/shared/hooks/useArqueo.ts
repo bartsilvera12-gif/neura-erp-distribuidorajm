@@ -1,12 +1,12 @@
 "use client";
 
 import useSWR from "swr";
-import { getArqueo, type Arqueo } from "@/lib/ventas/arqueo";
+import { getArqueo, type Arqueo } from "@/lib/cajas/arqueo";
 
-/** Arqueo de caja de un día. `fecha` en YYYY-MM-DD; vacío = hoy. */
+/** Arqueo de las cajas de un día. `fecha` en YYYY-MM-DD; vacío = hoy. */
 export function useArqueo(fecha?: string) {
-  const swr = useSWR<Arqueo | null>(
-    `ventas:arqueo:${fecha ?? "hoy"}`,
+  const swr = useSWR<Arqueo>(
+    `cajas:arqueo:${fecha ?? "hoy"}`,
     () => getArqueo(fecha),
     { revalidateOnFocus: true, dedupingInterval: 15_000, keepPreviousData: true }
   );

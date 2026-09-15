@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   Banknote,
+  CalendarClock,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -16,13 +17,15 @@ import {
   Receipt,
   Search,
   User,
+  Wallet,
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
-import { FORMAS_PAGO, type FormaPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import AvisoCajaCerrada from "@/shared/caja/AvisoCajaCerrada";
 
 /**
  * Caja mobile: asistente de cobro a pantalla completa.
@@ -507,39 +510,71 @@ function Fila({ label, valor }: { label: string; valor: string }) {
 
 // ── Paso 4: forma de pago ────────────────────────────────────────────────────
 
-const ICONOS_PAGO: Record<FormaPagoVenta, React.ComponentType<{ className?: string }>> = {
+const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: string }>> = {
   efectivo: Banknote,
+  tarjeta: CreditCard,
   transferencia: Landmark,
   cheque: Receipt,
-  credito: CreditCard,
+  mixto: Wallet,
 };
 
 function PasoPago({ caja }: { caja: CajaVenta }) {
-  const opciones = FORMAS_PAGO.map((f) => ({
-    ...f,
-    nota:
-      f.value === "credito" && !caja.creditoDisponible
-        ? "Solo para clientes identificados"
-        : undefined,
-  }));
-
   return (
     <div className="pt-4">
+      {caja.faltaCaja ? (
+        <div className="mb-3">
+          <AvisoCajaCerrada />
+        </div>
+      ) : null}
+
+      {/* El crédito no es un medio de cobro: es una condición de la venta. */}
+      <button
+        type="button"
+        disabled={!caja.creditoDisponible}
+        onClick={() => caja.setACredito(!caja.aCredito)}
+        className={`mb-4 flex w-full items-center gap-3 rounded-xl border-2 bg-white p-4 text-left transition-colors disabled:opacity-50 ${
+          caja.aCredito ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
+        }`}
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+          <CalendarClock className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-slate-900">Venta a crédito</span>
+          <span className="block text-xs text-slate-500">
+            {caja.creditoDisponible
+              ? "Se cobra después; no entra plata a la caja ahora"
+              : "Solo para clientes identificados"}
+          </span>
+        </span>
+        <span
+          className={`h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors ${
+            caja.aCredito ? "bg-[#4FAEB2]" : "bg-slate-200"
+          }`}
+        >
+          <span
+            className={`block h-4 w-4 rounded-full bg-white transition-transform ${
+              caja.aCredito ? "translate-x-4" : ""
+            }`}
+          />
+        </span>
+      </button>
+
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
-        Forma de pago
+        {caja.aCredito ? "Plazo" : "Con qué se cobra"}
       </p>
 
-      <ul className="space-y-2">
-        {opciones.map((o) => {
+      <ul className={`space-y-2 ${caja.aCredito ? "hidden" : ""}`}>
+        {METODOS_PAGO.map((o) => {
           const Icono = ICONOS_PAGO[o.value];
-          const deshabilitado = o.value === "credito" && !caja.creditoDisponible;
-          const elegido = caja.formaPago === o.value;
+          const deshabilitado = false;
+          const elegido = caja.metodoPago === o.value;
           return (
             <li key={o.value}>
               <button
                 type="button"
                 disabled={deshabilitado}
-                onClick={() => caja.setFormaPago(o.value)}
+                onClick={() => caja.setMetodoPago(o.value)}
                 className={`flex w-full items-center gap-3 rounded-xl border-2 bg-white p-4 text-left transition-colors disabled:opacity-50 ${
                   elegido ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
                 }`}
@@ -549,9 +584,6 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-slate-900">{o.label}</span>
-                  {o.nota ? (
-                    <span className="block text-xs text-slate-500">{o.nota}</span>
-                  ) : null}
                 </span>
                 {elegido ? (
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-[#4FAEB2]" />
@@ -564,8 +596,8 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
         })}
       </ul>
 
-      {caja.formaPago === "credito" ? (
-        <label className="mt-3 block rounded-xl border border-slate-200 bg-white p-4">
+      {caja.aCredito ? (
+        <label className="block rounded-xl border border-slate-200 bg-white p-4">
           <span className="mb-1 block text-xs font-medium text-slate-600">Plazo en días</span>
           <input
             inputMode="numeric"
@@ -660,7 +692,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             })}`}
           />
           <Dato label="Cliente" valor={caja.nombreCliente} />
-          <Dato label="Forma de pago" valor={etiquetaFormaPago(caja.formaPago)} />
+          <Dato label="Cobro" valor={etiquetaCobro(caja)} />
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <dt className="text-sm font-semibold text-slate-900">Total</dt>
             <dd className="text-xl font-bold tabular-nums text-slate-900">
@@ -697,7 +729,8 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
-/** Etiqueta legible del medio de cobro (el slug no lleva tilde, la etiqueta sí). */
-function etiquetaFormaPago(forma: FormaPagoVenta | null): string {
-  return FORMAS_PAGO.find((f) => f.value === forma)?.label ?? "—";
+/** Cómo se cobró, en palabras: a crédito, o el medio elegido. */
+function etiquetaCobro(caja: CajaVenta): string {
+  if (caja.aCredito) return "A crédito";
+  return METODOS_PAGO.find((m) => m.value === caja.metodoPago)?.label ?? "—";
 }

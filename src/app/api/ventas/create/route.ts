@@ -122,24 +122,26 @@ export async function POST(request: NextRequest) {
         ? null
         : String(repartoRaw);
 
-    const FORMAS_PAGO_VALIDAS = ["efectivo", "transferencia", "cheque", "credito"] as const;
-    type FormaPago = (typeof FORMAS_PAGO_VALIDAS)[number];
-    const formaPagoRaw = String(o.forma_pago ?? "").trim().toLowerCase();
-    const formaPago = (FORMAS_PAGO_VALIDAS as readonly string[]).includes(formaPagoRaw)
-      ? (formaPagoRaw as FormaPago)
+    const METODOS_VALIDOS = ["efectivo", "tarjeta", "transferencia", "cheque", "mixto"] as const;
+    type Metodo = (typeof METODOS_VALIDOS)[number];
+    const metodoRaw = String(o.metodo_pago ?? "").trim().toLowerCase();
+    const metodoPago = (METODOS_VALIDOS as readonly string[]).includes(metodoRaw)
+      ? (metodoRaw as Metodo)
       : null;
 
-    // Crédito y CONTADO son incompatibles: si llegan juntos, el payload está mal
-    // armado y la venta quedaría mal clasificada en cobranzas.
-    if (formaPago === "credito" && tipoVenta !== "CREDITO") {
-      return NextResponse.json(
-        errorResponse("Forma de pago `credito` requiere tipo_venta CREDITO."),
-        { status: 400 }
-      );
+    const cajaRaw = o.caja_id;
+    const cajaId =
+      cajaRaw === null || cajaRaw === undefined || cajaRaw === "" ? null : String(cajaRaw);
+
+    // Una venta de contado cobra plata: sin medio de cobro no se sabe cómo
+    // entró, y el arqueo queda sin poder cuadrar.
+    if (tipoVenta === "CONTADO" && metodoPago === null) {
+      return NextResponse.json(errorResponse("Indicá con qué se cobra la venta."), { status: 400 });
     }
-    if (formaPago !== null && formaPago !== "credito" && tipoVenta === "CREDITO") {
+    // A crédito no se cobra ahora: un medio de cobro acá sería mentira.
+    if (tipoVenta === "CREDITO" && metodoPago !== null) {
       return NextResponse.json(
-        errorResponse(`Una venta a crédito no puede cobrarse como ${formaPago}.`),
+        errorResponse("Una venta a crédito no se cobra al emitirla: el medio se registra al cobrar."),
         { status: 400 }
       );
     }
@@ -158,6 +160,15 @@ export async function POST(request: NextRequest) {
 
     const schema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
 
+    // Sin caja abierta no se cobra, igual que el resto del ERP. Se valida acá y
+    // no solo en la pantalla: una venta sin caja rompe el arqueo del día.
+    if (tipoVenta === "CONTADO" && cajaId === null) {
+      return NextResponse.json(
+        errorResponse("No hay una caja abierta. Abrí la caja antes de cobrar."),
+        { status: 409 }
+      );
+    }
+
     const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
       schema,
       empresaId: auth.empresa_id,
@@ -166,7 +177,8 @@ export async function POST(request: NextRequest) {
       moneda,
       tipoCambio,
       tipoVenta,
-      formaPago,
+      metodoPago,
+      cajaId,
       repartoId,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,

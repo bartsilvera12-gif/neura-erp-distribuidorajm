@@ -1,0 +1,201 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { queryWithRetry } from "@/lib/supabase/pg-retry";
+import { successResponse, errorResponse } from "@/lib/api/response";
+import { API_ERRORS } from "@/lib/api/errors";
+
+const TZ = "America/Asuncion";
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function num(v: string | number | null): number {
+  if (v === null) return 0;
+  return typeof v === "number" ? v : Number(v);
+}
+
+function etiquetaMedio(medio: string): string {
+  if (medio === "efectivo") return "Efectivo";
+  if (medio === "tarjeta") return "Tarjeta";
+  if (medio === "transferencia") return "Transferencia";
+  if (medio === "cheque") return "Cheque";
+  if (medio === "otro") return "Otro";
+  if (medio === "") return "Sin registrar";
+  return medio.charAt(0).toUpperCase() + medio.slice(1);
+}
+
+/**
+ * GET /api/cajas/arqueo?fecha=YYYY-MM-DD
+ *
+ * Arqueo de las cajas de un día: apertura, movimientos y cuánto debería haber
+ * en efectivo.
+ *
+ * Va sobre `caja_movimientos` y no sobre `ventas` a propósito: en la caja
+ * también entran y salen retiros, egresos y devoluciones. Sumando solo ventas,
+ * el total no cuadra contra la plata que hay en el cajón.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const ctx = await getTenantSupabaseFromAuth(request);
+    if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+
+    const empresaId = ctx.auth.empresa_id;
+    const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+    const pool = getChatPostgresPool();
+    if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
+
+    const pedida = request.nextUrl.searchParams.get("fecha")?.trim() ?? "";
+    if (pedida && !FECHA_RE.test(pedida)) {
+      return NextResponse.json(errorResponse("Fecha inválida: se espera YYYY-MM-DD."), {
+        status: 400,
+      });
+    }
+
+    const existeQ = await queryWithRetry<{ cajas: string | null; movs: string | null }>(
+      pool,
+      `SELECT to_regclass($1)::text AS cajas, to_regclass($2)::text AS movs`,
+      [`${schema}.cajas`, `${schema}.caja_movimientos`]
+    );
+    if (existeQ.rows[0]?.cajas === null || existeQ.rows[0]?.movs === null) {
+      return NextResponse.json(successResponse({ arqueo: { disponible: false, cajas: [] } }));
+    }
+
+    const fechaQ = await queryWithRetry<{ fecha: string }>(
+      pool,
+      `SELECT COALESCE(NULLIF($1, '')::date, (now() AT TIME ZONE $2)::date)::text AS fecha`,
+      [pedida, TZ]
+    );
+    const fecha = fechaQ.rows[0].fecha;
+
+    const tC = quoteSchemaTable(schema, "cajas");
+    const tM = quoteSchemaTable(schema, "caja_movimientos");
+
+    // Una caja abierta ayer y todavía sin cerrar sigue siendo la caja de hoy:
+    // se incluye aunque su apertura sea de otro día.
+    const cajasQ = await queryWithRetry<{
+      id: string;
+      numero_caja: number;
+      estado: string;
+      fecha_apertura: string;
+      fecha_cierre: string | null;
+      monto_apertura: string;
+      monto_cierre_contado: string | null;
+      monto_esperado_efectivo: string | null;
+      diferencia: string | null;
+    }>(
+      pool,
+      `SELECT id, numero_caja, estado,
+              fecha_apertura::text AS fecha_apertura,
+              fecha_cierre::text   AS fecha_cierre,
+              monto_apertura::text AS monto_apertura,
+              monto_cierre_contado::text    AS monto_cierre_contado,
+              monto_esperado_efectivo::text AS monto_esperado_efectivo,
+              diferencia::text              AS diferencia
+         FROM ${tC}
+        WHERE empresa_id = $1::uuid
+          AND ( (fecha_apertura AT TIME ZONE $2)::date = $3::date
+                OR (estado = 'abierta' AND (fecha_apertura AT TIME ZONE $2)::date <= $3::date) )
+        ORDER BY fecha_apertura DESC`,
+      [empresaId, TZ, fecha]
+    );
+
+    if (cajasQ.rows.length === 0) {
+      return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, cajas: [] } }));
+    }
+
+    const ids = cajasQ.rows.map((c) => c.id);
+
+    // Los anulados no cuentan: esa plata no entró ni salió.
+    const movsQ = await queryWithRetry<{
+      caja_id: string;
+      tipo: string;
+      medio: string;
+      cantidad: string;
+      total: string;
+    }>(
+      pool,
+      `SELECT caja_id,
+              tipo,
+              lower(btrim(COALESCE(medio_pago, ''))) AS medio,
+              count(*)::text                         AS cantidad,
+              COALESCE(sum(monto), 0)::text          AS total
+         FROM ${tM}
+        WHERE empresa_id = $1::uuid
+          AND caja_id = ANY($2::uuid[])
+          AND anulado_at IS NULL
+        GROUP BY caja_id, tipo, 3
+        ORDER BY sum(monto) DESC NULLS LAST`,
+      [empresaId, ids]
+    );
+
+    const porCaja = new Map<string, typeof movsQ.rows>();
+    for (const row of movsQ.rows) {
+      const lista = porCaja.get(row.caja_id) ?? [];
+      lista.push(row);
+      porCaja.set(row.caja_id, lista);
+    }
+
+    const cajas = cajasQ.rows.map((c) => {
+      const movs = porCaja.get(c.id) ?? [];
+      const apertura = num(c.monto_apertura);
+
+      const ingresos = movs.filter((m) => m.tipo === "ingreso");
+      const salidas = movs.filter((m) => m.tipo === "egreso" || m.tipo === "retiro");
+      const ajustes = movs.filter((m) => m.tipo === "ajuste");
+
+      const sumar = (lista: typeof movs, soloEfectivo: boolean) =>
+        lista
+          .filter((m) => !soloEfectivo || m.medio === "efectivo")
+          .reduce((acc, m) => acc + num(m.total), 0);
+
+      // `monto` se guarda siempre positivo y el signo lo da `tipo`.
+      const esperadoEfectivo =
+        apertura + sumar(ingresos, true) - sumar(salidas, true) + sumar(ajustes, true);
+
+      // Desglose de lo que entró, por medio. Es lo que se compara al cerrar.
+      const porMedio = new Map<string, { cantidad: number; total: number }>();
+      for (const m of ingresos) {
+        const acc = porMedio.get(m.medio) ?? { cantidad: 0, total: 0 };
+        acc.cantidad += num(m.cantidad);
+        acc.total += num(m.total);
+        porMedio.set(m.medio, acc);
+      }
+
+      const contado = c.monto_cierre_contado === null ? null : num(c.monto_cierre_contado);
+
+      return {
+        id: c.id,
+        numero_caja: Number(c.numero_caja),
+        estado: c.estado === "cerrada" ? ("cerrada" as const) : ("abierta" as const),
+        fecha_apertura: c.fecha_apertura,
+        fecha_cierre: c.fecha_cierre,
+        monto_apertura: apertura,
+        ingresos: {
+          total: sumar(ingresos, false),
+          por_medio: [...porMedio.entries()]
+            .map(([medio, v]) => ({ medio, label: etiquetaMedio(medio), ...v }))
+            .sort((a, b) => b.total - a.total),
+        },
+        salidas: { total: sumar(salidas, false), cantidad: salidas.length },
+        ajustes: { total: sumar(ajustes, false), cantidad: ajustes.length },
+        efectivo: {
+          esperado: esperadoEfectivo,
+          contado,
+          // La diferencia guardada manda: es la que se firmó al cerrar.
+          diferencia:
+            c.diferencia !== null
+              ? num(c.diferencia)
+              : contado === null
+                ? null
+                : contado - esperadoEfectivo,
+        },
+      };
+    });
+
+    return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, cajas } }));
+  } catch (err) {
+    console.error("[/api/cajas/arqueo GET]", err instanceof Error ? err.message : err);
+    return NextResponse.json(errorResponse("No se pudo calcular el arqueo."), { status: 500 });
+  }
+}

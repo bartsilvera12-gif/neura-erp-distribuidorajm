@@ -3,17 +3,28 @@ export type TipoVenta   = "CONTADO" | "CREDITO";
 export type MonedaVenta = "GS" | "USD";
 
 /**
- * Cómo paga el cliente. `credito` es el único que cambia `tipo_venta`; los otros
- * tres son todos CONTADO y se distinguen para el arqueo de caja.
+ * Medio de cobro. Son los valores que acepta `ventas.metodo_pago`.
+ *
+ * Ojo: el crédito NO va acá. Que la venta sea a crédito lo dice `tipo_venta`,
+ * y el medio con el que se cobre se registra recién cuando se cobra.
  */
-export type FormaPagoVenta = "efectivo" | "transferencia" | "cheque" | "credito";
+export type MetodoPagoVenta = "efectivo" | "tarjeta" | "transferencia" | "cheque" | "mixto";
 
-export const FORMAS_PAGO: { value: FormaPagoVenta; label: string }[] = [
+export const METODOS_PAGO: { value: MetodoPagoVenta; label: string }[] = [
   { value: "efectivo",      label: "Efectivo" },
+  { value: "tarjeta",       label: "Tarjeta" },
   { value: "transferencia", label: "Transferencia" },
   { value: "cheque",        label: "Cheque" },
-  { value: "credito",       label: "Crédito" },
+  { value: "mixto",         label: "Mixto" },
 ];
+
+/**
+ * `caja_movimientos.medio_pago` usa otro vocabulario que `ventas.metodo_pago`:
+ * no tiene `mixto`, tiene `otro`. Esta es la traducción entre los dos.
+ */
+export function medioPagoDeCaja(metodo: MetodoPagoVenta): string {
+  return metodo === "mixto" ? "otro" : metodo;
+}
 
 /** Un ítem dentro de una venta (una línea de producto). */
 export interface LineaVenta {
@@ -47,8 +58,11 @@ export interface Venta {
   tipo_venta: TipoVenta;
   plazo_dias?: number;       // solo si tipo_venta === "CREDITO"
 
-  /** Medio de cobro. Puede venir null en ventas anteriores a la columna. */
-  forma_pago?: FormaPagoVenta | null;
+  /** Medio de cobro (`ventas.metodo_pago`). */
+  metodo_pago?: MetodoPagoVenta | null;
+
+  /** Caja en la que se cobró. */
+  caja_id?: string | null;
 
   /** Reparto del que salió la mercadería. `null` = venta de mostrador. */
   reparto_id?: string | null;

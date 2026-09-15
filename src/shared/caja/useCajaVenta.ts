@@ -6,9 +6,10 @@ import { saveVenta } from "@/lib/ventas/storage";
 import { clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Producto } from "@/lib/inventario/types";
+import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import type {
-  FormaPagoVenta,
   LineaVenta,
+  MetodoPagoVenta,
   MonedaVenta,
   TipoIvaVenta,
   Venta,
@@ -61,8 +62,13 @@ export function useCajaVenta() {
   // ── Condiciones ────────────────────────────────────────────────────────────
   const [moneda, setMoneda] = useState<MonedaVenta>("GS");
   const [tipoCambio, setTipoCambio] = useState("");
-  const [formaPago, setFormaPago] = useState<FormaPagoVenta | null>(null);
+  const [metodoPago, setMetodoPago] = useState<MetodoPagoVenta | null>(null);
+  // El crédito es una condición de la venta (`tipo_venta`), no un medio de
+  // cobro: a crédito no entra plata hoy y no hay con qué cobrarla.
+  const [aCredito, setACredito] = useState(false);
   const [plazoDias, setPlazoDias] = useState("");
+
+  const { caja, disponible: cajasDisponibles } = useCajaAbierta();
 
   // ── Reparto ────────────────────────────────────────────────────────────────
   // Si hay repartos abiertos, la venta tiene que salir de uno: es lo que después
@@ -186,18 +192,25 @@ export function useCajaVenta() {
   // ── Reglas de avance ───────────────────────────────────────────────────────
 
   const clienteElegido = cliente !== null || sinNombre;
-  const esCredito = formaPago === "credito";
+  const esCredito = aCredito;
 
   /** El crédito necesita a quién cobrarle: sin cliente identificado no se ofrece. */
   const creditoDisponible = cliente !== null;
+
+  /** Sin caja abierta no se cobra de contado. A crédito no hace falta. */
+  const faltaCaja = cajasDisponibles && caja === null && !aCredito;
 
   const puedeAvanzar = useMemo(() => {
     if (paso === "cliente") return clienteElegido;
     if (paso === "productos") return carrito.length > 0;
     if (paso === "resumen") return carrito.length > 0 && (moneda === "GS" || tipoCambioNum > 0);
     if (paso === "pago") {
-      if (formaPago === null) return false;
-      if (esCredito && !creditoDisponible) return false;
+      if (esCredito) {
+        if (!creditoDisponible) return false;
+      } else if (metodoPago === null) {
+        return false;
+      }
+      if (faltaCaja) return false;
       if (faltaElegirReparto) return false;
       return true;
     }
@@ -208,9 +221,10 @@ export function useCajaVenta() {
     carrito.length,
     moneda,
     tipoCambioNum,
-    formaPago,
+    metodoPago,
     esCredito,
     creditoDisponible,
+    faltaCaja,
     faltaElegirReparto,
   ]);
 
@@ -223,8 +237,12 @@ export function useCajaVenta() {
     if (!clienteElegido) return false;
     if (carrito.length === 0) return false;
     if (moneda === "USD" && tipoCambioNum <= 0) return false;
-    if (formaPago === null) return false;
-    if (formaPago === "credito" && !creditoDisponible) return false;
+    if (aCredito) {
+      if (!creditoDisponible) return false;
+    } else if (metodoPago === null) {
+      return false;
+    }
+    if (faltaCaja) return false;
     if (faltaElegirReparto) return false;
     return true;
   }, [
@@ -232,8 +250,10 @@ export function useCajaVenta() {
     carrito.length,
     moneda,
     tipoCambioNum,
-    formaPago,
+    metodoPago,
+    aCredito,
     creditoDisponible,
+    faltaCaja,
     faltaElegirReparto,
   ]);
 
@@ -246,7 +266,7 @@ export function useCajaVenta() {
     setCliente(null);
     setSinNombre(true);
     // Sin cliente identificado no hay a quién darle crédito.
-    setFormaPago((actual) => (actual === "credito" ? null : actual));
+    setACredito(false);
   }, []);
 
   const irA = useCallback((destino: PasoCaja) => {
@@ -276,12 +296,16 @@ export function useCajaVenta() {
       setError("Agregá al menos un producto.");
       return;
     }
-    if (formaPago === null) {
-      setError("Elegí una forma de pago.");
+    if (!aCredito && metodoPago === null) {
+      setError("Elegí con qué se cobra.");
       return;
     }
-    if (formaPago === "credito" && !creditoDisponible) {
+    if (aCredito && !creditoDisponible) {
       setError("El crédito requiere un cliente identificado.");
+      return;
+    }
+    if (faltaCaja) {
+      setError("No hay una caja abierta. Abrí la caja antes de cobrar.");
       return;
     }
     if (moneda === "USD" && tipoCambioNum <= 0) {
@@ -296,7 +320,7 @@ export function useCajaVenta() {
     setGuardando(true);
     setError(null);
 
-    const plazo = formaPago === "credito" ? parseInt(plazoDias, 10) : NaN;
+    const plazo = aCredito ? parseInt(plazoDias, 10) : NaN;
 
     const res = await saveVenta({
       items: lineas,
@@ -305,9 +329,11 @@ export function useCajaVenta() {
       subtotal: totales.subtotal,
       monto_iva: totales.montoIva,
       total: totales.total,
-      tipo_venta: formaPago === "credito" ? "CREDITO" : "CONTADO",
+      tipo_venta: aCredito ? "CREDITO" : "CONTADO",
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
-      forma_pago: formaPago,
+      // A crédito no se cobra ahora: el medio se registra recién al cobrar.
+      metodo_pago: aCredito ? null : metodoPago,
+      caja_id: aCredito ? null : (caja?.id ?? null),
       reparto_id: repartoId,
       cliente_id: cliente?.id ?? null,
     });
@@ -324,8 +350,11 @@ export function useCajaVenta() {
   }, [
     guardando,
     carrito.length,
-    formaPago,
+    metodoPago,
+    aCredito,
     creditoDisponible,
+    faltaCaja,
+    caja,
     moneda,
     tipoCambioNum,
     plazoDias,
@@ -343,7 +372,8 @@ export function useCajaVenta() {
     setCarrito([]);
     setMoneda("GS");
     setTipoCambio("");
-    setFormaPago(null);
+    setMetodoPago(null);
+    setACredito(false);
     setPlazoDias("");
     setError(null);
     setVentaCreada(null);
@@ -364,8 +394,12 @@ export function useCajaVenta() {
     moneda,
     tipoCambio,
     tipoCambioNum,
-    formaPago,
+    metodoPago,
+    aCredito,
     plazoDias,
+    caja,
+    cajasDisponibles,
+    faltaCaja,
     guardando,
     error,
     ventaCreada,
@@ -387,7 +421,8 @@ export function useCajaVenta() {
     cambiarIva,
     setMoneda,
     setTipoCambio,
-    setFormaPago,
+    setMetodoPago,
+    setACredito,
     setPlazoDias,
     setRepartoId,
     setError,

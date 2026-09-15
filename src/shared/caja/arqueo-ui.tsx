@@ -1,21 +1,22 @@
 "use client";
 
-import { Banknote, CreditCard, Landmark, Receipt } from "lucide-react";
-import type { FormaPagoVenta } from "@/lib/ventas/types";
+import { Banknote, CreditCard, HelpCircle, Landmark, Receipt, Wallet } from "lucide-react";
 
 /** Piezas que comparten el arqueo mobile y el desktop. */
 
 export const TEAL = "#4FAEB2";
 
-export const ICONOS_PAGO: Record<
-  FormaPagoVenta,
-  React.ComponentType<{ className?: string }>
-> = {
+export const ICONOS_MEDIO: Record<string, React.ComponentType<{ className?: string }>> = {
   efectivo: Banknote,
+  tarjeta: CreditCard,
   transferencia: Landmark,
   cheque: Receipt,
-  credito: CreditCard,
+  otro: Wallet,
 };
+
+export function iconoMedio(medio: string): React.ComponentType<{ className?: string }> {
+  return ICONOS_MEDIO[medio] ?? HelpCircle;
+}
 
 /** Hoy en hora de Asunción, para que el input date arranque en el día correcto. */
 export function hoyEnAsuncion(): string {
@@ -39,23 +40,17 @@ export function fechaLarga(iso: string): string {
   });
 }
 
-/**
- * Aviso de que falta la migración: sin `forma_pago` el total del día es correcto
- * pero no hay desglose, y conviene decirlo en vez de mostrar ceros.
- */
-export function AvisoSinColumna() {
+export function horaCorta(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** El schema no modela caja: sin eso no hay arqueo que hacer. */
+export function AvisoSinCajas() {
   return (
     <p className="rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-      El desglose por medio de cobro necesita la columna <code>forma_pago</code>. Corré{" "}
-      <code>supabase/distribuidorajm/05_forma_pago.sql</code> y las ventas nuevas van a
-      aparecer clasificadas. El total del día ya es correcto.
+      Este schema no tiene <code>cajas</code> ni <code>caja_movimientos</code>, así que no hay
+      arqueo para mostrar.
     </p>
   );
 }
-
-/**
- * Etiqueta de las ventas sin medio de cobro (las anteriores a la columna).
- * Va como una fila más del desglose, no como nota al margen: si se listara
- * aparte, la suma de las filas visibles no daría el total del día.
- */
-export const SIN_REGISTRAR_LABEL = "Sin registrar";

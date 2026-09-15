@@ -13,6 +13,7 @@ import {
   Search,
   Trash2,
   User,
+  Wallet,
   X,
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
@@ -20,7 +21,8 @@ import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
-import { FORMAS_PAGO, type FormaPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import AvisoCajaCerrada from "@/shared/caja/AvisoCajaCerrada";
 
 /**
  * Caja desktop. Misma lógica que la mobile (`useCajaVenta`), otro layout.
@@ -34,11 +36,12 @@ import { FORMAS_PAGO, type FormaPagoVenta, type TipoIvaVenta } from "@/lib/venta
 const TEAL = "#4FAEB2";
 const IVAS: TipoIvaVenta[] = ["10%", "5%", "EXENTA"];
 
-const ICONOS_PAGO: Record<FormaPagoVenta, React.ComponentType<{ className?: string }>> = {
+const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: string }>> = {
   efectivo: Banknote,
+  tarjeta: CreditCard,
   transferencia: Landmark,
   cheque: Receipt,
-  credito: CreditCard,
+  mixto: Wallet,
 };
 
 export default function CajaDesktop() {
@@ -259,36 +262,66 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             </span>
           </div>
 
-          <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Forma de pago
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {FORMAS_PAGO.map(({ value: f, label }) => {
-              const Icono = ICONOS_PAGO[f];
-              const deshabilitado = f === "credito" && !caja.creditoDisponible;
-              const elegido = caja.formaPago === f;
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  disabled={deshabilitado}
-                  onClick={() => caja.setFormaPago(f)}
-                  title={deshabilitado ? "Solo para clientes identificados" : undefined}
-                  className={`flex items-center gap-2 rounded-lg border-2 px-2.5 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
-                    elegido
-                      ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <Icono className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {caja.faltaCaja ? (
+            <div className="mt-4">
+              <AvisoCajaCerrada />
+            </div>
+          ) : null}
 
-          {caja.formaPago === "credito" ? (
-            <label className="mt-2 block">
+          {/* El crédito no es un medio de cobro: es una condición de la venta. */}
+          <label
+            className={`mt-4 flex items-center gap-2.5 rounded-lg border-2 p-2.5 transition-colors ${
+              caja.aCredito ? "border-[#4FAEB2] bg-[#4FAEB2]/10" : "border-slate-200"
+            } ${caja.creditoDisponible ? "cursor-pointer" : "opacity-50"}`}
+          >
+            <input
+              type="checkbox"
+              disabled={!caja.creditoDisponible}
+              checked={caja.aCredito}
+              onChange={(e) => caja.setACredito(e.target.checked)}
+              className="h-4 w-4 accent-[#4FAEB2]"
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold text-slate-900">Venta a crédito</span>
+              <span className="block text-[11px] text-slate-500">
+                {caja.creditoDisponible
+                  ? "No entra plata a la caja ahora"
+                  : "Solo para clientes identificados"}
+              </span>
+            </span>
+          </label>
+
+          {!caja.aCredito ? (
+            <>
+              <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Con qué se cobra
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {METODOS_PAGO.map(({ value: m, label }) => {
+                  const Icono = ICONOS_PAGO[m];
+                  const elegido = caja.metodoPago === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => caja.setMetodoPago(m)}
+                      className={`flex items-center gap-2 rounded-lg border-2 px-2.5 py-2 text-xs font-medium transition-colors ${
+                        elegido
+                          ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Icono className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {caja.aCredito ? (
+            <label className="mt-3 block">
               <span className="mb-1 block text-xs text-slate-500">Plazo en días</span>
               <input
                 inputMode="numeric"
@@ -500,8 +533,12 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           />
           <Dato label="Cliente" valor={caja.nombreCliente} />
           <Dato
-            label="Forma de pago"
-            valor={FORMAS_PAGO.find((f) => f.value === caja.formaPago)?.label ?? "—"}
+            label="Cobro"
+            valor={
+              caja.aCredito
+                ? "A crédito"
+                : (METODOS_PAGO.find((m) => m.value === caja.metodoPago)?.label ?? "—")
+            }
           />
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <dt className="text-sm font-semibold text-slate-900">Total</dt>

@@ -23,9 +23,11 @@ export interface CreateVentaPgParams {
   tipoCambio: number;
   tipoVenta: "CONTADO" | "CREDITO";
   plazoDias: number | null;
-  /** Medio de cobro. Se guarda solo si el schema tiene la columna (ver 05_forma_pago.sql). */
-  formaPago: "efectivo" | "transferencia" | "cheque" | "credito" | null;
-  /** Reparto del que sale la mercadería. Requiere 06_repartos.sql. */
+  /** Medio de cobro (`ventas.metodo_pago`). `null` en ventas a crédito. */
+  metodoPago: "efectivo" | "tarjeta" | "transferencia" | "cheque" | "mixto" | null;
+  /** Caja en la que se cobra. Obligatoria salvo venta a crédito. */
+  cajaId: string | null;
+  /** Reparto del que sale la mercadería. */
   repartoId: string | null;
   items: CreateVentaItemInput[];
   /** Totales enviados por el cliente (se contrastan con el recálculo). */
@@ -56,6 +58,16 @@ const TOL = 2; // guaraníes — tolerancia de redondeo
  * Crea venta + ítems + movimientos + descuenta stock en una transacción Postgres.
  * Requiere SUPABASE_DB_URL / DIRECT_URL / DATABASE_URL en el servidor.
  */
+/** `true` si la tabla existe en el schema. */
+async function tablaExiste(
+  client: { query: (q: string, p?: unknown[]) => Promise<{ rows: { existe: string | null }[] }> },
+  schema: string,
+  tabla: string
+): Promise<boolean> {
+  const q = await client.query(`SELECT to_regclass($1)::text AS existe`, [`${schema}.${tabla}`]);
+  return q.rows[0]?.existe !== null;
+}
+
 export async function createVentaTransaccionalPg(
   params: CreateVentaPgParams
 ): Promise<{ ventaId: string; numeroControl: string; fechaIso: string }> {
@@ -164,29 +176,30 @@ export async function createVentaTransaccionalPg(
 
     const fechaIso = new Date().toISOString();
 
-    // `forma_pago` es una columna agregada después (05_forma_pago.sql). Si el
-    // schema todavía no la tiene, la venta se guarda igual sin ese dato en vez
-    // de fallar: cobrar no puede depender de una migración pendiente.
+    // Estas columnas pueden no existir en schemas viejos: se escriben solo si
+    // están, para que cobrar no dependa de una migración pendiente.
     const colsQ = await client.query<{ columna: string }>(
       `
       SELECT column_name AS columna
         FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = 'ventas'
-         AND column_name IN ('forma_pago', 'reparto_id')
+         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id')
       `,
       [params.schema]
     );
     const columnas = new Set(colsQ.rows.map((r) => r.columna));
-    const guardaFormaPago = columnas.has("forma_pago");
-    const guardaReparto = columnas.has("reparto_id");
 
     const extraCols: string[] = [];
     const extraVals: unknown[] = [];
-    if (guardaFormaPago) {
-      extraCols.push("forma_pago");
-      extraVals.push(params.formaPago);
+    if (columnas.has("metodo_pago")) {
+      extraCols.push("metodo_pago");
+      extraVals.push(params.metodoPago);
     }
-    if (guardaReparto) {
+    if (columnas.has("caja_id")) {
+      extraCols.push("caja_id");
+      extraVals.push(params.cajaId);
+    }
+    if (columnas.has("reparto_id")) {
       extraCols.push("reparto_id");
       extraVals.push(params.repartoId);
     }
@@ -224,6 +237,32 @@ export async function createVentaTransaccionalPg(
     );
 
     const ventaId = insVenta.rows[0].id;
+
+    // Movimiento de caja del cobro. Solo para ventas de contado: una venta a
+    // crédito no mete plata en la caja hoy, y registrarla descuadraría el arqueo.
+    if (
+      params.cajaId !== null &&
+      params.tipoVenta === "CONTADO" &&
+      params.metodoPago !== null &&
+      (await tablaExiste(client, params.schema, "caja_movimientos"))
+    ) {
+      const movT = quoteSchemaTable(params.schema, "caja_movimientos");
+      await client.query(
+        `
+        INSERT INTO ${movT} (empresa_id, caja_id, tipo, concepto, monto, medio_pago, venta_id)
+        VALUES ($1::uuid, $2::uuid, 'ingreso', $3, $4, $5, $6::uuid)
+        `,
+        [
+          params.empresaId,
+          params.cajaId,
+          `Venta ${numeroControl}`,
+          calc.total,
+          // `caja_movimientos.medio_pago` no tiene `mixto`: su equivalente es `otro`.
+          params.metodoPago === "mixto" ? "otro" : params.metodoPago,
+          ventaId,
+        ]
+      );
+    }
 
     for (const line of items) {
       const p = stockMap.get(line.producto_id)!;
