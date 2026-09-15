@@ -22,8 +22,6 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
-import AperturaCaja from "@/shared/caja/AperturaCaja";
-import PuertaCaja from "@/shared/caja/PuertaCaja";
 
 /**
  * Caja desktop. Misma lógica que la mobile (`useCajaVenta`), otro layout.
@@ -47,17 +45,11 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
 
 export default function CajaDesktop() {
   const caja = useCajaVenta();
-  const [omitioCaja, setOmitioCaja] = useState(false);
 
   if (caja.paso === "listo" && caja.ventaCreada) {
     return <Comprobante caja={caja} />;
   }
 
-  // Entrar a la venta sin caja abierta termina siempre igual: el cajero carga
-  // el carrito y se choca en el paso del pago. Mejor ofrecer abrirla acá.
-  if (caja.cajasDisponibles && caja.caja === null && !omitioCaja) {
-    return <PuertaCaja caja={caja} onOmitir={() => setOmitioCaja(true)} />;
-  }
 
   return (
     <div className="mx-auto max-w-[1400px] p-6">
@@ -269,12 +261,6 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
               {formatGs(caja.totales.total)}
             </span>
           </div>
-
-          {caja.faltaCaja ? (
-            <div className="mt-4">
-              <AperturaCaja caja={null} onCambio={() => caja.recargarCaja()} />
-            </div>
-          ) : null}
 
           {/* El crédito no es un medio de cobro: es una condición de la venta. */}
           <label

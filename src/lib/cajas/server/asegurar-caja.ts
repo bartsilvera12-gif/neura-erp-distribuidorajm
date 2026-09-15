@@ -1,0 +1,69 @@
+import "server-only";
+import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+
+/**
+ * Devuelve la caja abierta de la empresa; si no hay ninguna, abre una.
+ *
+ * El monto de apertura es 0 y no es un valor de relleno: el camión sale sin
+ * plata en el cajón y la junta durante la ruta. La caja se cierra con el cierre
+ * de reparto, que es el único final de jornada que el repartidor conoce.
+ *
+ * Todo en una transacción y con la fila bloqueada: dos ventas simultáneas en
+ * una empresa sin caja abierta abrirían dos cajas, y las ventas del día
+ * quedarían repartidas entre las dos.
+ */
+export async function asegurarCajaAbierta(
+  schema: string,
+  empresaId: string
+): Promise<string | null> {
+  const pool = getChatPostgresPool();
+  if (!pool) return null;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const existe = await client.query<{ t: string | null }>(
+      `SELECT to_regclass($1)::text AS t`,
+      [`${schema}.cajas`]
+    );
+    if (!existe.rows[0]?.t) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const tC = quoteSchemaTable(schema, "cajas");
+    const abierta = await client.query<{ id: string }>(
+      `SELECT id FROM ${tC}
+        WHERE empresa_id = $1::uuid AND estado = 'abierta'
+        ORDER BY fecha_apertura DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [empresaId]
+    );
+    if (abierta.rows.length > 0) {
+      await client.query("COMMIT");
+      return abierta.rows[0].id;
+    }
+
+    const sig = await client.query<{ n: string }>(
+      `SELECT COALESCE(max(numero_caja), 0)::text AS n FROM ${tC} WHERE empresa_id = $1::uuid`,
+      [empresaId]
+    );
+    const alta = await client.query<{ id: string }>(
+      `INSERT INTO ${tC} (empresa_id, numero_caja, estado, monto_apertura, fecha_apertura)
+       VALUES ($1::uuid, $2, 'abierta', 0, now())
+       RETURNING id`,
+      [empresaId, Number(sig.rows[0].n) + 1]
+    );
+
+    await client.query("COMMIT");
+    return alta.rows[0].id;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[asegurarCajaAbierta]", err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    client.release();
+  }
+}

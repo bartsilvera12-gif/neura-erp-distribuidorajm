@@ -197,8 +197,11 @@ export function useCajaVenta() {
   /** El crédito necesita a quién cobrarle: sin cliente identificado no se ofrece. */
   const creditoDisponible = cliente !== null;
 
-  /** Sin caja abierta no se cobra de contado. A crédito no hace falta. */
-  const faltaCaja = cajasDisponibles && caja === null && !aCredito;
+  // La caja ya no frena la venta: si al cobrar no hay ninguna abierta, el
+  // servidor abre una en 0 y estampa la venta ahí. El camión sale sin plata en
+  // el cajón, así que ese 0 es el saldo real, y la caja se cierra recién con el
+  // cierre de reparto. Pedirle al vendedor que la abra a mano era un paso que
+  // en la calle nadie iba a dar.
 
   const puedeAvanzar = useMemo(() => {
     if (paso === "cliente") return clienteElegido;
@@ -210,7 +213,6 @@ export function useCajaVenta() {
       } else if (metodoPago === null) {
         return false;
       }
-      if (faltaCaja) return false;
       if (faltaElegirReparto) return false;
       return true;
     }
@@ -224,7 +226,6 @@ export function useCajaVenta() {
     metodoPago,
     esCredito,
     creditoDisponible,
-    faltaCaja,
     faltaElegirReparto,
   ]);
 
@@ -242,7 +243,6 @@ export function useCajaVenta() {
     } else if (metodoPago === null) {
       return false;
     }
-    if (faltaCaja) return false;
     if (faltaElegirReparto) return false;
     return true;
   }, [
@@ -253,7 +253,6 @@ export function useCajaVenta() {
     metodoPago,
     aCredito,
     creditoDisponible,
-    faltaCaja,
     faltaElegirReparto,
   ]);
 
@@ -304,10 +303,6 @@ export function useCajaVenta() {
       setError("El crédito requiere un cliente identificado.");
       return;
     }
-    if (faltaCaja) {
-      setError("No hay una caja abierta. Abrí la caja antes de cobrar.");
-      return;
-    }
     if (moneda === "USD" && tipoCambioNum <= 0) {
       setError("Ingresá el tipo de cambio.");
       return;
@@ -353,7 +348,6 @@ export function useCajaVenta() {
     metodoPago,
     aCredito,
     creditoDisponible,
-    faltaCaja,
     caja,
     moneda,
     tipoCambioNum,
@@ -399,7 +393,6 @@ export function useCajaVenta() {
     plazoDias,
     caja,
     cajasDisponibles,
-    faltaCaja,
     recargarCaja,
     guardando,
     error,

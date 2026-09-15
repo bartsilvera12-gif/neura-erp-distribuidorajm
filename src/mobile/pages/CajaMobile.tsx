@@ -25,8 +25,6 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
-import AperturaCaja from "@/shared/caja/AperturaCaja";
-import PuertaCaja from "@/shared/caja/PuertaCaja";
 
 /**
  * Caja mobile: asistente de cobro a pantalla completa.
@@ -46,17 +44,11 @@ const TEAL_OSCURO = "#3F8E91";
 
 export default function CajaMobile() {
   const caja = useCajaVenta();
-  const [omitioCaja, setOmitioCaja] = useState(false);
 
   if (caja.paso === "listo" && caja.ventaCreada) {
     return <Comprobante caja={caja} />;
   }
 
-  // Entrar a la venta sin caja abierta termina siempre igual: el cajero carga
-  // el carrito y se choca en el paso del pago. Mejor ofrecer abrirla acá.
-  if (caja.cajasDisponibles && caja.caja === null && !omitioCaja) {
-    return <PuertaCaja caja={caja} onOmitir={() => setOmitioCaja(true)} />;
-  }
 
   return (
     <div className="flex min-h-full flex-col bg-[#F8FAFC]">
@@ -529,12 +521,6 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
 function PasoPago({ caja }: { caja: CajaVenta }) {
   return (
     <div className="pt-4">
-      {caja.faltaCaja ? (
-        <div className="mb-3">
-          <AperturaCaja caja={null} onCambio={() => caja.recargarCaja()} />
-        </div>
-      ) : null}
-
       {/* El crédito no es un medio de cobro: es una condición de la venta. */}
       <button
         type="button"

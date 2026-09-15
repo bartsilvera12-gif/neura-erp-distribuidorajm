@@ -6,6 +6,7 @@ import type { CreateVentaItemInput } from "@/lib/ventas/server/create-venta-pg";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
+import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
 import type { Venta, LineaVenta } from "@/lib/ventas/types";
 
 function asItems(body: unknown): CreateVentaItemInput[] | null {
@@ -175,13 +176,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Sin caja abierta no se cobra, igual que el resto del ERP. Se valida acá y
-    // no solo en la pantalla: una venta sin caja rompe el arqueo del día.
-    if (tipoVenta === "CONTADO" && cajaId === null) {
-      return NextResponse.json(
-        errorResponse("No hay una caja abierta. Abrí la caja antes de cobrar."),
-        { status: 409 }
-      );
+    // Toda venta de contado necesita una caja donde imputarse, pero pedirla a
+    // mano era un paso que en la calle nadie daba: el vendedor quiere cobrar.
+    // Si no hay ninguna abierta se abre una en 0, que es el saldo real —el
+    // camión sale sin plata en el cajón—, y se cierra con el cierre de reparto.
+    let cajaFinal = cajaId;
+    if (tipoVenta === "CONTADO" && cajaFinal === null) {
+      cajaFinal = await asegurarCajaAbierta(schema, auth.empresa_id);
+      if (cajaFinal === null) {
+        return NextResponse.json(
+          errorResponse("No se pudo abrir la caja para cobrar esta venta."),
+          { status: 409 }
+        );
+      }
     }
 
     const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
@@ -193,7 +200,7 @@ export async function POST(request: NextRequest) {
       tipoCambio,
       tipoVenta,
       metodoPago,
-      cajaId,
+      cajaId: cajaFinal,
       repartoId,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
