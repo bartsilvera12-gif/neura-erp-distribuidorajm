@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Bell, HelpCircle, LogOut } from "lucide-react";
+import { Bell, LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 
@@ -55,13 +54,6 @@ export default function MobileHeader() {
       </h1>
 
       <div className="flex items-center gap-1">
-        <Link
-          href="/ayuda"
-          aria-label="Ayuda en línea"
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-[#475569] transition-colors hover:bg-slate-50"
-        >
-          <HelpCircle className="h-5 w-5" />
-        </Link>
         <button
           type="button"
           aria-label="Notificaciones"
