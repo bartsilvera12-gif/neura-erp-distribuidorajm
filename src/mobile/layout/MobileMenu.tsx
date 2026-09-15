@@ -12,6 +12,7 @@ import {
   CalendarDays,
   FileText,
   FolderKanban,
+  HandCoins,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -34,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
+import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
 import { useRouter } from "next/navigation";
 
 /**
@@ -41,10 +43,11 @@ import { useRouter } from "next/navigation";
  *
  * NO usa framer-motion, NO carga la búsqueda de favoritos ni submenús expandibles.
  * Solo CSS transitions (translate-x). Sirve como nav lateral cuando el usuario toca
- * el botón "☰" del header o "Más" del bottom nav. La autenticación / módulos
- * habilitados se respetan: los items deshabilitados igual aparecen pero el routing
- * server-side los rechazará (lo mismo hace la versión desktop si el usuario hace
- * click sin permiso).
+ * el botón "☰" del header o "Más" del bottom nav.
+ *
+ * Filtra por módulos igual que el sidebar desktop. Antes mostraba todo el ERP y
+ * dejaba que el routing rechazara al tocar: en una empresa con la mitad de los
+ * módulos habilitados eso es un menú lleno de puertas cerradas.
  *
  * Performance: render ~50ms vs ~4s del Sidebar desktop con framer.
  */
@@ -79,7 +82,7 @@ const SECTIONS: Section[] = [
       { href: "/clientes", label: "Clientes", icon: Users },
       { href: "/crm", label: "CRM Funnel", icon: Sparkles },
       { href: "/gestion-clientes", label: "Gestión Clientes", icon: Users },
-      { href: "/ventas", label: "Ventas", icon: ShoppingCart },
+      { href: "/ventas", label: "Caja", icon: ShoppingCart },
       { href: "/comisiones", label: "Comisiones", icon: Percent },
       { href: "/planes", label: "Planes", icon: FileText },
       { href: "/dashboard/agenda", label: "Agenda", icon: CalendarDays },
@@ -89,6 +92,7 @@ const SECTIONS: Section[] = [
     title: "Finanzas",
     items: [
       { href: "/pagos", label: "Pagos", icon: Banknote },
+      { href: "/cobranzas", label: "Cobranzas", icon: HandCoins },
       { href: "/gastos", label: "Gastos y Servicios", icon: Receipt },
       { href: "/compras", label: "Compras", icon: Package },
       { href: "/compras/ordenes", label: "Órdenes de Compra", icon: Package },
@@ -172,16 +176,20 @@ export default function MobileMenu({
     if (!open) setQuery("");
   }, [open]);
 
+  const { puedeVer, cargando } = useAccesoRuta();
+
   const filteredSections = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return SECTIONS;
-    return SECTIONS
-      .map((s) => ({
-        ...s,
-        items: s.items.filter((it) => it.label.toLowerCase().includes(q)),
-      }))
-      .filter((s) => s.items.length > 0);
-  }, [query]);
+    return SECTIONS.map((s) => ({
+      ...s,
+      items: s.items.filter(
+        (it) =>
+          // `null` mientras no se sabe: se oculta, y aparece al resolverse. Mejor
+          // que dibujar el menú entero y recortarlo a la vista del usuario.
+          puedeVer(it.href) === true && (!q || it.label.toLowerCase().includes(q))
+      ),
+    })).filter((s) => s.items.length > 0);
+  }, [query, puedeVer]);
 
   return (
     <>
@@ -243,7 +251,9 @@ export default function MobileMenu({
 
         {/* Lista de secciones */}
         <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-2 py-2 [scrollbar-width:thin]">
-          {filteredSections.length === 0 ? (
+          {cargando ? (
+            <p className="px-3 py-6 text-center text-xs text-slate-400">Cargando menú…</p>
+          ) : filteredSections.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-slate-400">Sin resultados</p>
           ) : (
             filteredSections.map((section) => (
