@@ -26,6 +26,7 @@ import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caj
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 import AperturaCaja from "@/shared/caja/AperturaCaja";
+import PuertaCaja from "@/shared/caja/PuertaCaja";
 
 /**
  * Caja mobile: asistente de cobro a pantalla completa.
@@ -45,9 +46,16 @@ const TEAL_OSCURO = "#3F8E91";
 
 export default function CajaMobile() {
   const caja = useCajaVenta();
+  const [omitioCaja, setOmitioCaja] = useState(false);
 
   if (caja.paso === "listo" && caja.ventaCreada) {
     return <Comprobante caja={caja} />;
+  }
+
+  // Entrar a la venta sin caja abierta termina siempre igual: el cajero carga
+  // el carrito y se choca en el paso del pago. Mejor ofrecer abrirla acá.
+  if (caja.cajasDisponibles && caja.caja === null && !omitioCaja) {
+    return <PuertaCaja caja={caja} onOmitir={() => setOmitioCaja(true)} />;
   }
 
   return (
