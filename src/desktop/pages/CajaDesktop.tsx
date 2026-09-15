@@ -19,6 +19,7 @@ import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
+import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { FORMAS_PAGO, type FormaPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
 /**
@@ -297,6 +298,12 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
               />
             </label>
+          ) : null}
+
+          {caja.repartosAbiertos.length > 0 ? (
+            <div className="mt-3">
+              <SelectorReparto caja={caja} />
+            </div>
           ) : null}
 
           <OpcionesMoneda caja={caja} />

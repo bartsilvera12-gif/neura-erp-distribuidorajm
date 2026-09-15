@@ -21,6 +21,7 @@ import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
+import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { FORMAS_PAGO, type FormaPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
 /**
@@ -576,7 +577,11 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
         </label>
       ) : null}
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-center">
+      <div className="mt-3">
+        <SelectorReparto caja={caja} />
+      </div>
+
+      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 text-center">
         <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
           Total a cobrar
         </p>

@@ -25,6 +25,8 @@ export interface CreateVentaPgParams {
   plazoDias: number | null;
   /** Medio de cobro. Se guarda solo si el schema tiene la columna (ver 05_forma_pago.sql). */
   formaPago: "efectivo" | "transferencia" | "cheque" | "credito" | null;
+  /** Reparto del que sale la mercadería. Requiere 06_repartos.sql. */
+  repartoId: string | null;
   items: CreateVentaItemInput[];
   /** Totales enviados por el cliente (se contrastan con el recálculo). */
   subtotalDeclarado: number;
@@ -165,27 +167,42 @@ export async function createVentaTransaccionalPg(
     // `forma_pago` es una columna agregada después (05_forma_pago.sql). Si el
     // schema todavía no la tiene, la venta se guarda igual sin ese dato en vez
     // de fallar: cobrar no puede depender de una migración pendiente.
-    const colFormaPago = await client.query<{ existe: boolean }>(
+    const colsQ = await client.query<{ columna: string }>(
       `
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = $1 AND table_name = 'ventas' AND column_name = 'forma_pago'
-      ) AS existe
+      SELECT column_name AS columna
+        FROM information_schema.columns
+       WHERE table_schema = $1 AND table_name = 'ventas'
+         AND column_name IN ('forma_pago', 'reparto_id')
       `,
       [params.schema]
     );
-    const guardaFormaPago = colFormaPago.rows[0]?.existe === true;
+    const columnas = new Set(colsQ.rows.map((r) => r.columna));
+    const guardaFormaPago = columnas.has("forma_pago");
+    const guardaReparto = columnas.has("reparto_id");
+
+    const extraCols: string[] = [];
+    const extraVals: unknown[] = [];
+    if (guardaFormaPago) {
+      extraCols.push("forma_pago");
+      extraVals.push(params.formaPago);
+    }
+    if (guardaReparto) {
+      extraCols.push("reparto_id");
+      extraVals.push(params.repartoId);
+    }
+    // Los placeholders siguen después de los 12 fijos del INSERT.
+    const extraPlaceholders = extraCols.map((_, i) => `$${13 + i}`);
 
     const insVenta = await client.query<{ id: string }>(
       `
       INSERT INTO ${ventasT} (
         empresa_id, cliente_id, numero_control, moneda, tipo_cambio,
         subtotal, monto_iva, total, estado, tipo_venta, plazo_dias, fecha, observaciones
-        ${guardaFormaPago ? ", forma_pago" : ""}
+        ${extraCols.length > 0 ? ", " + extraCols.join(", ") : ""}
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, 'completada', $9, $10, $11::timestamptz, $12
-        ${guardaFormaPago ? ", $13" : ""}
+        ${extraPlaceholders.length > 0 ? ", " + extraPlaceholders.join(", ") : ""}
       )
       RETURNING id
       `,
@@ -202,7 +219,7 @@ export async function createVentaTransaccionalPg(
         params.plazoDias,
         fechaIso,
         params.observaciones,
-        ...(guardaFormaPago ? [params.formaPago] : []),
+        ...extraVals,
       ]
     );
 

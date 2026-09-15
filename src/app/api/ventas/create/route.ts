@@ -116,6 +116,12 @@ export async function POST(request: NextRequest) {
         ? null
         : String(o.observaciones).slice(0, 4000);
 
+    const repartoRaw = o.reparto_id;
+    const repartoId =
+      repartoRaw === null || repartoRaw === undefined || repartoRaw === ""
+        ? null
+        : String(repartoRaw);
+
     const FORMAS_PAGO_VALIDAS = ["efectivo", "transferencia", "cheque", "credito"] as const;
     type FormaPago = (typeof FORMAS_PAGO_VALIDAS)[number];
     const formaPagoRaw = String(o.forma_pago ?? "").trim().toLowerCase();
@@ -161,6 +167,7 @@ export async function POST(request: NextRequest) {
       tipoCambio,
       tipoVenta,
       formaPago,
+      repartoId,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,

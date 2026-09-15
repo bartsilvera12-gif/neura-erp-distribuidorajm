@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRepartos } from "@/shared/hooks/useRepartos";
 import { saveVenta } from "@/lib/ventas/storage";
 import { clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
@@ -62,6 +63,28 @@ export function useCajaVenta() {
   const [tipoCambio, setTipoCambio] = useState("");
   const [formaPago, setFormaPago] = useState<FormaPagoVenta | null>(null);
   const [plazoDias, setPlazoDias] = useState("");
+
+  // ── Reparto ────────────────────────────────────────────────────────────────
+  // Si hay repartos abiertos, la venta tiene que salir de uno: es lo que después
+  // permite el control de mercadería. Con un solo camión se elige solo; con
+  // varios lo decide el cajero, porque adivinar descuadraría al otro camión.
+  const { repartos: repartosAbiertos, disponible: repartosDisponibles } = useRepartos({
+    abiertos: true,
+  });
+  const [repartoElegido, setRepartoId] = useState<string | null>(null);
+
+  // Derivado y no estado sincronizado: si el reparto elegido se cierra desde
+  // otro lado, la venta no queda apuntando a un camión que ya volvió.
+  const repartoId = useMemo(() => {
+    if (repartoElegido && repartosAbiertos.some((r) => r.id === repartoElegido)) {
+      return repartoElegido;
+    }
+    if (repartosAbiertos.length === 1) return repartosAbiertos[0].id;
+    return null;
+  }, [repartoElegido, repartosAbiertos]);
+
+  /** Hay varios camiones en la calle y todavía no se eligió de cuál sale. */
+  const faltaElegirReparto = repartosAbiertos.length > 1 && repartoId === null;
 
   // ── Envío ──────────────────────────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false);
@@ -175,10 +198,21 @@ export function useCajaVenta() {
     if (paso === "pago") {
       if (formaPago === null) return false;
       if (esCredito && !creditoDisponible) return false;
+      if (faltaElegirReparto) return false;
       return true;
     }
     return false;
-  }, [paso, clienteElegido, carrito.length, moneda, tipoCambioNum, formaPago, esCredito, creditoDisponible]);
+  }, [
+    paso,
+    clienteElegido,
+    carrito.length,
+    moneda,
+    tipoCambioNum,
+    formaPago,
+    esCredito,
+    creditoDisponible,
+    faltaElegirReparto,
+  ]);
 
   /**
    * Regla única de "la venta se puede cobrar". La mobile llega acá paso a paso;
@@ -191,8 +225,17 @@ export function useCajaVenta() {
     if (moneda === "USD" && tipoCambioNum <= 0) return false;
     if (formaPago === null) return false;
     if (formaPago === "credito" && !creditoDisponible) return false;
+    if (faltaElegirReparto) return false;
     return true;
-  }, [clienteElegido, carrito.length, moneda, tipoCambioNum, formaPago, creditoDisponible]);
+  }, [
+    clienteElegido,
+    carrito.length,
+    moneda,
+    tipoCambioNum,
+    formaPago,
+    creditoDisponible,
+    faltaElegirReparto,
+  ]);
 
   const elegirCliente = useCallback((c: Cliente) => {
     setCliente(c);
@@ -245,6 +288,10 @@ export function useCajaVenta() {
       setError("Ingresá el tipo de cambio.");
       return;
     }
+    if (faltaElegirReparto) {
+      setError("Elegí de qué camión sale la mercadería.");
+      return;
+    }
 
     setGuardando(true);
     setError(null);
@@ -261,6 +308,7 @@ export function useCajaVenta() {
       tipo_venta: formaPago === "credito" ? "CREDITO" : "CONTADO",
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
       forma_pago: formaPago,
+      reparto_id: repartoId,
       cliente_id: cliente?.id ?? null,
     });
 
@@ -284,6 +332,8 @@ export function useCajaVenta() {
     lineas,
     totales,
     cliente,
+    repartoId,
+    faltaElegirReparto,
   ]);
 
   const reiniciar = useCallback(() => {
@@ -297,6 +347,7 @@ export function useCajaVenta() {
     setPlazoDias("");
     setError(null);
     setVentaCreada(null);
+    // El reparto no se limpia: sigue siendo el mismo camión en la calle.
   }, []);
 
   const nombreCliente = cliente ? clienteNombre(cliente) : "Sin nombre";
@@ -318,6 +369,10 @@ export function useCajaVenta() {
     guardando,
     error,
     ventaCreada,
+    repartosAbiertos,
+    repartosDisponibles,
+    repartoId,
+    faltaElegirReparto,
     // reglas
     puedeAvanzar,
     puedeConfirmar,
@@ -334,6 +389,7 @@ export function useCajaVenta() {
     setTipoCambio,
     setFormaPago,
     setPlazoDias,
+    setRepartoId,
     setError,
     irA,
     siguiente,

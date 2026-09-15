@@ -50,6 +50,9 @@ export interface Venta {
   /** Medio de cobro. Puede venir null en ventas anteriores a la columna. */
   forma_pago?: FormaPagoVenta | null;
 
+  /** Reparto del que salió la mercadería. `null` = venta de mostrador. */
+  reparto_id?: string | null;
+
   /** Cliente de la venta. `null` = venta sin nombre. */
   cliente_id?: string | null;
   cliente_nombre?: string | null;

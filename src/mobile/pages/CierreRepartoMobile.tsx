@@ -7,6 +7,8 @@ import { useCierreReparto } from "@/shared/hooks/useCierreReparto";
 import { formatGs } from "@/shared/caja/useCajaVenta";
 import { fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 import { AvisoMercaderia, AvisoSinPagos } from "@/shared/caja/cierre-ui";
+import ControlMercaderia from "@/shared/caja/ControlMercaderia";
+import { useRepartos } from "@/shared/hooks/useRepartos";
 
 /**
  * Cierre de reparto mobile: lo vendido y lo cobrado en el día.
@@ -18,6 +20,8 @@ import { AvisoMercaderia, AvisoSinPagos } from "@/shared/caja/cierre-ui";
 export default function CierreRepartoMobile() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   const { cierre, isLoading, mutate } = useCierreReparto(fecha);
+  const { repartos, disponible: repartosDisponibles, mutate: refrescarRepartos } =
+    useRepartos({ fecha });
 
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
@@ -94,7 +98,35 @@ export default function CierreRepartoMobile() {
           )}
         </Bloque>
 
-        <AvisoMercaderia />
+        {repartosDisponibles ? (
+          repartos.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500">
+              No hubo repartos este día.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {repartos.map((r) => (
+                <ControlMercaderia
+                  key={r.id}
+                  reparto={r}
+                  onCerrado={() => {
+                    refrescarRepartos();
+                    mutate();
+                  }}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          <AvisoMercaderia />
+        )}
+
+        <Link
+          href="/ventas/repartos"
+          className="block w-full rounded-xl border border-slate-200 bg-white py-3.5 text-center text-sm font-medium text-slate-600"
+        >
+          Abrir un reparto
+        </Link>
 
         <Link
           href="/ventas/arqueo"

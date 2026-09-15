@@ -51,6 +51,7 @@ export async function saveVenta(
         tipo_venta: datos.tipo_venta,
         plazo_dias: datos.plazo_dias,
         forma_pago: datos.forma_pago ?? null,
+        reparto_id: datos.reparto_id ?? null,
         cliente_id: datos.cliente_id ?? null,
         observaciones: null,
       }),

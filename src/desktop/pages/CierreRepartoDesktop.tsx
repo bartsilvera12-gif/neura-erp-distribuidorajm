@@ -7,6 +7,8 @@ import { useCierreReparto } from "@/shared/hooks/useCierreReparto";
 import { formatGs } from "@/shared/caja/useCajaVenta";
 import { fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 import { AvisoMercaderia, AvisoSinPagos } from "@/shared/caja/cierre-ui";
+import ControlMercaderia from "@/shared/caja/ControlMercaderia";
+import { useRepartos } from "@/shared/hooks/useRepartos";
 
 /**
  * Cierre de reparto desktop. Ventas y cobranzas lado a lado, que es la
@@ -16,6 +18,8 @@ import { AvisoMercaderia, AvisoSinPagos } from "@/shared/caja/cierre-ui";
 export default function CierreRepartoDesktop() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   const { cierre, isLoading, mutate } = useCierreReparto(fecha);
+  const { repartos, disponible: repartosDisponibles, mutate: refrescarRepartos } =
+    useRepartos({ fecha });
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -44,6 +48,12 @@ export default function CierreRepartoDesktop() {
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </button>
+          <Link
+            href="/ventas/repartos"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            Repartos
+          </Link>
           <Link
             href="/ventas/arqueo"
             className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
@@ -115,8 +125,30 @@ export default function CierreRepartoDesktop() {
         </section>
       </div>
 
-      <div className="mt-5">
-        <AvisoMercaderia />
+      <div className="mt-5 space-y-4">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Control de mercadería
+        </h2>
+        {repartosDisponibles ? (
+          repartos.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+              No hubo repartos este día.
+            </p>
+          ) : (
+            repartos.map((r) => (
+              <ControlMercaderia
+                key={r.id}
+                reparto={r}
+                onCerrado={() => {
+                  refrescarRepartos();
+                  mutate();
+                }}
+              />
+            ))
+          )
+        ) : (
+          <AvisoMercaderia />
+        )}
       </div>
     </div>
   );

@@ -17,9 +17,9 @@ export function AvisoMercaderia() {
       <div className="text-xs leading-relaxed text-slate-600">
         <p className="font-semibold text-slate-700">Control de mercadería</p>
         <p className="mt-1">
-          Todavía no se puede calcular: hace falta registrar la carga inicial del camión y
-          las devoluciones. Hoy el ERP no guarda ni una ni otra, así que stock inicial,
-          mercadería que regresa y diferencia no tienen de dónde salir.
+          Faltan las tablas de repartos. Corré{" "}
+          <code>supabase/distribuidorajm/06_repartos.sql</code> y vas a poder cargar el camión
+          a la mañana y contar lo que vuelve a la tarde.
         </p>
       </div>
     </div>
