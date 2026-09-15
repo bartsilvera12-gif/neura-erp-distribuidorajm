@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Plus, Search, Truck, X } from "lucide-react";
 import { useProductos } from "@/shared/hooks/useInventario";
-import { useRepartos } from "@/shared/hooks/useRepartos";
+import { useCamiones, useRepartos } from "@/shared/hooks/useRepartos";
+import { useUsuarios } from "@/shared/hooks/useUsuarios";
 import { abrirReparto } from "@/lib/repartos/storage";
 import { hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
 import ControlMercaderia from "@/shared/caja/ControlMercaderia";
@@ -52,9 +53,9 @@ export default function RepartosPage() {
 
       {!disponible && !isLoading ? (
         <p className="rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-          Faltan las tablas de repartos. Corré{" "}
-          <code>supabase/distribuidorajm/06_repartos.sql</code> para habilitar la carga del camión
-          y el control de mercadería.
+          Este schema no tiene el dominio de repartos (<code>repartos</code> y{" "}
+          <code>reparto_stock</code>), así que la carga del camión y el control de mercadería no
+          están disponibles.
         </p>
       ) : null}
 
@@ -100,6 +101,11 @@ export default function RepartosPage() {
 
 // ── Alta de reparto con su carga ─────────────────────────────────────────────
 
+/**
+ * El camión y el repartidor se eligen de las tablas del ERP (`camiones`,
+ * `usuarios`) y no se escriben a mano: `repartos` los guarda por id, y un texto
+ * libre no se podría ligar al camión que después hay que cerrar.
+ */
 function FormularioCarga({
   onCancelar,
   onCreado,
@@ -108,8 +114,11 @@ function FormularioCarga({
   onCreado: () => void;
 }) {
   const { productos, isLoading } = useProductos();
-  const [camion, setCamion] = useState("");
-  const [responsable, setResponsable] = useState("");
+  const { camiones, isLoading: cargandoCamiones } = useCamiones();
+  const { usuarios } = useUsuarios();
+
+  const [camionId, setCamionId] = useState("");
+  const [repartidorId, setRepartidorId] = useState("");
   const [query, setQuery] = useState("");
   const [cargas, setCargas] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
@@ -126,15 +135,19 @@ function FormularioCarga({
   const items = useMemo(
     () =>
       Object.entries(cargas)
-        .map(([producto_id, v]) => ({ producto_id, cargado: Number(v) }))
-        .filter((i) => Number.isFinite(i.cargado) && i.cargado > 0),
+        .map(([producto_id, v]) => ({ producto_id, cantidad_inicial: Number(v) }))
+        .filter((i) => Number.isFinite(i.cantidad_inicial) && i.cantidad_inicial > 0),
     [cargas]
   );
 
   async function handleGuardar() {
     if (guardando) return;
-    if (!camion.trim()) {
-      setError("Indicá el camión.");
+    if (!camionId) {
+      setError("Elegí el camión.");
+      return;
+    }
+    if (!repartidorId) {
+      setError("Elegí el repartidor.");
       return;
     }
     if (items.length === 0) {
@@ -143,11 +156,7 @@ function FormularioCarga({
     }
     setGuardando(true);
     setError(null);
-    const res = await abrirReparto({
-      camion: camion.trim(),
-      responsable: responsable.trim() || undefined,
-      items,
-    });
+    const res = await abrirReparto({ camion_id: camionId, repartidor_id: repartidorId, items });
     setGuardando(false);
     if (!res.ok) {
       setError(res.error);
@@ -173,23 +182,50 @@ function FormularioCarga({
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-slate-600">Camión</span>
-          <input
-            value={camion}
-            onChange={(e) => setCamion(e.target.value)}
-            placeholder="01"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-          />
+          <select
+            value={camionId}
+            onChange={(e) => {
+              setError(null);
+              setCamionId(e.target.value);
+            }}
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+          >
+            <option value="">
+              {cargandoCamiones ? "Cargando camiones…" : "Elegí un camión"}
+            </option>
+            {camiones.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.alias}
+                {c.patente ? ` · ${c.patente}` : ""}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Responsable</span>
-          <input
-            value={responsable}
-            onChange={(e) => setResponsable(e.target.value)}
-            placeholder="Juan Pérez"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-          />
+          <span className="mb-1 block text-xs font-medium text-slate-600">Repartidor</span>
+          <select
+            value={repartidorId}
+            onChange={(e) => {
+              setError(null);
+              setRepartidorId(e.target.value);
+            }}
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+          >
+            <option value="">Elegí un repartidor</option>
+            {usuarios.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nombre ?? u.email}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
+
+      {!cargandoCamiones && camiones.length === 0 ? (
+        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+          No hay camiones activos cargados. Dalos de alta antes de abrir un reparto.
+        </p>
+      ) : null}
 
       <div className="relative mt-4">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

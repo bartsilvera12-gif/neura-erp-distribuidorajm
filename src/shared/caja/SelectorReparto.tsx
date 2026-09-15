@@ -26,8 +26,8 @@ export default function SelectorReparto({ caja }: { caja: CajaVenta }) {
       {unico ? (
         <p className="text-sm text-slate-900">
           Camión <span className="font-semibold">{caja.repartosAbiertos[0].camion}</span>
-          {caja.repartosAbiertos[0].responsable ? (
-            <span className="text-slate-500"> · {caja.repartosAbiertos[0].responsable}</span>
+          {caja.repartosAbiertos[0].repartidor ? (
+            <span className="text-slate-500"> · {caja.repartosAbiertos[0].repartidor}</span>
           ) : null}
         </p>
       ) : (
@@ -47,9 +47,9 @@ export default function SelectorReparto({ caja }: { caja: CajaVenta }) {
                   }`}
                 >
                   Camión {r.camion}
-                  {r.responsable ? (
+                  {r.repartidor ? (
                     <span className="block text-[11px] font-normal text-slate-500">
-                      {r.responsable}
+                      {r.repartidor}
                     </span>
                   ) : null}
                 </button>

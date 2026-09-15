@@ -1,9 +1,12 @@
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { Reparto } from "./types";
+import type { Camion, Reparto } from "./types";
 
 export type ResultadoReparto = { ok: true; repartoId: string } | { ok: false; error: string };
 
-/** Repartos de un día, o solo los abiertos. `disponible` es false sin la migración 06. */
+/**
+ * Repartos de un día, o solo los abiertos. `disponible` es false si el schema
+ * no tiene el dominio de repartos.
+ */
 export async function getRepartos(opts?: {
   fecha?: string;
   abiertos?: boolean;
@@ -36,12 +39,32 @@ export async function getRepartos(opts?: {
   }
 }
 
-/** Abre un reparto con su carga inicial. */
+/** Camiones activos de la empresa. */
+export async function getCamiones(): Promise<Camion[]> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/camiones", { cache: "no-store" });
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { camiones?: Camion[] };
+      error?: string;
+    };
+    if (!res.ok || !json.success) {
+      console.error("[repartos] getCamiones:", json.error ?? res.statusText);
+      return [];
+    }
+    return json.data?.camiones ?? [];
+  } catch (e) {
+    console.error("[repartos] getCamiones:", e);
+    return [];
+  }
+}
+
+/** Abre un reparto con la carga del camión. */
 export async function abrirReparto(datos: {
-  camion: string;
-  responsable?: string;
-  observaciones?: string;
-  items: { producto_id: string; cargado: number }[];
+  camion_id: string;
+  repartidor_id: string;
+  fecha?: string;
+  items: { producto_id: string; cantidad_inicial: number }[];
 }): Promise<ResultadoReparto> {
   try {
     const res = await fetchWithSupabaseSession("/api/repartos", {
@@ -63,10 +86,10 @@ export async function abrirReparto(datos: {
   }
 }
 
-/** Guarda el conteo de retorno y cierra el reparto. */
+/** Cierra el reparto con la merma total declarada. */
 export async function cerrarReparto(
   repartoId: string,
-  items: { producto_id: string; retornado: number; devuelto: number }[]
+  datos: { merma_kg: number; notas_cierre?: string }
 ): Promise<ResultadoReparto> {
   try {
     const res = await fetchWithSupabaseSession(
@@ -74,7 +97,7 @@ export async function cerrarReparto(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify(datos),
       }
     );
     const json = (await res.json()) as { success?: boolean; error?: string };

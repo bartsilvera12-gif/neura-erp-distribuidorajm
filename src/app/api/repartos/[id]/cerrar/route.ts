@@ -10,35 +10,17 @@ import { hayTablasReparto } from "@/lib/repartos/server/repartos-pg";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Conteo = { producto_id: string; retornado: number; devuelto: number };
-
-function parseConteos(body: unknown): Conteo[] | null {
-  if (!body || typeof body !== "object") return null;
-  const raw = (body as { items?: unknown }).items;
-  if (!Array.isArray(raw)) return null;
-
-  const conteos: Conteo[] = [];
-  for (const it of raw) {
-    if (!it || typeof it !== "object") return null;
-    const o = it as Record<string, unknown>;
-    const producto_id = String(o.producto_id ?? "").trim();
-    const retornado = Number(o.retornado);
-    const devuelto = o.devuelto === undefined || o.devuelto === null ? 0 : Number(o.devuelto);
-    if (!producto_id || !UUID_RE.test(producto_id)) return null;
-    if (!Number.isFinite(retornado) || retornado < 0) return null;
-    if (!Number.isFinite(devuelto) || devuelto < 0) return null;
-    conteos.push({ producto_id, retornado, devuelto });
-  }
-  return conteos;
-}
-
 /**
  * POST /api/repartos/[id]/cerrar
- * Body: { items: [{producto_id, retornado, devuelto?}] }
+ * Body: { merma_kg?, notas_cierre? }
  *
- * Guarda el conteo de retorno y cierra el reparto. Exige contar TODOS los
- * productos cargados: un cierre con productos sin contar da una diferencia
- * incompleta que igual se leería como definitiva.
+ * El cierre no cuenta producto por producto: el reparto guarda una merma total
+ * (`repartos.merma_kg`), que es lo que se declara al volver al depósito.
+ *
+ * Antes de cerrar consolida `reparto_stock.cantidad_vendida` con lo realmente
+ * vendido en ese reparto. Esa columna es un acumulado que la venta mantiene en
+ * caliente; al cerrar se la recalcula desde `ventas` para que el histórico
+ * quede firme aunque algo la haya dejado atrasada.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const pool = getChatPostgresPool();
@@ -58,28 +40,34 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
     if (!(await hayTablasReparto(schema))) {
       return NextResponse.json(
-        errorResponse("Faltan las tablas de repartos. Corré 06_repartos.sql."),
+        errorResponse("Este schema no tiene el dominio de repartos (repartos / reparto_stock)."),
         { status: 409 }
       );
     }
 
-    const conteos = parseConteos(await request.json().catch(() => null));
-    if (conteos === null) {
-      return NextResponse.json(errorResponse("Conteo inválido: revisá las cantidades."), {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+
+    const crudo = body?.merma_kg;
+    const merma = crudo === undefined || crudo === null || crudo === "" ? 0 : Number(crudo);
+    if (!Number.isFinite(merma) || merma < 0) {
+      return NextResponse.json(errorResponse("La merma tiene que ser un número mayor o igual a 0."), {
         status: 400,
       });
     }
+    const notas = String(body?.notas_cierre ?? "").trim() || null;
 
     const tR = quoteSchemaTable(schema, "repartos");
-    const tI = quoteSchemaTable(schema, "reparto_items");
+    const tS = quoteSchemaTable(schema, "reparto_stock");
+    const tV = quoteSchemaTable(schema, "ventas");
+    const tVI = quoteSchemaTable(schema, "ventas_items");
 
     client = await pool.connect();
     await client.query("BEGIN");
 
-    // FOR UPDATE: dos cierres simultáneos del mismo reparto se serializan en vez
-    // de pisarse el conteo.
-    const repartoQ = await client.query<{ estado: string; camion: string }>(
-      `SELECT estado, camion FROM ${tR} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+    // FOR UPDATE: dos cierres simultáneos del mismo reparto se serializan en
+    // vez de pisarse.
+    const repartoQ = await client.query<{ estado: string }>(
+      `SELECT estado FROM ${tR} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
       [id, empresaId]
     );
     if (repartoQ.rows.length === 0) {
@@ -91,46 +79,27 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json(errorResponse("Ese reparto ya está cerrado."), { status: 409 });
     }
 
-    const cargadosQ = await client.query<{ producto_id: string }>(
-      `SELECT producto_id FROM ${tI} WHERE reparto_id = $1::uuid`,
+    await client.query(
+      `UPDATE ${tS} rs
+          SET cantidad_vendida = COALESCE((
+                SELECT sum(vi.cantidad)
+                  FROM ${tVI} vi
+                  JOIN ${tV} v ON v.id = vi.venta_id
+                 WHERE v.reparto_id = rs.reparto_id
+                   AND vi.producto_id = rs.producto_id
+                   AND COALESCE(v.estado, '') <> 'anulada'
+              ), 0),
+              updated_at = now()
+        WHERE rs.reparto_id = $1::uuid`,
       [id]
     );
-    const cargados = new Set(cargadosQ.rows.map((r) => r.producto_id));
-    const contados = new Set(conteos.map((c) => c.producto_id));
-
-    const sinContar = [...cargados].filter((p) => !contados.has(p));
-    if (sinContar.length > 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        errorResponse(
-          `Faltan contar ${sinContar.length} ${sinContar.length === 1 ? "producto" : "productos"} antes de cerrar.`
-        ),
-        { status: 400 }
-      );
-    }
-
-    const ajenos = conteos.filter((c) => !cargados.has(c.producto_id));
-    if (ajenos.length > 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        errorResponse("Hay productos contados que no estaban en la carga de este reparto."),
-        { status: 400 }
-      );
-    }
-
-    for (const c of conteos) {
-      await client.query(
-        `UPDATE ${tI}
-            SET retornado = $1, devuelto = $2, updated_at = now()
-          WHERE reparto_id = $3::uuid AND producto_id = $4::uuid`,
-        [c.retornado, c.devuelto, id, c.producto_id]
-      );
-    }
 
     await client.query(
-      `UPDATE ${tR} SET estado = 'cerrado', cerrado_at = now(), updated_at = now()
+      `UPDATE ${tR}
+          SET estado = 'cerrado', cerrado_at = now(), merma_kg = $2, notas_cierre = $3,
+              updated_at = now()
         WHERE id = $1::uuid`,
-      [id]
+      [id, merma, notas]
     );
 
     await client.query("COMMIT");

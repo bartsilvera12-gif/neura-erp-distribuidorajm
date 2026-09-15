@@ -325,6 +325,25 @@ export async function createVentaTransaccionalPg(
       );
     }
 
+    // Acumulado de lo que salió del camión. Es un espejo: el control de
+    // mercadería lo recalcula desde `ventas`, pero mantenerlo en caliente deja
+    // el dato a mano sin recorrer las ventas del día.
+    if (
+      params.repartoId !== null &&
+      columnas.has("reparto_id") &&
+      (await tablaExiste(client, params.schema, "reparto_stock"))
+    ) {
+      const stockT = quoteSchemaTable(params.schema, "reparto_stock");
+      for (const [productoId, cantidad] of qtyByProduct) {
+        await client.query(
+          `UPDATE ${stockT}
+              SET cantidad_vendida = cantidad_vendida + $1, updated_at = now()
+            WHERE reparto_id = $2::uuid AND producto_id = $3::uuid`,
+          [cantidad, params.repartoId, productoId]
+        );
+      }
+    }
+
     await client.query("COMMIT");
     return { ventaId, numeroControl, fechaIso };
   } catch (e) {

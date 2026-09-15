@@ -17,9 +17,9 @@ export function AvisoMercaderia() {
       <div className="text-xs leading-relaxed text-slate-600">
         <p className="font-semibold text-slate-700">Control de mercadería</p>
         <p className="mt-1">
-          Faltan las tablas de repartos. Corré{" "}
-          <code>supabase/distribuidorajm/06_repartos.sql</code> y vas a poder cargar el camión
-          a la mañana y contar lo que vuelve a la tarde.
+          Este schema no tiene el dominio de repartos (<code>repartos</code> y{" "}
+          <code>reparto_stock</code>), así que no hay carga del camión ni control de lo que
+          vuelve.
         </p>
       </div>
     </div>
