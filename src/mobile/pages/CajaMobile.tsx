@@ -673,10 +673,10 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           Nueva venta
         </button>
         <Link
-          href="/ventas"
+          href="/ventas/arqueo"
           className="mt-2 block w-full rounded-xl border border-slate-200 py-3.5 text-sm font-medium text-slate-600"
         >
-          Volver a Caja
+          Ver arqueo del día
         </Link>
       </div>
     </div>

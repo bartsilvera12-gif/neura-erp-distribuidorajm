@@ -506,10 +506,10 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
 
         <div className="mt-6 flex gap-2">
           <Link
-            href="/ventas"
+            href="/ventas/arqueo"
             className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
           >
-            Ver ventas
+            Ver arqueo
           </Link>
           <button
             type="button"
