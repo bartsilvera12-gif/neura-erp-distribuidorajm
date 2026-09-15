@@ -29,9 +29,11 @@ export async function getRepartos(opts?: {
       console.error("[repartos] getRepartos:", json.error ?? res.statusText);
       return { disponible: false, repartos: [] };
     }
+    // Cada reparto sale de acá con `items` sí o sí: una pantalla que recorre la
+    // lista no tiene por qué defenderse de una respuesta incompleta.
     return {
       disponible: json.data.disponible === true,
-      repartos: json.data.repartos ?? [],
+      repartos: (json.data.repartos ?? []).map((r) => ({ ...r, items: r.items ?? [] })),
     };
   } catch (e) {
     console.error("[repartos] getRepartos:", e);

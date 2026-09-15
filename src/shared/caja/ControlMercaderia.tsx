@@ -36,13 +36,18 @@ export default function ControlMercaderia({
   onActualizar?: () => void;
 }) {
   const abierto = reparto.estado === "abierto";
+
+  // `items` puede no venir: una respuesta de una versión anterior del servidor,
+  // o un reparto que todavía no tiene foto de mercadería. Asumir que siempre
+  // está tiraba la pantalla entera con "Application error" y sin nada que leer.
+  const items = useMemo(() => reparto.items ?? [], [reparto.items]);
   const [accion, setAccion] = useState<"carga" | "transferencia" | null>(null);
 
   // Texto y no número, para distinguir "vacío" (sin contar) de "0" (contado y
   // no volvió nada).
   const [conteos, setConteos] = useState<Record<string, { contado: string; motivo: string }>>(() =>
     Object.fromEntries(
-      reparto.items.map((i) => [
+      items.map((i) => [
         i.producto_id,
         { contado: i.contado === null ? "" : String(i.contado), motivo: i.motivo ?? "" },
       ])
@@ -62,7 +67,7 @@ export default function ControlMercaderia({
   /** Filas con los números en vivo: al tipear, la diferencia se recalcula sola. */
   const filas = useMemo(
     () =>
-      reparto.items.map((i) => {
+      items.map((i) => {
         const c = conteos[i.producto_id] ?? { contado: "", motivo: "" };
         const sinContar = c.contado.trim() === "";
         const contado = sinContar ? null : Number(c.contado);
@@ -77,7 +82,7 @@ export default function ControlMercaderia({
           valido,
         };
       }),
-    [reparto.items, conteos, abierto]
+    [items, conteos, abierto]
   );
 
   const faltanContar = filas.filter((f) => f.sinContar).length;
@@ -196,7 +201,7 @@ export default function ControlMercaderia({
         </div>
       ) : null}
 
-      {reparto.items.length === 0 ? (
+      {items.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-slate-400">
           El camión salió sin mercadería. Registrá una carga de proveedor.
         </p>
