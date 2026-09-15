@@ -155,6 +155,13 @@ export default function ArqueoMobile() {
         </p>
 
         <Link
+          href="/ventas/cierre"
+          className="block w-full rounded-xl border border-slate-200 bg-white py-3.5 text-center text-sm font-medium text-slate-600"
+        >
+          Cierre de reparto
+        </Link>
+
+        <Link
           href="/ventas/nueva"
           className="block w-full rounded-xl py-3.5 text-center text-sm font-semibold text-white"
           style={{ backgroundColor: TEAL }}
