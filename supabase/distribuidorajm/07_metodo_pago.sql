@@ -9,8 +9,9 @@
 --
 -- Este script:
 --   1. Borra `forma_pago` y todo lo suyo. Aborta si alguna venta la usa.
---   2. Agrega `cheque` a los valores válidos de `metodo_pago`.
---   3. Hace lo mismo con `caja_movimientos.medio_pago`, si tiene CHECK.
+--   2. Agrega `cheque` a `ventas.metodo_pago` y a `caja_movimientos.medio_pago`,
+--      preservando lo que cada una ya tenía. NO son la misma lista: ventas usa
+--      `mixto` y caja_movimientos usa `otro`.
 --
 -- Idempotente. Solo toca distribuidorajmerp.
 -- =============================================================================
@@ -47,96 +48,75 @@ BEGIN
 END;
 $$;
 
--- ── 2. Ampliar metodo_pago con `cheque` ─────────────────────────────────────
+-- ── 2. Agregar `cheque` sin pisar los valores que ya existen ────────────────
+-- La lista nueva se arma leyendo la actual del CHECK y sumándole `cheque`, en
+-- vez de escribir una fija: una lista fija le borraría `otro` a
+-- caja_movimientos o `mixto` a ventas, según cuál se eligiera.
 DO $$
 DECLARE
-  v_conname text;
-  v_invalidos bigint;
-BEGIN
-  -- El CHECK existente se busca por su definición y no por nombre: el nombre
-  -- lo puso Postgres y no tiene por qué ser el mismo en todos los schemas.
-  SELECT conname INTO v_conname
-  FROM pg_constraint
-  WHERE conrelid = 'distribuidorajmerp.ventas'::regclass
-    AND contype = 'c'
-    AND pg_get_constraintdef(oid) LIKE '%metodo_pago%'
-  LIMIT 1;
-
-  -- Si ya acepta cheque, no hay nada que hacer.
-  IF v_conname IS NOT NULL AND (
-    SELECT pg_get_constraintdef(oid) FROM pg_constraint
-    WHERE conrelid = 'distribuidorajmerp.ventas'::regclass AND conname = v_conname
-  ) LIKE '%cheque%' THEN
-    RAISE NOTICE 'metodo_pago ya acepta cheque.';
-    RETURN;
-  END IF;
-
-  SELECT count(*) INTO v_invalidos
-  FROM distribuidorajmerp.ventas
-  WHERE metodo_pago IS NOT NULL
-    AND metodo_pago NOT IN ('efectivo', 'tarjeta', 'transferencia', 'mixto', 'cheque');
-  IF v_invalidos > 0 THEN
-    RAISE EXCEPTION
-      'Hay % ventas con un metodo_pago fuera de la lista nueva. Revisalas antes de ajustar el CHECK.',
-      v_invalidos;
-  END IF;
-
-  IF v_conname IS NOT NULL THEN
-    EXECUTE format('ALTER TABLE distribuidorajmerp.ventas DROP CONSTRAINT %I', v_conname);
-  END IF;
-
-  ALTER TABLE distribuidorajmerp.ventas
-    ADD CONSTRAINT ventas_metodo_pago_check
-    CHECK (metodo_pago IS NULL OR metodo_pago IN ('efectivo','tarjeta','transferencia','mixto','cheque'));
-
-  RAISE NOTICE 'metodo_pago ahora acepta cheque.';
-END;
-$$;
-
--- ── 3. Lo mismo en caja_movimientos.medio_pago ──────────────────────────────
-DO $$
-DECLARE
+  t record;
   v_conname text;
   v_def text;
+  v_valores text[];
   v_invalidos bigint;
 BEGIN
-  IF to_regclass('distribuidorajmerp.caja_movimientos') IS NULL THEN
-    RAISE NOTICE 'No hay caja_movimientos: se omite.';
-    RETURN;
-  END IF;
+  FOR t IN
+    SELECT * FROM (VALUES
+      ('ventas',           'metodo_pago'),
+      ('caja_movimientos', 'medio_pago')
+    ) AS x(tabla, columna)
+  LOOP
+    IF to_regclass('distribuidorajmerp.' || t.tabla) IS NULL THEN
+      RAISE NOTICE '%: no existe, se omite.', t.tabla;
+      CONTINUE;
+    END IF;
 
-  SELECT conname, pg_get_constraintdef(oid) INTO v_conname, v_def
-  FROM pg_constraint
-  WHERE conrelid = 'distribuidorajmerp.caja_movimientos'::regclass
-    AND contype = 'c'
-    AND pg_get_constraintdef(oid) LIKE '%medio_pago%'
-  LIMIT 1;
+    SELECT conname, pg_get_constraintdef(oid) INTO v_conname, v_def
+    FROM pg_constraint
+    WHERE conrelid = ('distribuidorajmerp.' || t.tabla)::regclass
+      AND contype = 'c'
+      AND pg_get_constraintdef(oid) LIKE '%' || t.columna || '%'
+    LIMIT 1;
 
-  IF v_conname IS NULL THEN
-    RAISE NOTICE 'medio_pago no tiene CHECK: no hace falta ampliarlo.';
-    RETURN;
-  END IF;
-  IF v_def LIKE '%cheque%' THEN
-    RAISE NOTICE 'medio_pago ya acepta cheque.';
-    RETURN;
-  END IF;
+    IF v_conname IS NULL THEN
+      RAISE NOTICE '%.%: sin CHECK, no hace falta ampliarlo.', t.tabla, t.columna;
+      CONTINUE;
+    END IF;
+    IF v_def LIKE '%cheque%' THEN
+      RAISE NOTICE '%.%: ya acepta cheque.', t.tabla, t.columna;
+      CONTINUE;
+    END IF;
 
-  SELECT count(*) INTO v_invalidos
-  FROM distribuidorajmerp.caja_movimientos
-  WHERE medio_pago IS NOT NULL
-    AND medio_pago NOT IN ('efectivo', 'tarjeta', 'transferencia', 'mixto', 'cheque');
-  IF v_invalidos > 0 THEN
-    RAISE EXCEPTION
-      'Hay % movimientos con un medio_pago fuera de la lista nueva. Revisalos antes de ajustar el CHECK.',
-      v_invalidos;
-  END IF;
+    -- Valores actuales, leídos del propio CHECK.
+    SELECT array_agg(DISTINCT m[1] ORDER BY m[1])
+    INTO v_valores
+    FROM regexp_matches(v_def, $re$'([a-zA-Z_]+)'::text$re$, 'g') AS m;
 
-  EXECUTE format('ALTER TABLE distribuidorajmerp.caja_movimientos DROP CONSTRAINT %I', v_conname);
-  ALTER TABLE distribuidorajmerp.caja_movimientos
-    ADD CONSTRAINT caja_movimientos_medio_pago_check
-    CHECK (medio_pago IN ('efectivo','tarjeta','transferencia','mixto','cheque'));
+    IF v_valores IS NULL OR cardinality(v_valores) = 0 THEN
+      RAISE NOTICE '%.%: no se pudo leer la lista de valores, se omite.', t.tabla, t.columna;
+      CONTINUE;
+    END IF;
+    -- array_append explícito: con el operador ||, Postgres intenta leer
+    -- 'cheque' como literal de array y falla.
+    v_valores := array_append(v_valores, 'cheque');
 
-  RAISE NOTICE 'medio_pago de caja_movimientos ahora acepta cheque.';
+    EXECUTE format(
+      'SELECT count(*) FROM distribuidorajmerp.%I WHERE %I IS NOT NULL AND NOT (%I = ANY($1))',
+      t.tabla, t.columna, t.columna
+    ) INTO v_invalidos USING v_valores;
+    IF v_invalidos > 0 THEN
+      RAISE EXCEPTION 'Hay % filas en % con un % fuera de la lista. Revisalas antes de ajustar el CHECK.',
+        v_invalidos, t.tabla, t.columna;
+    END IF;
+
+    EXECUTE format('ALTER TABLE distribuidorajmerp.%I DROP CONSTRAINT %I', t.tabla, v_conname);
+    EXECUTE format(
+      'ALTER TABLE distribuidorajmerp.%I ADD CONSTRAINT %I CHECK (%I IS NULL OR %I = ANY(%L))',
+      t.tabla, t.tabla || '_' || t.columna || '_check', t.columna, t.columna, v_valores
+    );
+
+    RAISE NOTICE '%.%: ahora acepta %', t.tabla, t.columna, array_to_string(v_valores, ', ');
+  END LOOP;
 END;
 $$;
 
