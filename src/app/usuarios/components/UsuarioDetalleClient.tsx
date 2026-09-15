@@ -294,10 +294,6 @@ export default function UsuarioDetalleClient({
       };
       if (usuario.puede_editar_rol) {
         body.rol = rolFromNivelForm(form.nivel);
-        body.es_qa = form.es_qa;
-        body.es_project_manager = form.es_project_manager;
-        body.es_tecnico = form.es_tecnico;
-        body.notificar_entregas = form.notificar_entregas;
       }
       if (usuario.puede_editar_modulos && !usuario.es_admin_empresa) {
         body.modulo_ids = form.modulo_ids;
