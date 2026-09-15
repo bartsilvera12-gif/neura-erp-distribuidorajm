@@ -5,12 +5,16 @@ import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
+import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
 /** Arqueo de caja desktop: las cajas del día en grilla. */
 export default function ArqueoDesktop() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   const { arqueo, isLoading, mutate } = useArqueo(fecha);
+  // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
+  const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -54,6 +58,17 @@ export default function ArqueoDesktop() {
           </Link>
         </div>
       </header>
+
+      <div className="mb-5">
+        <AperturaCaja
+          caja={cajaAbierta}
+          onCambio={() => {
+            recargarCaja();
+            mutate();
+          }}
+        />
+      </div>
+
 
       {isLoading && !arqueo ? (
         <p className="py-16 text-center text-sm text-slate-400">Cargando…</p>

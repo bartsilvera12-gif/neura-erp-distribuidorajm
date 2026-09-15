@@ -5,12 +5,16 @@ import { useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
+import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
 /** Arqueo de caja mobile: una tarjeta por caja del día. */
 export default function ArqueoMobile() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   const { arqueo, isLoading, mutate } = useArqueo(fecha);
+  // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
+  const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
 
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
@@ -46,6 +50,17 @@ export default function ArqueoMobile() {
         />
         <p className="mt-2 text-xs text-white/70">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
       </header>
+
+      <div className="mb-5">
+        <AperturaCaja
+          caja={cajaAbierta}
+          onCambio={() => {
+            recargarCaja();
+            mutate();
+          }}
+        />
+      </div>
+
 
       <div className="space-y-3 px-4 pt-4">
         {isLoading && !arqueo ? (

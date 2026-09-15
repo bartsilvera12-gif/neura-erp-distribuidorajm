@@ -22,7 +22,7 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
-import AvisoCajaCerrada from "@/shared/caja/AvisoCajaCerrada";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
 
 /**
  * Caja desktop. Misma lógica que la mobile (`useCajaVenta`), otro layout.
@@ -264,7 +264,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
 
           {caja.faltaCaja ? (
             <div className="mt-4">
-              <AvisoCajaCerrada />
+              <AperturaCaja caja={null} onCambio={() => caja.recargarCaja()} />
             </div>
           ) : null}
 

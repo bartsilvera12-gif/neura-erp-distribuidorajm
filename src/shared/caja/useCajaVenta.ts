@@ -68,7 +68,7 @@ export function useCajaVenta() {
   const [aCredito, setACredito] = useState(false);
   const [plazoDias, setPlazoDias] = useState("");
 
-  const { caja, disponible: cajasDisponibles } = useCajaAbierta();
+  const { caja, disponible: cajasDisponibles, mutate: recargarCaja } = useCajaAbierta();
 
   // ── Reparto ────────────────────────────────────────────────────────────────
   // Si hay repartos abiertos, la venta tiene que salir de uno: es lo que después
@@ -400,6 +400,7 @@ export function useCajaVenta() {
     caja,
     cajasDisponibles,
     faltaCaja,
+    recargarCaja,
     guardando,
     error,
     ventaCreada,

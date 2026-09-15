@@ -25,7 +25,7 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
-import AvisoCajaCerrada from "@/shared/caja/AvisoCajaCerrada";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
 
 /**
  * Caja mobile: asistente de cobro a pantalla completa.
@@ -523,7 +523,7 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
     <div className="pt-4">
       {caja.faltaCaja ? (
         <div className="mb-3">
-          <AvisoCajaCerrada />
+          <AperturaCaja caja={null} onCambio={() => caja.recargarCaja()} />
         </div>
       ) : null}
 
