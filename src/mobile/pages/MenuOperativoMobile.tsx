@@ -43,7 +43,7 @@ const TILES: Tile[] = [
   },
   { href: "/clientes", label: "Clientes", icon: Users, fondo: "#2F7D82" },
   { href: "/cobranzas", label: "Cobranzas", icon: HandCoins, fondo: "#C77B30" },
-  { href: "/ventas/repartos", label: "Stock del camión", icon: Package, fondo: "#4F6D9E" },
+  { href: "/ventas/stock-camion", label: "Stock del camión", icon: Package, fondo: "#4F6D9E" },
   { href: "/notas-credito", label: "Devoluciones", icon: ArrowLeftRight, fondo: "#B04B4B" },
   { href: "/ventas/arqueo", label: "Arqueo de caja", icon: ClipboardCheck, fondo: "#4FAEB2" },
   { href: "/ventas/cierre", label: "Cierre de reparto", icon: Truck, fondo: "#5B6B7A" },
