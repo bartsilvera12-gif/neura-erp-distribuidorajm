@@ -10,6 +10,7 @@ import { API_ERRORS } from "@/lib/api/errors";
 /** Zona del negocio: el día del cierre es el día calendario en Paraguay. */
 const TZ = "America/Asuncion";
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function num(v: string | number | null): number {
   if (v === null) return 0;
@@ -27,11 +28,17 @@ function etiquetaMetodo(clave: string): string {
 }
 
 /**
- * GET /api/ventas/cierre?fecha=YYYY-MM-DD
+ * GET /api/ventas/cierre?fecha=YYYY-MM-DD | ?reparto=<uuid>
  *
  * Cierre del día: lo vendido (facturado, contado, crédito, anulado) y lo
  * cobrado por método. Son dos cosas distintas —una venta a crédito factura hoy
  * y se cobra otro día—, así que van separadas y no se suman.
+ *
+ * Con `reparto` el cierre se acota a la jornada de ese camión y agrega el
+ * control de mercadería. Las cobranzas pasan a leerse de los movimientos de
+ * caja de las ventas del reparto: es lo único que ata plata cobrada con camión.
+ * Un cobro de cuenta corriente que el repartidor haga en la calle no queda
+ * incluido, porque nada lo liga al reparto.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -43,6 +50,11 @@ export async function GET(request: NextRequest) {
     const pool = getChatPostgresPool();
     if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
 
+    const repartoId = request.nextUrl.searchParams.get("reparto")?.trim() ?? "";
+    if (repartoId && !UUID_RE.test(repartoId)) {
+      return NextResponse.json(errorResponse("Reparto inválido."), { status: 400 });
+    }
+
     const pedida = request.nextUrl.searchParams.get("fecha")?.trim() ?? "";
     if (pedida && !FECHA_RE.test(pedida)) {
       return NextResponse.json(errorResponse("Fecha inválida: se espera YYYY-MM-DD."), {
@@ -50,10 +62,48 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Datos del reparto: además de identificarlo, su fecha manda sobre la
+    // pedida — el cierre de un reparto es el de SU jornada.
+    let reparto: {
+      id: string;
+      camion: string;
+      repartidor: string | null;
+      estado: string;
+      ubicacion_id: string | null;
+      fecha: string;
+    } | null = null;
+
+    if (repartoId) {
+      const tR = quoteSchemaTable(schema, "repartos");
+      const tC = quoteSchemaTable(schema, "camiones");
+      const tU = quoteSchemaTable(schema, "usuarios");
+      const repQ = await queryWithRetry<{
+        id: string;
+        camion: string;
+        repartidor: string | null;
+        estado: string;
+        ubicacion_id: string | null;
+        fecha: string;
+      }>(
+        pool,
+        `SELECT r.id, c.alias AS camion, COALESCE(u.nombre, u.email) AS repartidor,
+                r.estado, c.ubicacion_id, r.fecha::text AS fecha
+           FROM ${tR} r
+           JOIN ${tC} c ON c.id = r.camion_id
+           LEFT JOIN ${tU} u ON u.id = r.repartidor_id
+          WHERE r.id = $1::uuid AND r.empresa_id = $2::uuid`,
+        [repartoId, empresaId]
+      );
+      if (repQ.rows.length === 0) {
+        return NextResponse.json(errorResponse("Reparto no encontrado."), { status: 404 });
+      }
+      reparto = repQ.rows[0];
+    }
+
     const fechaQ = await queryWithRetry<{ fecha: string }>(
       pool,
       `SELECT COALESCE(NULLIF($1, '')::date, (now() AT TIME ZONE $2)::date)::text AS fecha`,
-      [pedida, TZ]
+      [reparto?.fecha ?? pedida, TZ]
     );
     const fecha = fechaQ.rows[0].fecha;
 
@@ -72,9 +122,9 @@ export async function GET(request: NextRequest) {
               COALESCE(sum(total), 0)::text AS total
          FROM ${tV}
         WHERE empresa_id = $1::uuid
-          AND (fecha AT TIME ZONE $2)::date = $3::date
+          ${reparto ? "AND reparto_id = $4::uuid" : "AND (fecha AT TIME ZONE $2)::date = $3::date"}
         GROUP BY 1, 2`,
-      [empresaId, TZ, fecha]
+      reparto ? [empresaId, TZ, fecha, reparto.id] : [empresaId, TZ, fecha]
     );
 
     const ventas = {
@@ -117,7 +167,46 @@ export async function GET(request: NextRequest) {
       cantidad: number;
     } = { disponible: false, lineas: [], total: 0, cantidad: 0 };
 
-    if (hayPagos) {
+    // Con reparto, lo cobrado sale de los movimientos de caja de SUS ventas:
+    // `pagos` no sabe de qué camión vino la plata.
+    if (reparto) {
+      const tM = quoteSchemaTable(schema, "caja_movimientos");
+      const tV2 = quoteSchemaTable(schema, "ventas");
+      const existeMovQ = await queryWithRetry<{ existe: string | null }>(
+        pool,
+        `SELECT to_regclass($1)::text AS existe`,
+        [`${schema}.caja_movimientos`]
+      );
+      if (existeMovQ.rows[0]?.existe !== null) {
+        const movQ = await queryWithRetry<{ metodo: string; cantidad: string; total: string }>(
+          pool,
+          `SELECT lower(btrim(COALESCE(m.medio_pago, ''))) AS metodo,
+                  count(*)::text                          AS cantidad,
+                  COALESCE(sum(m.monto), 0)::text         AS total
+             FROM ${tM} m
+             JOIN ${tV2} v ON v.id = m.venta_id
+            WHERE m.empresa_id = $1::uuid
+              AND v.reparto_id = $2::uuid
+              AND m.tipo = 'ingreso'
+              AND m.anulado_at IS NULL
+            GROUP BY 1
+            ORDER BY sum(m.monto) DESC NULLS LAST`,
+          [empresaId, reparto.id]
+        );
+        const lineas = movQ.rows.map((r) => ({
+          metodo: r.metodo,
+          label: etiquetaMetodo(r.metodo),
+          cantidad: num(r.cantidad),
+          total: num(r.total),
+        }));
+        cobranzas = {
+          disponible: true,
+          lineas,
+          total: lineas.reduce((acc, l) => acc + l.total, 0),
+          cantidad: lineas.reduce((acc, l) => acc + l.cantidad, 0),
+        };
+      }
+    } else if (hayPagos) {
       const tP = quoteSchemaTable(schema, "pagos");
       const pagosQ = await queryWithRetry<{
         metodo: string;
@@ -153,7 +242,104 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    return NextResponse.json(successResponse({ cierre: { fecha, ventas, cobranzas } }));
+    // ── Control de mercadería del reparto ───────────────────────────────────
+    // Los totales se agrupan por unidad y no se suman entre sí: kilos y
+    // unidades no se pueden sumar, y un total mezclado sería un número sin
+    // sentido. Cuando todo el camión va en kg queda una sola línea, que es el
+    // caso normal de la distribuidora.
+    let mercaderia: {
+      disponible: boolean;
+      contado: boolean;
+      lineas: {
+        unidad: string;
+        inicial: number;
+        vendido: number;
+        devuelto: number;
+        regresa: number;
+        diferencia: number;
+      }[];
+    } = { disponible: false, contado: false, lineas: [] };
+
+    if (reparto && reparto.ubicacion_id) {
+      const tS = quoteSchemaTable(schema, "reparto_stock");
+      const tP2 = quoteSchemaTable(schema, "productos");
+      const tSU = quoteSchemaTable(schema, "inventario_stock_ubicacion");
+      const tV3 = quoteSchemaTable(schema, "ventas");
+      const tVI = quoteSchemaTable(schema, "ventas_items");
+
+      const mercQ = await queryWithRetry<{
+        unidad: string;
+        inicial: string;
+        vendido: string;
+        devuelto: string;
+        teorico: string;
+        contado: string | null;
+      }>(
+        pool,
+        `SELECT COALESCE(NULLIF(rs.unidad_medida, ''), p.unidad_medida, '') AS unidad,
+                COALESCE(sum(rs.cantidad_inicial), 0)::text  AS inicial,
+                COALESCE(sum(rs.cantidad_devuelta), 0)::text AS devuelto,
+                COALESCE(sum(COALESCE(su.stock_actual, 0)), 0)::text AS teorico,
+                CASE WHEN count(rs.cantidad_contada) = 0 THEN NULL
+                     ELSE COALESCE(sum(rs.cantidad_contada), 0)::text END AS contado,
+                COALESCE(sum((
+                  SELECT COALESCE(sum(vi.cantidad), 0)
+                    FROM ${tVI} vi
+                    JOIN ${tV3} v ON v.id = vi.venta_id
+                   WHERE v.reparto_id = rs.reparto_id
+                     AND vi.producto_id = rs.producto_id
+                     AND COALESCE(v.estado, '') <> 'anulada'
+                )), 0)::text AS vendido
+           FROM ${tS} rs
+           JOIN ${tP2} p ON p.id = rs.producto_id
+           LEFT JOIN ${tSU} su
+                  ON su.producto_id = rs.producto_id AND su.ubicacion_id = $2::uuid
+          WHERE rs.reparto_id = $1::uuid
+          GROUP BY 1
+          ORDER BY 1`,
+        [reparto.id, reparto.ubicacion_id]
+      );
+
+      const lineas = mercQ.rows.map((r) => {
+        const teorico = num(r.teorico);
+        const contado = r.contado === null ? null : num(r.contado);
+        // Cerrado, lo que regresa es lo que se contó; abierto, lo que debería.
+        const regresa = contado ?? teorico;
+        return {
+          unidad: r.unidad,
+          inicial: num(r.inicial),
+          vendido: num(r.vendido),
+          devuelto: num(r.devuelto),
+          regresa,
+          diferencia: contado === null ? 0 : contado - teorico,
+        };
+      });
+
+      mercaderia = {
+        disponible: lineas.length > 0,
+        contado: mercQ.rows.some((r) => r.contado !== null),
+        lineas,
+      };
+    }
+
+    return NextResponse.json(
+      successResponse({
+        cierre: {
+          fecha,
+          reparto: reparto
+            ? {
+                id: reparto.id,
+                camion: reparto.camion,
+                repartidor: reparto.repartidor,
+                estado: reparto.estado === "cerrado" ? "cerrado" : "abierto",
+              }
+            : null,
+          ventas,
+          cobranzas,
+          mercaderia,
+        },
+      })
+    );
   } catch (err) {
     console.error("[/api/ventas/cierre GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo calcular el cierre."), { status: 500 });

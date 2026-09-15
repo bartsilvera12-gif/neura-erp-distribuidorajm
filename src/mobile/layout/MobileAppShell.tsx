@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "./BottomNav";
 import MobileHeader from "./MobileHeader";
-import MobileMenu from "./MobileMenu";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 
 const STANDALONE_ROUTES = ["/login"];
@@ -20,22 +18,15 @@ const STANDALONE_ROUTES = ["/login"];
  *  │  BottomNav (fixed bottom)    │
  *  └──────────────────────────────┘
  *
- *  Menú lateral: MobileMenu (CSS-only) que se desliza desde la izquierda al tocar
- *  el ícono de menú del header. NO usa el Sidebar desktop
- *  (que carga framer-motion + favoritos + búsqueda compleja).
+ *  Sin menú lateral: la navegación mobile es el menú de tiles de Inicio más la
+ *  barra inferior, como el ERP de reparto del cliente. El sheet lateral quedó
+ *  sin forma de abrirse y se eliminó; está en el historial si hace falta.
  */
 export default function MobileAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // /m/* = app móvil del asesor (Capacitor/APK): pantalla completa, sin header/bottom-nav del ERP.
   const isStandalone =
     !!pathname && (STANDALONE_ROUTES.includes(pathname) || pathname.startsWith("/m/"));
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  // Cerrar el menú al cambiar de ruta.
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
-
   if (isStandalone) {
     return <>{children}</>;
   }
@@ -51,9 +42,7 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
       */}
       <CapacitorPushRegister />
 
-      <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
-
-      <MobileHeader onOpenMenu={() => setMenuOpen(true)} />
+      <MobileHeader />
 
       <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-16">
         {children}

@@ -54,3 +54,9 @@ export function AvisoSinCajas() {
     </p>
   );
 }
+
+/** Fecha corta dd/mm/aaaa, como la escribe el cierre en papel. */
+export function fechaCorta(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return d && m && y ? `${d}/${m}/${y}` : iso;
+}
