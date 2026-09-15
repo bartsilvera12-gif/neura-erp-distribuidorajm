@@ -6,6 +6,7 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { hayTablasReparto, usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
@@ -77,6 +78,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user.email }, "reparto.cerrar"))) {
+      return NextResponse.json(errorResponse("No tenés permiso para cerrar repartos."), { status: 403 });
+    }
 
     const conteos = parseConteos(body);
     if (conteos === null) {

@@ -7,6 +7,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 
 /** GET /api/cajas?estado=abierta — la caja abierta de la empresa, si hay. */
 export async function GET(request: NextRequest) {
@@ -91,6 +92,12 @@ export async function POST(request: NextRequest) {
 
     const empresaId = ctx.auth.empresa_id;
     const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user.email }, "caja.abrir"))) {
+      return NextResponse.json(errorResponse("No tenés permiso para abrir la caja."), {
+        status: 403,
+      });
+    }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const crudo = body?.monto_apertura;

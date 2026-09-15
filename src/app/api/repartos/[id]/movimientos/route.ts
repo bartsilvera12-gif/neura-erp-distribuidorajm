@@ -6,6 +6,7 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
@@ -72,6 +73,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const tipo = String(body?.tipo ?? "").trim();
     if (tipo !== "carga" && tipo !== "transferencia") {
       return NextResponse.json(errorResponse("Tipo de movimiento inválido."), { status: 400 });
+    }
+
+    const accion = tipo === "carga" ? "reparto.cargar" : "reparto.transferir";
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user.email }, accion))) {
+      return NextResponse.json(
+        errorResponse(
+          tipo === "carga"
+            ? "No tenés permiso para cargar mercadería."
+            : "No tenés permiso para descargar mercadería."
+        ),
+        { status: 403 }
+      );
     }
 
     const lineas = parseLineas(body);

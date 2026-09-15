@@ -6,6 +6,7 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 import {
   hayTablasReparto,
   listarRepartos,
@@ -96,6 +97,9 @@ export async function POST(request: NextRequest) {
 
     if (!(await hayTablasReparto(schema))) {
       return NextResponse.json(errorResponse(SIN_TABLAS), { status: 409 });
+    }
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user.email }, "reparto.abrir"))) {
+      return NextResponse.json(errorResponse("No tenés permiso para abrir repartos."), { status: 403 });
     }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

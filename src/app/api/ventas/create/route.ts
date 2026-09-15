@@ -5,6 +5,7 @@ import { createVentaTransaccionalPg } from "@/lib/ventas/server/create-venta-pg"
 import type { CreateVentaItemInput } from "@/lib/ventas/server/create-venta-pg";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 import type { Venta, LineaVenta } from "@/lib/ventas/types";
 
 function asItems(body: unknown): CreateVentaItemInput[] | null {
@@ -159,6 +160,20 @@ export async function POST(request: NextRequest) {
     }
 
     const schema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
+
+    // Vender a crédito es comprometer plata de la empresa: se puede negar por
+    // usuario. Se valida acá y no solo escondiendo el switch en la pantalla.
+    if (
+      tipoVenta === "CREDITO" &&
+      !(await puede(
+        { schema, empresaId: auth.empresa_id, email: auth.user.email },
+        "venta.credito"
+      ))
+    ) {
+      return NextResponse.json(errorResponse("No tenés permiso para vender a crédito."), {
+        status: 403,
+      });
+    }
 
     // Sin caja abierta no se cobra, igual que el resto del ERP. Se valida acá y
     // no solo en la pantalla: una venta sin caja rompe el arqueo del día.

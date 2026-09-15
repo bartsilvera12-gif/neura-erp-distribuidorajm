@@ -6,6 +6,7 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,6 +42,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const empresaId = ctx.auth.empresa_id;
     const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user.email }, "caja.cerrar"))) {
+      return NextResponse.json(errorResponse("No tenés permiso para cerrar la caja."), {
+        status: 403,
+      });
+    }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const crudo = body?.monto_cierre_contado;

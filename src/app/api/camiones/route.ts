@@ -5,6 +5,7 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { listarCamiones } from "@/lib/repartos/server/repartos-pg";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
@@ -70,6 +71,12 @@ export async function POST(request: NextRequest) {
 
     const empresaId = ctx.auth.empresa_id;
     const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user.email }, "camion.administrar"))) {
+      return NextResponse.json(errorResponse("No tenés permiso para administrar camiones."), {
+        status: 403,
+      });
+    }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const alias = String(body?.alias ?? "").trim();
