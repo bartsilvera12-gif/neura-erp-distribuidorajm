@@ -93,9 +93,12 @@ function rowToMovimiento(row: MovimientoRow): MovimientoInventario {
 // ─── Productos ─────────────────────────────────────────────────────────────────
 
 /** Lista productos via API server-side (PG directo, soporta tenants erp_* no expuestos). */
-export async function getProductos(): Promise<Producto[]> {
+export async function getProductos(repartoId?: string | null): Promise<Producto[]> {
   try {
-    const r = await fetch("/api/productos", { credentials: "include", cache: "no-store" });
+    // Con reparto, el servidor devuelve el stock de ese camión en vez del
+    // global: lo que el vendedor tiene arriba es lo único que puede vender.
+    const qs = repartoId ? `?reparto_id=${encodeURIComponent(repartoId)}` : "";
+    const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
       console.error("[inventario] getProductos:", (j as { error?: string })?.error ?? r.status);

@@ -281,7 +281,8 @@ function PasoCliente({ caja }: { caja: CajaVenta }) {
 // ── Paso 2: productos ────────────────────────────────────────────────────────
 
 function PasoProductos({ caja }: { caja: CajaVenta }) {
-  const { productos, isLoading } = useProductos();
+  // Si la venta sale de un camión, el catálogo es el stock de ese camión.
+  const { productos, isLoading } = useProductos(caja.repartoId);
   const [query, setQuery] = useState("");
 
   const filtrados = useMemo(() => {
@@ -309,7 +310,11 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
         <p className="mt-6 text-center text-sm text-slate-400">Cargando productos…</p>
       ) : filtrados.length === 0 ? (
         <p className="mt-6 text-center text-sm text-slate-400">
-          {query ? `Ningún producto coincide con “${query}”.` : "No hay productos con stock."}
+          {query
+            ? `Ningún producto coincide con “${query}”.`
+            : caja.repartoId
+              ? "El camión está vacío. Cargalo desde Repartos antes de salir."
+              : "No hay productos con stock."}
         </p>
       ) : (
         <ul className="mt-3 space-y-2">

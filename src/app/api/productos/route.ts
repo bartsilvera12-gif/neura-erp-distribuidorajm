@@ -16,8 +16,44 @@ import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/norma
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 
 /**
- * GET /api/productos — lista todos los productos activos via PG directo
+ * Ubicación de inventario del camión de un reparto.
+ *
+ * Devuelve `null` si el reparto no existe, no es de esta empresa o su camión
+ * todavía no tiene ubicación: en todos esos casos se cae al stock global en vez
+ * de dejar la lista vacía sin explicación.
+ */
+async function ubicacionDelReparto(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  schema: string,
+  empresaId: string,
+  repartoId: string
+): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(repartoId)) return null;
+  const existe = await queryWithRetry<{ r: string | null; c: string | null; s: string | null }>(
+    pool,
+    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c, to_regclass($3)::text AS s`,
+    [`${schema}.repartos`, `${schema}.camiones`, `${schema}.inventario_stock_ubicacion`]
+  );
+  const e = existe.rows[0];
+  if (!e?.r || !e?.c || !e?.s) return null;
+
+  const q = await queryWithRetry<{ ubicacion_id: string | null }>(
+    pool,
+    `SELECT c.ubicacion_id
+       FROM ${quoteSchemaTable(schema, "repartos")} r
+       JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
+      WHERE r.id = $1::uuid AND r.empresa_id = $2::uuid`,
+    [repartoId, empresaId]
+  );
+  return q.rows[0]?.ubicacion_id ?? null;
+}
+
+/**
+ * GET /api/productos — lista los productos activos via PG directo
  * (soporta tenants erp_* no expuestos por PostgREST).
+ *
+ * Con `?reparto_id=` devuelve solo lo que hay arriba de ese camión, con la
+ * cantidad de esa ubicación en `stock_actual`.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -33,15 +69,40 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
     }
     const t = quoteSchemaTable(schema, "productos");
-    const { rows } = await queryWithRetry(pool,
-      `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
-              unidad_medida, metodo_valuacion, activo, created_at, updated_at,
-              codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
-              categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
-         FROM ${t}
-        WHERE empresa_id = $1::uuid AND activo = true
-        ORDER BY nombre`,
-      [empresaId]
+
+    // `reparto_id` cambia de qué stock se habla. Sin él, el stock global de la
+    // empresa; con él, lo que hay arriba de ESE camión, que es lo único que el
+    // vendedor puede vender en la calle. Ofrecerle un producto que está en el
+    // depósito termina en una venta que el control de mercadería no puede
+    // explicar.
+    const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
+    const ubicacionId = repartoId ? await ubicacionDelReparto(pool, schema, empresaId, repartoId) : null;
+
+    const sql =
+      ubicacionId === null
+        ? `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
+                  unidad_medida, metodo_valuacion, activo, created_at, updated_at,
+                  codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
+                  categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
+             FROM ${t}
+            WHERE empresa_id = $1::uuid AND activo = true
+            ORDER BY nombre`
+        : `SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
+                  COALESCE(su.stock_actual, 0) AS stock_actual,
+                  p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
+                  p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
+                  p.imagen_path, p.imagen_url, p.categoria_principal_id,
+                  p.ubicacion_principal_id, p.proveedor_principal_id
+             FROM ${t} p
+             JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
+               ON su.producto_id = p.id AND su.ubicacion_id = $2::uuid
+            WHERE p.empresa_id = $1::uuid AND p.activo = true AND su.stock_actual > 0
+            ORDER BY p.nombre`;
+
+    const { rows } = await queryWithRetry(
+      pool,
+      sql,
+      ubicacionId === null ? [empresaId] : [empresaId, ubicacionId]
     );
     // La imagen vive en un bucket privado y se mira con una URL firmada que
     // dura una hora. La columna `imagen_url` de la tabla queda siempre en NULL

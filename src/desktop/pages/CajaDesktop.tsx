@@ -80,7 +80,8 @@ export default function CajaDesktop() {
 // ── Columna izquierda: catálogo ──────────────────────────────────────────────
 
 function Catalogo({ caja }: { caja: CajaVenta }) {
-  const { productos, isLoading } = useProductos();
+  // Si la venta sale de un camión, el catálogo es el stock de ese camión.
+  const { productos, isLoading } = useProductos(caja.repartoId);
   const [query, setQuery] = useState("");
 
   const filtrados = useMemo(() => {
@@ -109,7 +110,11 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
         <p className="py-16 text-center text-sm text-slate-400">Cargando productos…</p>
       ) : filtrados.length === 0 ? (
         <p className="py-16 text-center text-sm text-slate-400">
-          {query ? `Ningún producto coincide con “${query}”.` : "No hay productos con stock."}
+          {query
+            ? `Ningún producto coincide con “${query}”.`
+            : caja.repartoId
+              ? "El camión está vacío. Cargalo desde Repartos antes de salir."
+              : "No hay productos con stock."}
         </p>
       ) : (
         <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
