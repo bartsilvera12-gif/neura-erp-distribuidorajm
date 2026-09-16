@@ -2,12 +2,12 @@
 
 import useSWR from "swr";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { ComercialReport } from "@/lib/gerencia/comercial-data";
+import type { ReporteVentas } from "@/lib/gerencia/ventas-data";
 
-/** Hook compartido para el reporte gerencial comercial del periodo (YYYY-MM). */
+/** Hook compartido para el reporte de ventas del periodo (YYYY-MM). */
 export function useGerenciaComercial(period?: string) {
   const p = period ?? currentPeriod();
-  const swr = useSWR<ComercialReport>(
+  const swr = useSWR<ReporteVentas>(
     `gerencia:comercial:${p}`,
     async () => {
       const res = await fetchWithSupabaseSession(`/api/gerencia/comercial?period=${p}`, { cache: "no-store" });
