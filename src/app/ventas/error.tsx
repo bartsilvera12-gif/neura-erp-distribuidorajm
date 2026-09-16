@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 
 /**
@@ -18,6 +19,12 @@ export default function ErrorVentas({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // A la consola va el error entero: el mensaje que se ve en pantalla entra en
+  // una línea, pero para arreglarlo hace falta la traza.
+  useEffect(() => {
+    console.error("[ventas] pantalla caída:", error);
+  }, [error]);
+
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50">
@@ -25,7 +32,9 @@ export default function ErrorVentas({
       </div>
       <h1 className="mt-4 text-lg font-bold text-slate-900">No se pudo mostrar esta pantalla</h1>
       <p className="mt-1 max-w-sm text-sm text-slate-500">
-        Se cortó al cargar los datos. Probá de nuevo; si sigue igual, pasá el detalle de abajo.
+        Se cortó al cargar los datos. Probá de nuevo; si sigue igual, recargá la página —después de
+        una actualización el navegador puede quedarse con la versión vieja— y si aún así falla,
+        pasá el detalle de abajo.
       </p>
 
       <pre className="mt-4 max-w-full overflow-x-auto rounded-lg bg-slate-100 p-3 text-left text-[11px] text-slate-600">
@@ -41,6 +50,15 @@ export default function ErrorVentas({
           style={{ backgroundColor: "#4FAEB2" }}
         >
           Reintentar
+        </button>
+        <button
+          type="button"
+          // Recarga de verdad, sin la caché del router: es lo que arregla un
+          // navegador que quedó con archivos de una versión anterior.
+          onClick={() => window.location.reload()}
+          className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
+        >
+          Recargar la página
         </button>
         <Link
           href="/"

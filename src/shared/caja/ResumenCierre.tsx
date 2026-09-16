@@ -17,7 +17,22 @@ const MERCADERIA = "#C77B30";
  * nada.
  */
 export default function ResumenCierre({ cierre }: { cierre: CierreReparto }) {
-  const { ventas, cobranzas, mercaderia } = cierre;
+  // Defensa propia y no confianza en quien lo llama: este componente dibuja
+  // datos que vienen del servidor, y un bloque que falte tiene que verse en
+  // cero. Que se caiga la pantalla entera por eso deja al vendedor sin cierre
+  // y sin saber por qué.
+  const ventas = cierre?.ventas ?? {
+    facturado: 0,
+    contado: 0,
+    credito: 0,
+    cantidad: 0,
+    anuladas: { cantidad: 0, total: 0 },
+  };
+  const cobranzas = cierre?.cobranzas ?? { disponible: false, lineas: [], total: 0, cantidad: 0 };
+  const mercaderia = cierre?.mercaderia ?? { disponible: false, contado: false, lineas: [] };
+  const anuladas = ventas.anuladas ?? { cantidad: 0, total: 0 };
+  const lineasCobranza = cobranzas.lineas ?? [];
+  const lineasMercaderia = mercaderia.lineas ?? [];
 
   return (
     <div className="space-y-3">
@@ -27,22 +42,22 @@ export default function ResumenCierre({ cierre }: { cierre: CierreReparto }) {
         <FilaCierre label="Ventas crédito" valor={gs(ventas.credito)} />
         <FilaCierre
           label={`Facturas anuladas${
-            ventas.anuladas.cantidad > 0
-              ? ` (${ventas.anuladas.cantidad} ${
-                  ventas.anuladas.cantidad === 1 ? "anulada" : "anuladas"
+            anuladas.cantidad > 0
+              ? ` (${anuladas.cantidad} ${
+                  anuladas.cantidad === 1 ? "anulada" : "anuladas"
                 })`
               : ""
           }`}
-          valor={gs(ventas.anuladas.total)}
-          tono={ventas.anuladas.total > 0 ? "alerta" : undefined}
+          valor={gs(anuladas.total)}
+          tono={anuladas.total > 0 ? "alerta" : undefined}
         />
       </BloqueCierre>
 
       <BloqueCierre titulo="Cobranzas" color={COBRANZAS}>
-        {cobranzas.lineas.length === 0 ? (
+        {lineasCobranza.length === 0 ? (
           <FilaCierre label="Sin cobros registrados" valor={gs(0)} />
         ) : (
-          cobranzas.lineas.map((l) => (
+          lineasCobranza.map((l) => (
             <FilaCierre key={l.metodo} label={l.label} valor={gs(l.total)} />
           ))
         )}
@@ -51,9 +66,9 @@ export default function ResumenCierre({ cierre }: { cierre: CierreReparto }) {
 
       {mercaderia.disponible ? (
         <BloqueCierre titulo="Control de mercadería" color={MERCADERIA}>
-          {mercaderia.lineas.map((l) => (
+          {lineasMercaderia.map((l) => (
             <div key={l.unidad || "sin-unidad"}>
-              {mercaderia.lineas.length > 1 ? (
+              {lineasMercaderia.length > 1 ? (
                 <p className="bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   {l.unidad || "Sin unidad"}
                 </p>

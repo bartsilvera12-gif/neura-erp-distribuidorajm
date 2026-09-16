@@ -100,7 +100,7 @@ export default function CierreRepartoDesktop() {
           ) : cierre ? (
             <>
               <ResumenCierre cierre={cierre} />
-              {!cierre.cobranzas.disponible ? <AvisoSinPagos /> : null}
+              {!cierre.cobranzas?.disponible ? <AvisoSinPagos /> : null}
             </>
           ) : null}
         </div>
