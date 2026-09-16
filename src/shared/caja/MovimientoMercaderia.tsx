@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import { ArrowDownToLine, ArrowUpFromLine, Search, Wand2, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Plus, Search, Wand2, X } from "lucide-react";
 import { useProductos } from "@/shared/hooks/useInventario";
-import { getObjetivos, getUbicaciones, registrarMovimiento } from "@/lib/repartos/storage";
+import {
+  crearUbicacionDeposito,
+  getObjetivos,
+  getUbicaciones,
+  registrarMovimiento,
+} from "@/lib/repartos/storage";
 import type { ObjetivoCamion, Reparto, Ubicacion } from "@/lib/repartos/types";
 
 const TEAL = "#4FAEB2";
@@ -30,7 +35,11 @@ export default function MovimientoMercaderia({
   onHecho: () => void;
 }) {
   const { productos, isLoading } = useProductos();
-  const { data: ubicaciones } = useSWR<Ubicacion[]>(
+  const {
+    data: ubicaciones,
+    isLoading: cargandoUbicaciones,
+    mutate: recargarUbicaciones,
+  } = useSWR<Ubicacion[]>(
     tipo === "transferencia" ? "repartos:ubicaciones" : null,
     () => getUbicaciones(),
     { revalidateOnFocus: false, dedupingInterval: 2 * 60_000 }
@@ -46,11 +55,34 @@ export default function MovimientoMercaderia({
   const [query, setQuery] = useState("");
   const [cantidades, setCantidades] = useState<Record<string, string>>({});
   const [destinoId, setDestinoId] = useState("");
+  const [creandoDeposito, setCreandoDeposito] = useState(false);
   const [referencia, setReferencia] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const esCarga = tipo === "carga";
+
+  // Con un solo depósito no hay nada que decidir: elegirlo a mano es un paso
+  // que solo sirve para olvidarse y comerse el error en rojo.
+  useEffect(() => {
+    if (esCarga) return;
+    if (destinoId !== "") return;
+    if (ubicaciones?.length === 1) setDestinoId(ubicaciones[0].id);
+  }, [esCarga, destinoId, ubicaciones]);
+
+  async function crearDeposito() {
+    if (creandoDeposito) return;
+    setCreandoDeposito(true);
+    setError(null);
+    const res = await crearUbicacionDeposito();
+    setCreandoDeposito(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setDestinoId(res.ubicacion.id);
+    void recargarUbicaciones();
+  }
 
   // En una descarga solo se puede mover lo que hay arriba del camión, así que
   // la lista son sus productos y no el catálogo entero.
@@ -107,7 +139,11 @@ export default function MovimientoMercaderia({
       return;
     }
     if (!esCarga && !destinoId) {
-      setError("Elegí a dónde va la mercadería.");
+      setError(
+        (ubicaciones ?? []).length === 0
+          ? "Creá el depósito de arriba: la mercadería que baja tiene que quedar en algún lado."
+          : "Elegí a dónde va la mercadería."
+      );
       return;
     }
     setGuardando(true);
@@ -149,7 +185,37 @@ export default function MovimientoMercaderia({
         </button>
       </div>
 
-      {esCarga ? null : (
+      {esCarga ? null : cargandoUbicaciones && !ubicaciones ? (
+        <p className="mb-3 text-xs text-slate-400">Buscando a dónde se puede descargar…</p>
+      ) : (ubicaciones ?? []).length === 0 ? (
+        // Sin un destino fijo no hay descarga posible, y un selector vacío no
+        // lo explica. Se dice qué falta y se ofrece resolverlo acá mismo: el
+        // repartidor no tiene por qué saber que existe una pantalla de
+        // ubicaciones de inventario.
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs leading-relaxed text-amber-900">
+            Todavía no hay ningún depósito donde bajar la mercadería. El camión tiene su propia
+            ubicación, pero no sirve de destino: la mercadería que baja tiene que quedar en algún
+            lado.
+          </p>
+          <button
+            type="button"
+            onClick={crearDeposito}
+            disabled={creandoDeposito}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {creandoDeposito ? "Creando…" : "Crear el depósito"}
+          </button>
+          <p className="mt-1.5 text-[11px] text-amber-800/80">
+            Después podés renombrarlo o agregar más en Inventario → Ubicaciones.
+          </p>
+        </div>
+      ) : (ubicaciones ?? []).length === 1 ? (
+        <p className="mb-3 text-xs text-slate-600">
+          Va a <span className="font-semibold text-slate-900">{ubicaciones![0].nombre}</span>.
+        </p>
+      ) : (
         <label className="mb-3 block">
           <span className="mb-1 block text-xs font-medium text-slate-600">A dónde va</span>
           <select

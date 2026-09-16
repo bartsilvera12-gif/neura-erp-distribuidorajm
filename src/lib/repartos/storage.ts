@@ -312,3 +312,35 @@ export async function getRepartidores(): Promise<RepartidorReparto[]> {
     return [];
   }
 }
+
+/**
+ * Crea el depósito al que descargar el camión.
+ *
+ * El ERP exige un destino fijo para bajar mercadería —el total de la empresa no
+ * cambia, se mueve de un lado a otro— pero una empresa recién instalada no
+ * tiene ninguno: solo la ubicación del propio camión, que no sirve de destino.
+ * Sin esto el selector de destino quedaba vacío y el camión no se podía
+ * descargar, sin decir por qué.
+ */
+export async function crearUbicacionDeposito(
+  nombre = "DEPÓSITO"
+): Promise<{ ok: true; ubicacion: Ubicacion } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/inventario/ubicaciones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, tipo: "deposito" }),
+    });
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { ubicacion?: Ubicacion };
+      error?: string;
+    };
+    if (!res.ok || !json.success || !json.data?.ubicacion) {
+      return { ok: false, error: json.error ?? "No se pudo crear el depósito." };
+    }
+    return { ok: true, ubicacion: json.data.ubicacion };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
