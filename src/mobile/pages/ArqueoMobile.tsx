@@ -8,8 +8,6 @@ import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
 import { useRepartos } from "@/shared/hooks/useRepartos";
-import AperturaCaja from "@/shared/caja/AperturaCaja";
-import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
 /** Arqueo de caja mobile: una tarjeta por caja del día. */
@@ -24,8 +22,6 @@ export default function ArqueoMobile() {
   const { repartos } = useRepartos({ abiertos: true });
   const camion = repartos[0]?.camion ?? null;
   const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
-  // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
-  const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
 
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
@@ -65,16 +61,6 @@ export default function ArqueoMobile() {
         </div>
       </header>
 
-      <div className="mb-5">
-        <AperturaCaja
-          caja={cajaAbierta}
-          onCambio={() => {
-            recargarCaja();
-            mutate();
-          }}
-        />
-      </div>
-
 
       <div className="space-y-3 px-4 pt-4">
         {isLoading && !arqueo ? (
@@ -89,10 +75,11 @@ export default function ArqueoMobile() {
           <>
             {/* Lo cobrado por forma de pago, que es como lo leían en papel. */}
             <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
-            {/* Debajo, el control del cajón: apertura, salidas y esperado. */}
-            {(arqueo?.cajas ?? []).map((c) => (
-              <TarjetaArqueo key={c.id} caja={c} />
-            ))}
+            {/* El detalle caja por caja es del que controla el negocio, no del
+                vendedor: acá alcanza con lo cobrado del día. */}
+            {todas
+              ? (arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} />)
+              : null}
           </>
         )}
 

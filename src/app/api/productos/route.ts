@@ -14,6 +14,7 @@ import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 
 /**
  * Ubicación de inventario del camión de un reparto.
@@ -49,6 +50,36 @@ async function ubicacionDelReparto(
 }
 
 /**
+ * Ubicación del camión asignado a este usuario, si tiene uno.
+ *
+ * `null` cuando no hay camión suyo (un administrador vendiendo de mostrador) o
+ * cuando falta la columna de la migración 13: en los dos casos el catálogo
+ * vuelve a ser el stock general, que es lo correcto ahí.
+ */
+async function ubicacionDeMiCamion(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  schema: string,
+  empresaId: string,
+  usuarioId: string
+): Promise<string | null> {
+  const cols = await queryWithRetry<{ c: string }>(
+    pool,
+    `SELECT column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'repartidor_id'`,
+    [schema]
+  );
+  if (cols.rows.length === 0) return null;
+  const q = await queryWithRetry<{ ubicacion_id: string | null }>(
+    pool,
+    `SELECT ubicacion_id FROM ${quoteSchemaTable(schema, "camiones")}
+      WHERE empresa_id = $1::uuid AND repartidor_id = $2::uuid AND activo = true
+      LIMIT 1`,
+    [empresaId, usuarioId]
+  );
+  return q.rows[0]?.ubicacion_id ?? null;
+}
+
+/**
  * GET /api/productos — lista los productos activos via PG directo
  * (soporta tenants erp_* no expuestos por PostgREST).
  *
@@ -76,7 +107,15 @@ export async function GET(request: NextRequest) {
     // depósito termina en una venta que el control de mercadería no puede
     // explicar.
     const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
-    const ubicacionId = repartoId ? await ubicacionDelReparto(pool, schema, empresaId, repartoId) : null;
+    let ubicacionId = repartoId ? await ubicacionDelReparto(pool, schema, empresaId, repartoId) : null;
+
+    // Sin reparto todavía —la primera venta del día— el catálogo igual tiene que
+    // ser el del camión de quien vende. Si no, la primera venta de la mañana se
+    // hace contra el stock del depósito y sale mercadería que nunca subió.
+    if (ubicacionId === null) {
+      const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
+      if (yo) ubicacionId = await ubicacionDeMiCamion(pool, schema, empresaId, yo.id);
+    }
 
     const sql =
       ubicacionId === null

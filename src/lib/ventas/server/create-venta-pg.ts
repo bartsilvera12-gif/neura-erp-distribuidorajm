@@ -283,6 +283,34 @@ export async function createVentaTransaccionalPg(
       ubicacionId = ubiQ.rows[0]?.ubicacion_id ?? null;
     }
 
+    // Lo que no está arriba del camión no se puede vender desde el camión.
+    //
+    // El chequeo de más arriba mira el stock general de la empresa, que incluye
+    // el depósito: sin esto, el vendedor podía cargar en la venta mercadería
+    // que nunca subió al camión, y el control de mercadería del cierre le
+    // aparecía como un faltante que no cometió.
+    if (ubicacionId !== null && hayStockPorUbicacion) {
+      const enCamion = await client.query<{ producto_id: string; stock_actual: string }>(
+        `SELECT producto_id, stock_actual::text AS stock_actual
+           FROM ${stockUbiT}
+          WHERE empresa_id = $1::uuid AND ubicacion_id = $2::uuid
+            AND producto_id = ANY($3::uuid[])`,
+        [params.empresaId, ubicacionId, ids]
+      );
+      const arriba = new Map(enCamion.rows.map((r) => [r.producto_id, Number(r.stock_actual)]));
+      for (const [pid, need] of qtyByProduct) {
+        const hay = arriba.get(pid) ?? 0;
+        if (hay < need) {
+          const nombre = stockMap.get(pid)?.nombre ?? "ese producto";
+          throw new Error(
+            hay <= 0
+              ? `"${nombre}" no está cargado en el camión. Cargalo desde Repartos antes de venderlo.`
+              : `El camión tiene ${hay} de "${nombre}" y la venta pide ${need}.`
+          );
+        }
+      }
+    }
+
     // Movimiento de caja del cobro. Solo para ventas de contado: una venta a
     // crédito no mete plata en la caja hoy, y registrarla descuadraría el arqueo.
     if (

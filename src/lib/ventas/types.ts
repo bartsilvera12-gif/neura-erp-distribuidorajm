@@ -56,6 +56,8 @@ export interface Venta {
   total:     number;         // Σ total_linea de ítems = subtotal
 
   tipo_venta: TipoVenta;
+  /** `anulada` deja la venta sin efecto; el número no se reutiliza. */
+  estado?: string | null;
   plazo_dias?: number;       // solo si tipo_venta === "CREDITO"
 
   /** Medio de cobro (`ventas.metodo_pago`). */

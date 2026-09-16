@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Home, Settings } from "lucide-react";
+import { Home, ReceiptText, Settings } from "lucide-react";
 import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
 
 /**
  * Navegación inferior de la UI mobile.
  *
- * Tres secciones, como el menú de reparto del cliente: Inicio (el menú de
- * tiles), Reportes y Configuración. Todo lo demás se alcanza desde los tiles
- * de Inicio, que es como se usa en la calle: pocas opciones grandes.
+ * Tres secciones: Inicio (el menú de tiles), Órdenes de venta y Configuración.
+ * Todo lo demás se alcanza desde los tiles de Inicio, que es como se usa en la
+ * calle: pocas opciones grandes.
+ *
+ * Órdenes de venta está acá y no Reportes porque es lo que se abre varias veces
+ * por jornada: ver lo que se vendió y anular la venta que salió mal. Los
+ * reportes se miran en la computadora, al final del día.
  *
  * Sin botón "Más": el menú completo sigue a un toque del ☰ del header, así que
  * la barra queda limpia sin dejar encerrado a quien administra desde el celular.
@@ -28,7 +32,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Inicio", icon: Home },
-  { href: "/reportes", label: "Reportes", icon: BarChart3, matchPrefix: "/reportes" },
+  { href: "/ventas", label: "Órdenes de venta", icon: ReceiptText, matchPrefix: "/ventas" },
   {
     href: "/configuracion",
     label: "Configuración",
