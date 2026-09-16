@@ -133,8 +133,34 @@ export async function GET(request: NextRequest) {
       paramsCajas
     );
 
+    // Las ventas a crédito del día no entran al cajón, pero son parte de lo
+    // vendido: sin esa fila, el vendedor que fió medio camión ve un arqueo que
+    // no se parece a su jornada. Va aparte y nunca sumada al efectivo.
+    let credito = { cantidad: 0, total: 0 };
+    const hayVentas = await queryWithRetry<{ t: string | null }>(
+      pool,
+      `SELECT to_regclass($1)::text AS t`,
+      [`${schema}.ventas`]
+    );
+    if (hayVentas.rows[0]?.t) {
+      const credQ = await queryWithRetry<{ cantidad: string; total: string }>(
+        pool,
+        `SELECT count(*)::text AS cantidad, COALESCE(sum(total), 0)::text AS total
+           FROM ${quoteSchemaTable(schema, "ventas")}
+          WHERE empresa_id = $1::uuid
+            AND tipo_venta = 'CREDITO'
+            AND COALESCE(estado, '') <> 'anulada'
+            AND (fecha AT TIME ZONE $2)::date = $3::date`,
+        [empresaId, TZ, fecha]
+      );
+      credito = {
+        cantidad: Number(credQ.rows[0]?.cantidad ?? 0),
+        total: Number(credQ.rows[0]?.total ?? 0),
+      };
+    }
+
     if (cajasQ.rows.length === 0) {
-      return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", cajas: [] } }));
+      return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", credito, cajas: [] } }));
     }
 
     const ids = cajasQ.rows.map((c) => c.id);
@@ -226,7 +252,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", cajas } }));
+    return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", credito, cajas } }));
   } catch (err) {
     console.error("[/api/cajas/arqueo GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo calcular el arqueo."), { status: 500 });

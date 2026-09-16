@@ -32,6 +32,8 @@ export interface Arqueo {
   fecha?: string;
   /** `mia` = solo la caja propia (lo normal). `todas` = las del día. */
   alcance?: "mia" | "todas";
+  /** Ventas a crédito del día: vendidas pero no cobradas, fuera del cajón. */
+  credito?: { cantidad: number; total: number };
   cajas: ArqueoCaja[];
 }
 

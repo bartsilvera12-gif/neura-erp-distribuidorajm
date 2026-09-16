@@ -6,6 +6,8 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import TablaArqueo from "@/shared/caja/TablaArqueo";
+import { useRepartos } from "@/shared/hooks/useRepartos";
 import AperturaCaja from "@/shared/caja/AperturaCaja";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
@@ -17,6 +19,10 @@ export default function ArqueoMobile() {
   // revisar el negocio, no para vender, así que se pide a mano.
   const [todas, setTodas] = useState(false);
   const { isAdmin } = useIsAdmin();
+  // El camión de la jornada va en la cabecera: el arqueo es de una ruta, no de
+  // un mostrador, y saber de qué camión se está hablando es media lectura.
+  const { repartos } = useRepartos({ abiertos: true });
+  const camion = repartos[0]?.camion ?? null;
   const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
   // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
   const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
@@ -53,7 +59,10 @@ export default function ArqueoMobile() {
           aria-label="Fecha del arqueo"
           className="mt-3 w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white [color-scheme:dark]"
         />
-        <p className="mt-2 text-xs text-white/70">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+          <p className="text-white/70">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
+          {camion ? <p className="shrink-0 font-semibold text-white">Camión: {camion}</p> : null}
+        </div>
       </header>
 
       <div className="mb-5">
@@ -77,7 +86,14 @@ export default function ArqueoMobile() {
             {todas ? "No hubo cajas abiertas este día." : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
           </p>
         ) : (
-          (arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} />)
+          <>
+            {/* Lo cobrado por forma de pago, que es como lo leían en papel. */}
+            <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
+            {/* Debajo, el control del cajón: apertura, salidas y esperado. */}
+            {(arqueo?.cajas ?? []).map((c) => (
+              <TarjetaArqueo key={c.id} caja={c} />
+            ))}
+          </>
         )}
 
         {isAdmin ? (

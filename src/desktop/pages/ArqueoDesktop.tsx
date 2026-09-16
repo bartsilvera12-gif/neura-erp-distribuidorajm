@@ -6,6 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import TablaArqueo from "@/shared/caja/TablaArqueo";
 import AperturaCaja from "@/shared/caja/AperturaCaja";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
@@ -96,10 +97,13 @@ export default function ArqueoDesktop() {
             : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
         </p>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {(arqueo?.cajas ?? []).map((c) => (
-            <TarjetaArqueo key={c.id} caja={c} />
-          ))}
+        <div className="space-y-4">
+          <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            {(arqueo?.cajas ?? []).map((c) => (
+              <TarjetaArqueo key={c.id} caja={c} />
+            ))}
+          </div>
         </div>
       )}
     </div>

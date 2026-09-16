@@ -145,10 +145,10 @@ export default function AperturaCaja({
             </>
           ) : (
             <>
-              <p className="text-sm font-semibold text-amber-900">No hay una caja abierta</p>
+              <p className="text-sm font-semibold text-amber-900">Todavía no hay caja abierta</p>
               <p className="mt-1 text-xs leading-relaxed text-amber-900">
-                Para cobrar de contado hace falta abrir la caja con el efectivo que tenés en el
-                cajón. Una venta a crédito sí se puede registrar, porque no entra plata ahora.
+                No hace falta abrirla a mano: se abre sola con el primer cobro. Abrila acá solo si
+                salís con cambio en el cajón, para que el arqueo lo cuente desde el arranque.
               </p>
             </>
           )}
