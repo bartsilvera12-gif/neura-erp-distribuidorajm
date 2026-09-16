@@ -11,7 +11,7 @@ import { normalizeErpRolSlug } from "@/lib/usuarios/erp-rol-normalize";
  * está chequeada en su endpoint. Una fila de catálogo que el código no mira es
  * un permiso que no existe, y en una pantalla se leería como si existiera.
  *
- * Por eso la lista es corta: son las nueve acciones que hoy se pueden negar de
+ * Por eso la lista es corta: son las diez acciones que hoy se pueden negar de
  * verdad. Cuando aparezca una acción nueva se agrega acá y se chequea allá.
  */
 
@@ -25,6 +25,7 @@ export const ACCIONES = [
   "camion.administrar",
   "caja.abrir",
   "caja.cerrar",
+  "caja.movimiento",
 ] as const;
 
 export type Accion = (typeof ACCIONES)[number];
@@ -96,6 +97,11 @@ export const CATALOGO_PERMISOS: GrupoPermisos[] = [
         label: "Cerrar caja a mano",
         ayuda: "El cierre de reparto ya la cierra; esto es para la caja del salón.",
       },
+      {
+        accion: "caja.movimiento",
+        label: "Cargar movimientos de caja",
+        ayuda: "Retiros y gastos del cajón: combustible, adelantos, vuelto.",
+      },
     ],
   },
 ];
@@ -114,6 +120,7 @@ const POR_ROL: Record<string, Accion[]> = {
     "reparto.cerrar",
     "reparto.cargar",
     "reparto.transferir",
+    "caja.movimiento",
   ],
   supervisor: [
     "venta.credito",
@@ -124,8 +131,9 @@ const POR_ROL: Record<string, Accion[]> = {
     "reparto.objetivo",
     "caja.abrir",
     "caja.cerrar",
+    "caja.movimiento",
   ],
-  usuario: ["venta.credito", "caja.abrir", "caja.cerrar"],
+  usuario: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento"],
 };
 
 function esAdmin(rol: string): boolean {

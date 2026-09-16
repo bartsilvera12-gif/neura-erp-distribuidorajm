@@ -188,6 +188,39 @@ export async function GET(request: NextRequest) {
       [empresaId, ids]
     );
 
+    // Los movimientos que no vienen de una venta —un retiro para combustible, el
+    // pago a un funcionario— son los que explican por qué el efectivo esperado
+    // no es igual a lo cobrado. Van con su concepto: "salieron 400.000" sin
+    // decir para qué no le sirve a nadie al cerrar.
+    const manualesQ = await queryWithRetry<{
+      caja_id: string;
+      tipo: string;
+      concepto: string | null;
+      medio: string;
+      monto: string;
+      fecha: string | null;
+    }>(
+      pool,
+      `SELECT caja_id, tipo, concepto,
+              lower(btrim(COALESCE(medio_pago, ''))) AS medio,
+              monto::text AS monto,
+              created_at::text AS fecha
+         FROM ${tM}
+        WHERE empresa_id = $1::uuid
+          AND caja_id = ANY($2::uuid[])
+          AND anulado_at IS NULL
+          AND venta_id IS NULL
+        ORDER BY created_at DESC
+        LIMIT 100`,
+      [empresaId, ids]
+    );
+    const manualesPorCaja = new Map<string, typeof manualesQ.rows>();
+    for (const row of manualesQ.rows) {
+      const lista = manualesPorCaja.get(row.caja_id) ?? [];
+      lista.push(row);
+      manualesPorCaja.set(row.caja_id, lista);
+    }
+
     const porCaja = new Map<string, typeof movsQ.rows>();
     for (const row of movsQ.rows) {
       const lista = porCaja.get(row.caja_id) ?? [];
@@ -237,6 +270,14 @@ export async function GET(request: NextRequest) {
             .sort((a, b) => b.total - a.total),
         },
         salidas: { total: sumar(salidas, false), cantidad: salidas.length },
+        movimientos_manuales: (manualesPorCaja.get(c.id) ?? []).map((m) => ({
+          tipo: m.tipo,
+          concepto: m.concepto ?? "Sin concepto",
+          medio: m.medio,
+          label: etiquetaMedio(m.medio),
+          monto: num(m.monto),
+          fecha: m.fecha,
+        })),
         ajustes: { total: sumar(ajustes, false), cantidad: ajustes.length },
         efectivo: {
           esperado: esperadoEfectivo,

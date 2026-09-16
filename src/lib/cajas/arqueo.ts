@@ -7,6 +7,16 @@ export interface IngresoPorMedio {
   total: number;
 }
 
+/** Un movimiento cargado a mano: retiro, egreso o ajuste, con su concepto. */
+export interface MovimientoManualCaja {
+  tipo: string;
+  concepto: string;
+  medio: string;
+  label: string;
+  monto: number;
+  fecha: string | null;
+}
+
 export interface ArqueoCaja {
   id: string;
   numero_caja: number;
@@ -16,6 +26,8 @@ export interface ArqueoCaja {
   monto_apertura: number;
   ingresos: { total: number; por_medio: IngresoPorMedio[] };
   salidas: { total: number; cantidad: number };
+  /** Lo que se cargó a mano (no vino de una venta). */
+  movimientos_manuales?: MovimientoManualCaja[];
   ajustes: { total: number; cantidad: number };
   efectivo: {
     /** apertura + ingresos − salidas + ajustes, solo en efectivo. */

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import AperturaCaja from "@/shared/caja/AperturaCaja";
-import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
+import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useEffect, useState } from "react";
 import { getVentas } from "@/lib/ventas/storage";
 import type { Venta, TipoVenta, TipoIvaVenta } from "@/lib/ventas/types";
@@ -42,71 +41,6 @@ const ivaLabel: Record<TipoIvaVenta, string> = {
   "5%":   "IVA 5%",
   "10%":  "IVA 10%",
 };
-
-// ── Métricas del día ──────────────────────────────────────────────────────────
-
-function esDeHoy(iso: string): boolean {
-  try {
-    const fecha = new Date(iso);
-    const hoy   = new Date();
-    return (
-      fecha.getFullYear() === hoy.getFullYear() &&
-      fecha.getMonth()    === hoy.getMonth()    &&
-      fecha.getDate()     === hoy.getDate()
-    );
-  } catch {
-    return false;
-  }
-}
-
-interface MetricasHoy {
-  facturacion:       number;
-  cantidadVentas:    number;
-  ticketPromedio:    number;
-  productosVendidos: number;  // suma de todas las cantidades en todos los ítems
-}
-
-function calcularMetricas(ventas: Venta[]): MetricasHoy {
-  const deHoy            = ventas.filter((v) => esDeHoy(v.fecha));
-  const facturacion      = deHoy.reduce((s, v) => s + v.total, 0);
-  const cantidadVentas   = deHoy.length;
-  const ticketPromedio   = cantidadVentas > 0 ? facturacion / cantidadVentas : 0;
-  const productosVendidos = deHoy.reduce(
-    (s, v) => s + v.items.reduce((si, i) => si + i.cantidad, 0),
-    0
-  );
-  return { facturacion, cantidadVentas, ticketPromedio, productosVendidos };
-}
-
-// ── Tarjeta métrica ───────────────────────────────────────────────────────────
-
-function MetricCard({
-  label, value, sub, accent,
-}: {
-  label: string; value: string; sub?: string; accent?: boolean;
-}) {
-  const wrap = accent
-    ? "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 px-5 py-4 shadow-[0_4px_18px_rgba(79,174,178,0.08)]"
-    : "rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
-  const valueCls = accent ? "text-[#3F8E91]" : "text-slate-900";
-  return (
-    <div className={wrap}>
-      {accent ? (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/70 to-[#4FAEB2]/30"
-        />
-      ) : null}
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-        {label}
-      </p>
-      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${valueCls}`}>
-        {value}
-      </p>
-      {sub ? <p className="mt-1 text-[11px] text-slate-500">{sub}</p> : null}
-    </div>
-  );
-}
 
 // ── Helpers de fila ───────────────────────────────────────────────────────────
 
@@ -167,15 +101,6 @@ export default function VentasPage() {
     };
   }, []);
 
-  const metricas = calcularMetricas(todas);
-  // Abrir la caja es lo primero de la mañana: el estado va en esta pantalla y no
-  // escondido dentro del cobro de una venta.
-  const {
-    caja: cajaAbierta,
-    disponible: cajasDisponibles,
-    mutate: recargarCaja,
-  } = useCajaAbierta();
-
   const filtradas = todas.filter((v) => {
     // Búsqueda global: número de control, nombre o SKU de cualquier ítem
     if (busqueda.trim() !== "") {
@@ -217,56 +142,14 @@ export default function VentasPage() {
         <p className="mt-1 text-sm text-slate-500">Caja de ventas y despacho de productos</p>
       </div>
 
-      {/* ── Métricas del día ──────────────────────────────────────────────────── */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-            Resumen de hoy —{" "}
-            <span className="text-slate-500 font-medium normal-case tracking-normal">
-              {new Date().toLocaleDateString("es-PY", {
-                weekday: "long", day: "numeric", month: "long", year: "numeric",
-              })}
-            </span>
-          </h2>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard
-            label="Facturación de hoy"
-            value={`Gs. ${metricas.facturacion.toLocaleString("es-PY")}`}
-            sub="Total incl. IVA"
-            accent
-          />
-          <MetricCard
-            label="Ventas de hoy"
-            value={String(metricas.cantidadVentas)}
-            sub={metricas.cantidadVentas === 1 ? "orden registrada" : "órdenes registradas"}
-          />
-          <MetricCard
-            label="Ticket promedio"
-            value={
-              metricas.ticketPromedio > 0
-                ? `Gs. ${Math.round(metricas.ticketPromedio).toLocaleString("es-PY")}`
-                : "—"
-            }
-            sub="Por orden de venta"
-          />
-          <MetricCard
-            label="Unidades vendidas"
-            value={String(metricas.productosVendidos)}
-            sub="Unidades despachadas"
-          />
-        </div>
-      </section>
-
       {/* ── Estado de la caja ─────────────────────────────────────────────────
           Abrir la caja es lo primero de la mañana y sin eso no se cobra de
-          contado, así que va acá arriba y no escondido dentro de una venta. */}
-      {cajasDisponibles ? (
-        <section className="mb-6">
-          <AperturaCaja caja={cajaAbierta} onCambio={() => recargarCaja()} />
-        </section>
-      ) : null}
+          contado, así que va acá arriba y no escondido dentro de una venta.
+          Con la caja abierta lo que se muestra es el detalle del cajón: qué
+          entró por cada medio, qué salió a mano y cuánto tiene que haber. */}
+      <section className="mb-6">
+        <TarjetaCajaAbierta />
+      </section>
 
       {/* ── Tabla de ventas ───────────────────────────────────────────────────── */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

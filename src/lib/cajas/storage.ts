@@ -84,3 +84,39 @@ export async function cerrarCaja(
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
 }
+
+export type TipoMovimientoCaja = "ingreso" | "egreso" | "retiro" | "ajuste";
+
+/**
+ * Carga a mano un movimiento sobre la caja abierta.
+ *
+ * `monto` va siempre positivo: el signo lo pone `tipo`, igual que los
+ * movimientos que escribe la venta.
+ */
+export async function registrarMovimientoCaja(
+  cajaId: string,
+  mov: { tipo: TipoMovimientoCaja; concepto: string; monto: number; medio_pago?: string }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(
+      `/api/cajas/${encodeURIComponent(cajaId)}/movimientos`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: mov.tipo,
+          concepto: mov.concepto,
+          monto: mov.monto,
+          medio_pago: mov.medio_pago ?? "efectivo",
+        }),
+      }
+    );
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudo registrar el movimiento." };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
