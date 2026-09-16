@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Ban, Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
 import { anularVenta } from "@/lib/ventas/storage";
+import { hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
 import { useVentas } from "@/shared/hooks/useVentas";
 import type { Venta, TipoVenta } from "@/lib/ventas/types";
 
@@ -23,21 +24,30 @@ import type { Venta, TipoVenta } from "@/lib/ventas/types";
 export default function VentasMobile() {
   const { ventas, isLoading, error, mutate } = useVentas();
   const [anulando, setAnulando] = useState<Venta | null>(null);
+  // El día de hoy y nada más: la jornada es lo que se mira, y una lista con las
+  // ventas de todo el mes obliga a buscar la de recién entre cientos.
+  const [fecha, setFecha] = useState(hoyEnAsuncion());
+  const [todasLasFechas, setTodasLasFechas] = useState(false);
   const [query, setQuery] = useState("");
 
-  const metricasHoy = useMemo(() => calcularMetricasHoy(ventas), [ventas]);
+  const metricasHoy = useMemo(() => calcularMetricasDia(ventas, fecha), [ventas, fecha]);
 
   const ventasFiltradas = useMemo(() => {
     const q = query.trim().toLowerCase();
     const ordenadas = [...ventas].sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""));
-    if (!q) return ordenadas;
-    return ordenadas.filter(
+    const delDia = todasLasFechas
+      ? ordenadas
+      : ordenadas.filter((v) => diaEnAsuncion(v.fecha) === fecha);
+    if (!q) return delDia;
+    return delDia.filter(
       (v) =>
         v.numero_control.toLowerCase().includes(q) ||
         String(v.total).includes(q) ||
         v.items.some((i) => i.producto_nombre.toLowerCase().includes(q))
     );
-  }, [ventas, query]);
+  }, [ventas, query, fecha, todasLasFechas]);
+
+  const esHoy = fecha === hoyEnAsuncion();
 
   return (
     <div className="mx-auto max-w-md p-4 pb-24">
@@ -48,8 +58,12 @@ export default function VentasMobile() {
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Órdenes de venta</h1>
             <p className="mt-0.5 text-xs text-slate-500">
               {metricasHoy.cantidad === 0
-                ? "Aún no hubo ventas hoy."
-                : `${metricasHoy.cantidad} ${metricasHoy.cantidad === 1 ? "venta" : "ventas"} hoy`}
+                ? esHoy
+                  ? "Aún no hubo ventas hoy."
+                  : "Sin ventas ese día."
+                : `${metricasHoy.cantidad} ${metricasHoy.cantidad === 1 ? "venta" : "ventas"}${
+                    esHoy ? " hoy" : ""
+                  }`}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -82,7 +96,7 @@ export default function VentasMobile() {
               <TrendingUp className="h-4 w-4" />
             </div>
             <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
-              Facturación de hoy
+              {esHoy ? "Facturación de hoy" : "Facturación del día"}
             </p>
           </div>
           <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
@@ -95,6 +109,36 @@ export default function VentasMobile() {
           ) : null}
         </div>
       </header>
+
+      {/* Filtro de fecha: por defecto hoy. */}
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          type="date"
+          value={fecha}
+          max={hoyEnAsuncion()}
+          onChange={(e) => {
+            setTodasLasFechas(false);
+            setFecha(e.target.value || hoyEnAsuncion());
+          }}
+          aria-label="Fecha de las ventas"
+          disabled={todasLasFechas}
+          className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[#4FAEB2]/30 disabled:bg-slate-50 disabled:text-slate-400"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setTodasLasFechas((v) => !v);
+            if (todasLasFechas) setFecha(hoyEnAsuncion());
+          }}
+          className={`h-10 shrink-0 rounded-xl border px-3 text-xs font-semibold ${
+            todasLasFechas
+              ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+              : "border-slate-200 bg-white text-slate-600"
+          }`}
+        >
+          {todasLasFechas ? "Ver solo un día" : "Todas"}
+        </button>
+      </div>
 
       {/* Buscador */}
       <div className="relative mb-3">
@@ -119,7 +163,7 @@ export default function VentasMobile() {
       {isLoading ? (
         <SkeletonList />
       ) : ventasFiltradas.length === 0 ? (
-        <EmptyState hayBusqueda={!!query.trim()} total={ventas.length} />
+        <EmptyState hayBusqueda={!!query.trim()} total={ventas.length} esHoy={esHoy} />
       ) : (
         <ul className="space-y-2">
           {ventasFiltradas.map((v) => (
@@ -301,7 +345,15 @@ function TipoVentaBadge({ tipo }: { tipo: TipoVenta }) {
 
 // ── Estados vacíos ───────────────────────────────────────────────────────────
 
-function EmptyState({ hayBusqueda, total }: { hayBusqueda: boolean; total: number }) {
+function EmptyState({
+  hayBusqueda,
+  total,
+  esHoy,
+}: {
+  hayBusqueda: boolean;
+  total: number;
+  esHoy: boolean;
+}) {
   if (hayBusqueda) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
@@ -322,7 +374,20 @@ function EmptyState({ hayBusqueda, total }: { hayBusqueda: boolean; total: numbe
       </div>
     );
   }
-  return null;
+  // Hay ventas, pero ninguna del día elegido: decirlo y no dejar la pantalla en
+  // blanco, que se lee como que algo se rompió.
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center">
+      <ShoppingCart className="mx-auto h-8 w-8 text-slate-300" />
+      <p className="mt-2 text-sm font-medium text-slate-700">
+        {esHoy ? "Todavía no hubo ventas hoy" : "Sin ventas ese día"}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        Cambiá la fecha o tocá <span className="font-semibold text-slate-700">Todas</span> para ver
+        el resto.
+      </p>
+    </div>
+  );
 }
 
 function SkeletonList() {
@@ -351,17 +416,22 @@ function SkeletonList() {
 
 type MetricasHoy = { facturacion: number; cantidad: number; ticketPromedio: number };
 
-function calcularMetricasHoy(ventas: Venta[]): MetricasHoy {
-  const hoy = new Date();
-  const yMatch = hoy.getFullYear();
-  const mMatch = hoy.getMonth();
-  const dMatch = hoy.getDate();
+/** Día de una venta en hora de Paraguay, YYYY-MM-DD. */
+function diaEnAsuncion(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Asuncion",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+function calcularMetricasDia(ventas: Venta[], dia: string): MetricasHoy {
   // Una venta anulada no factura: dejarla en el total haría que el número de
   // arriba nunca coincida con el arqueo ni con el cierre.
   const deHoy = ventas.filter((v) => {
     if ((v.estado ?? "") === "anulada") return false;
-    const d = new Date(v.fecha);
-    return d.getFullYear() === yMatch && d.getMonth() === mMatch && d.getDate() === dMatch;
+    return diaEnAsuncion(v.fecha) === dia;
   });
   const facturacion = deHoy.reduce((s, v) => s + v.total, 0);
   return {
