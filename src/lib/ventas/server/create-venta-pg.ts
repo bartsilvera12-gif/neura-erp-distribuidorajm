@@ -262,8 +262,16 @@ export async function createVentaTransaccionalPg(
       "inventario_stock_ubicacion"
     );
 
+    // De qué ubicación sale la mercadería: la del camión del reparto.
+    //
+    // Se resuelve con que haya reparto, y nada más. Antes también exigía que
+    // `movimientos_inventario` tuviera columna `ubicacion_id` y que `ventas`
+    // tuviera `reparto_id`: en un schema al que le faltara cualquiera de las
+    // dos, la venta descontaba del stock general y el camión seguía con la
+    // misma cantidad que antes de vender. Esas dos columnas deciden qué se
+    // puede GUARDAR en cada tabla, no de dónde salió la mercadería.
     let ubicacionId: string | null = null;
-    if (params.repartoId !== null && columnas.has("reparto_id") && movTieneUbicacion) {
+    if (params.repartoId !== null) {
       const camT = quoteSchemaTable(params.schema, "camiones");
       const repT = quoteSchemaTable(params.schema, "repartos");
       const ubiQ = await client.query<{ ubicacion_id: string | null }>(
