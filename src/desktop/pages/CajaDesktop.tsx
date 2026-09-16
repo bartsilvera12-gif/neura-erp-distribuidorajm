@@ -186,10 +186,17 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
 function PanelCobro({ caja }: { caja: CajaVenta }) {
   return (
     <aside className="lg:sticky lg:top-6 lg:self-start">
-      <div className="flex max-h-[calc(100vh-7rem)] flex-col rounded-2xl border border-slate-200 bg-white">
+      {/* El panel se limita al alto de la pantalla para que el total quede
+          siempre a la vista, y la lista de productos scrollea por dentro. Pero
+          el cliente arriba y los totales abajo no se achican: en una pantalla
+          baja no quedaba lugar para la lista y se recortaba a la mitad —el
+          detalle de la venta desaparecía y el texto quedaba cortado por el
+          medio—. Con un alto mínimo la lista ya no se aplasta, y si aun así no
+          entra todo, scrollea el panel entero en vez de tapar nada. */}
+      <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
         <SelectorCliente caja={caja} />
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5">
+        <div className="min-h-[7rem] flex-1 overflow-y-auto px-5">
           {caja.carrito.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-400">
               Agregá productos desde el catálogo.
