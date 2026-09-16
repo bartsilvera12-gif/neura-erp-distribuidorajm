@@ -52,6 +52,10 @@ export interface Camion {
   patente: string | null;
   activo: boolean;
   ubicacion_id: string | null;
+  /** Vendedor que sale con este camión. Con él, su reparto se abre solo. */
+  repartidor_id: string | null;
+  /** Nombre del vendedor asignado, para mostrar. */
+  repartidor: string | null;
 }
 
 /** Una ubicación de inventario: salón, depósito o camión. */

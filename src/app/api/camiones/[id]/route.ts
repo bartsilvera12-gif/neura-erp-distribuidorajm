@@ -11,8 +11,8 @@ import { puede } from "@/lib/usuarios/server/permisos-pg";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * PATCH /api/camiones/[id] — da de baja o reactiva un camión.
- * Body: { activo: boolean }
+ * PATCH /api/camiones/[id] — da de baja, reactiva, o asigna el vendedor.
+ * Body: { activo?: boolean, repartidor_id?: string | null }
  *
  * Baja lógica y no DELETE: los repartos viejos apuntan al camión y borrarlo
  * dejaría el histórico sin poder decir de qué camión salieron.
@@ -40,15 +40,75 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    if (typeof body?.activo !== "boolean") {
-      return NextResponse.json(errorResponse("Indicá si el camión queda activo o de baja."), {
-        status: 400,
-      });
+    const cambiaActivo = typeof body?.activo === "boolean";
+    const cambiaDueno = body != null && "repartidor_id" in body;
+    if (!cambiaActivo && !cambiaDueno) {
+      return NextResponse.json(errorResponse("No hay nada que cambiar."), { status: 400 });
     }
-    const activo = body.activo;
+    const activo = cambiaActivo ? (body!.activo as boolean) : true;
 
     const tC = quoteSchemaTable(schema, "camiones");
     const tR = quoteSchemaTable(schema, "repartos");
+
+    // Asignar el vendedor del camión: con esto su reparto se abre solo al
+    // primer cobro, que es lo que evita las ventas huérfanas de camión.
+    if (cambiaDueno) {
+      const crudo = body!.repartidor_id;
+      const repartidorId = crudo == null || crudo === "" ? null : String(crudo);
+      if (repartidorId !== null && !UUID_RE.test(repartidorId)) {
+        return NextResponse.json(errorResponse("Vendedor inválido."), { status: 400 });
+      }
+      const tieneCol = await queryWithRetry<{ c: string }>(
+        pool,
+        `SELECT column_name AS c FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'repartidor_id'`,
+        [schema]
+      );
+      if (tieneCol.rows.length === 0) {
+        return NextResponse.json(
+          errorResponse("Falta correr 13_camion_del_vendedor.sql para poder asignar el camión."),
+          { status: 409 }
+        );
+      }
+      if (repartidorId !== null) {
+        const existeU = await queryWithRetry<{ id: string }>(
+          pool,
+          `SELECT id FROM ${quoteSchemaTable(schema, "usuarios")}
+            WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+          [repartidorId, empresaId]
+        );
+        if (existeU.rows.length === 0) {
+          return NextResponse.json(errorResponse("Ese vendedor no existe en esta empresa."), {
+            status: 400,
+          });
+        }
+      }
+      try {
+        const updD = await queryWithRetry<{ id: string }>(
+          pool,
+          `UPDATE ${tC} SET repartidor_id = $3::uuid, updated_at = now()
+            WHERE id = $1::uuid AND empresa_id = $2::uuid
+            RETURNING id`,
+          [id, empresaId, repartidorId]
+        );
+        if (updD.rows.length === 0) {
+          return NextResponse.json(errorResponse("Camión no encontrado."), { status: 404 });
+        }
+      } catch (err) {
+        // El índice único lo impide: un vendedor, un camión. Si tuviera dos,
+        // abrir el reparto solo tendría que adivinar cuál.
+        if ((err as { code?: string })?.code === "23505") {
+          return NextResponse.json(
+            errorResponse("Ese vendedor ya tiene otro camión asignado."),
+            { status: 409 }
+          );
+        }
+        throw err;
+      }
+      if (!cambiaActivo) {
+        return NextResponse.json(successResponse({ camion_id: id, repartidor_id: repartidorId }));
+      }
+    }
 
     // Dar de baja un camión que está en la calle dejaría el reparto sin poder
     // cerrarse desde la pantalla, porque el alta filtra por activo.

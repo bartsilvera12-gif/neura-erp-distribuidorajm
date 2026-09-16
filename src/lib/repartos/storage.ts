@@ -168,6 +168,31 @@ export async function setCamionActivo(
   }
 }
 
+/**
+ * Asigna (o desasigna, con `null`) el vendedor que sale con este camión.
+ *
+ * Es lo que después permite que su reparto se abra solo al primer cobro.
+ */
+export async function setRepartidorCamion(
+  camionId: string,
+  repartidorId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(`/api/camiones/${encodeURIComponent(camionId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repartidor_id: repartidorId }),
+    });
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudo asignar el camión." };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
 /** Ubicaciones fijas (salón, depósitos) para elegir destino de transferencia. */
 export async function getUbicaciones(): Promise<Ubicacion[]> {
   try {

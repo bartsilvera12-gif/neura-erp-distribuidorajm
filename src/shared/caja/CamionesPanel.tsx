@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { Plus, Target, Truck } from "lucide-react";
 import ObjetivosCamion from "@/shared/caja/ObjetivosCamion";
-import { useCamiones } from "@/shared/hooks/useRepartos";
-import { crearCamion, setCamionActivo } from "@/lib/repartos/storage";
+import { useCamiones, useRepartidores } from "@/shared/hooks/useRepartos";
+import { crearCamion, setCamionActivo, setRepartidorCamion } from "@/lib/repartos/storage";
 
 const TEAL = "#4FAEB2";
 
@@ -28,6 +28,18 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [objetivosDe, setObjetivosDe] = useState<string | null>(null);
+  const { repartidores } = useRepartidores();
+
+  async function handleRepartidor(id: string, repartidorId: string | null) {
+    setError(null);
+    const res = await setRepartidorCamion(id, repartidorId);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    await Promise.all([mutate(), mutateGlobal("repartos:camiones:activos")]);
+    onCambio?.();
+  }
 
   async function handleAlta() {
     if (guardando) return;
@@ -90,6 +102,24 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
                 ) : null}
               </span>
               {c.activo ? (
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
+                  <span className="hidden sm:inline">Vendedor</span>
+                  <select
+                    value={c.repartidor_id ?? ""}
+                    onChange={(e) => handleRepartidor(c.id, e.target.value || null)}
+                    aria-label={`Vendedor del camión ${c.alias}`}
+                    className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+                  >
+                    <option value="">Sin asignar</option>
+                    {repartidores.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.nombre ?? r.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {c.activo ? (
                 <button
                   type="button"
                   onClick={() => setObjetivosDe(objetivosDe === c.id ? null : c.id)}
@@ -110,6 +140,11 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
           ))}
         </ul>
       )}
+
+      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+        El camión con vendedor asignado abre su reparto solo, con el primer cobro del día, y
+        arranca con lo que quedó arriba del cierre anterior.
+      </p>
 
       {objetivosDe ? (
         (() => {

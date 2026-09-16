@@ -7,6 +7,8 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
+import { asegurarRepartoAbierto } from "@/lib/repartos/server/asegurar-reparto";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import type { Venta, LineaVenta } from "@/lib/ventas/types";
 
 function asItems(body: unknown): CreateVentaItemInput[] | null {
@@ -191,6 +193,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Si el que vende tiene un camión asignado, la venta sale de su reparto
+    // aunque nadie lo haya abierto esa mañana: se abre solo, con el saldo que
+    // quedó arriba del cierre anterior. Sin esto la venta queda sin camión, la
+    // mercadería sale del stock general y el cierre del día dice "sin reparto"
+    // con el camión en la calle.
+    let repartoFinal = repartoId;
+    if (repartoFinal === null) {
+      const yo = await usuarioDelSchema({
+        schema,
+        empresaId: auth.empresa_id,
+        email: auth.user.email,
+      });
+      repartoFinal = await asegurarRepartoAbierto(schema, auth.empresa_id, yo?.id ?? null);
+    }
+
     const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
       schema,
       empresaId: auth.empresa_id,
@@ -201,7 +218,7 @@ export async function POST(request: NextRequest) {
       tipoVenta,
       metodoPago,
       cajaId: cajaFinal,
-      repartoId,
+      repartoId: repartoFinal,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,

@@ -198,12 +198,27 @@ export async function listarCamiones(opts: {
   if (!pool) return [];
 
   const tC = quoteSchemaTable(opts.schema, "camiones");
+
+  // `repartidor_id` la agrega la migración 13. Mientras no esté, los camiones
+  // se listan igual sin dueño: la pantalla funciona, solo que no puede asignar.
+  const colsQ = await queryWithRetry<{ columna: string }>(
+    pool,
+    `SELECT column_name AS columna FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'repartidor_id'`,
+    [opts.schema]
+  );
+  const hayDueno = colsQ.rows.length > 0;
+  const tU = quoteSchemaTable(opts.schema, "usuarios");
+
   const q = await queryWithRetry<Camion>(
     pool,
-    `SELECT id, alias, patente, activo, ubicacion_id FROM ${tC}
-      WHERE empresa_id = $1::uuid
-        ${opts.incluirInactivos ? "" : "AND activo = true"}
-      ORDER BY activo DESC, alias`,
+    `SELECT c.id, c.alias, c.patente, c.activo, c.ubicacion_id
+            ${hayDueno ? ", c.repartidor_id, COALESCE(u.nombre, u.email) AS repartidor" : ", NULL::uuid AS repartidor_id, NULL::text AS repartidor"}
+       FROM ${tC} c
+       ${hayDueno ? `LEFT JOIN ${tU} u ON u.id = c.repartidor_id` : ""}
+      WHERE c.empresa_id = $1::uuid
+        ${opts.incluirInactivos ? "" : "AND c.activo = true"}
+      ORDER BY c.activo DESC, c.alias`,
     [opts.empresaId]
   );
   return q.rows;
