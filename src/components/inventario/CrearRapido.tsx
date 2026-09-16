@@ -1,20 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { X } from "lucide-react";
 
 /**
  * "+ Crear" sin salir del formulario.
  *
  * Antes cada uno de estos botones era un enlace a otra pantalla: al volver, lo
- * que estabas cargando del producto ya no estaba. Cargar un producto nuevo y
- * darse cuenta en la mitad de que falta la categoría es lo normal, no la
- * excepción.
+ * que estabas cargando del producto ya no estaba. Darse cuenta en la mitad de
+ * que falta la categoría es lo normal, no la excepción.
  *
- * El modal pide lo mínimo —el nombre— porque el resto se completa después
- * desde la pantalla del catálogo. Al guardar, el nuevo queda elegido.
+ * El modal pide lo mínimo para que el registro sirva y quede identificable —el
+ * nombre, y el RUC y el teléfono del proveedor, que es lo que se busca cuando
+ * hay que llamarlo—. El resto de la ficha se completa después, en su pantalla:
+ * un alta rápida con quince campos deja de ser rápida y nadie la usa.
  */
 
 export type TipoCrearRapido = "categoria" | "proveedor" | "ubicacion";
+
+type Campo = {
+  name: string;
+  label: string;
+  placeholder: string;
+  /** `true` ocupa la fila entera; si no, va a media fila. */
+  ancho?: boolean;
+  requerido?: boolean;
+  tipo?: "texto" | "select";
+  opciones?: { value: string; label: string }[];
+  /** Los nombres se guardan en mayúsculas, como el resto del catálogo. */
+  mayusculas?: boolean;
+};
 
 const TIPOS_UBICACION = [
   { value: "deposito", label: "Depósito" },
@@ -27,28 +42,70 @@ const TIPOS_UBICACION = [
 
 const CONFIG: Record<
   TipoCrearRapido,
-  { titulo: string; etiqueta: string; placeholder: string; url: string; clave: string }
+  {
+    titulo: string;
+    accion: string;
+    url: string;
+    clave: string;
+    nota: string;
+    campos: Campo[];
+  }
 > = {
   categoria: {
     titulo: "Nueva categoría",
-    etiqueta: "Nombre de la categoría",
-    placeholder: "Ej: POLLO",
+    accion: "Crear categoría",
     url: "/api/inventario/categorias",
     clave: "categoria",
+    nota: "Las subcategorías y la descripción se agregan después desde Inventario → Categorías.",
+    campos: [
+      {
+        name: "nombre",
+        label: "Nombre de la categoría",
+        placeholder: "EJ: POLLO",
+        ancho: true,
+        requerido: true,
+        mayusculas: true,
+      },
+      { name: "codigo", label: "Código", placeholder: "EJ: POL", mayusculas: true },
+    ],
   },
   proveedor: {
     titulo: "Nuevo proveedor",
-    etiqueta: "Razón social o nombre",
-    placeholder: "Ej: FRIGORÍFICO SAN MIGUEL",
+    accion: "Crear proveedor",
     url: "/api/proveedores",
     clave: "proveedor",
+    nota: "El resto de la ficha (dirección, condición de pago, moneda) se completa después desde Compras → Proveedores.",
+    campos: [
+      {
+        name: "nombre",
+        label: "Razón social / nombre",
+        placeholder: "EJ: DISTRIBUIDORA SAN JOSÉ S.A.",
+        ancho: true,
+        requerido: true,
+        mayusculas: true,
+      },
+      { name: "ruc", label: "RUC", placeholder: "EJ: 80012345-6", mayusculas: true },
+      { name: "telefono", label: "Teléfono", placeholder: "Ej: 0981 123 456" },
+    ],
   },
   ubicacion: {
     titulo: "Nueva ubicación",
-    etiqueta: "Nombre de la ubicación",
-    placeholder: "Ej: DEPÓSITO CENTRAL",
+    accion: "Crear ubicación",
     url: "/api/inventario/ubicaciones",
     clave: "ubicacion",
+    nota: "El tipo decide cómo se usa: a un camión no se le transfiere mercadería como a un depósito.",
+    campos: [
+      {
+        name: "nombre",
+        label: "Nombre de la ubicación",
+        placeholder: "EJ: DEPÓSITO CENTRAL",
+        ancho: true,
+        requerido: true,
+        mayusculas: true,
+      },
+      { name: "tipo", label: "Tipo", tipo: "select", opciones: TIPOS_UBICACION, placeholder: "" },
+      { name: "codigo", label: "Código", placeholder: "EJ: DEP-01", mayusculas: true },
+    ],
   },
 };
 
@@ -96,22 +153,34 @@ function ModalCrear({
   onCreado: (id: string) => void | Promise<void>;
 }) {
   const cfg = CONFIG[tipo];
-  const [nombre, setNombre] = useState("");
-  const [tipoUbicacion, setTipoUbicacion] = useState("deposito");
+  const [valores, setValores] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      cfg.campos.map((c) => [c.name, c.tipo === "select" ? (c.opciones?.[0]?.value ?? "") : ""])
+    )
+  );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const faltaRequerido = cfg.campos.some((c) => c.requerido && !valores[c.name]?.trim());
+
+  function set(name: string, valor: string) {
+    setError(null);
+    setValores((prev) => ({ ...prev, [name]: valor }));
+  }
+
   async function guardar() {
-    const limpio = nombre.trim();
-    if (!limpio) {
-      setError("Poné un nombre.");
-      return;
-    }
+    if (guardando || faltaRequerido) return;
     setGuardando(true);
     setError(null);
     try {
-      const body: Record<string, unknown> = { nombre: limpio };
-      if (tipo === "ubicacion") body.tipo = tipoUbicacion;
+      // Los vacíos no se mandan: un RUC en blanco no es un RUC, y guardarlo
+      // como cadena vacía después rompe las búsquedas por RUC.
+      const body: Record<string, unknown> = {};
+      for (const c of cfg.campos) {
+        const v = (valores[c.name] ?? "").trim();
+        if (v) body[c.name] = v;
+      }
+
       const res = await fetch(cfg.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,51 +212,73 @@ function ModalCrear({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
-      // Un clic afuera cierra: es un formulario de un campo, no hay nada que perder.
       onClick={onCerrar}
     >
       <div
-        className="w-full max-w-sm rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+        className="w-full max-w-lg rounded-t-2xl bg-white p-5 sm:rounded-2xl sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-bold text-slate-900">{cfg.titulo}</h2>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">{cfg.titulo}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Se crea sin salir del formulario y queda seleccionado.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCerrar}
+            aria-label="Cerrar"
+            className="-mr-1 -mt-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-        <label className="mt-4 block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">{cfg.etiqueta}</span>
-          <input
-            value={nombre}
-            onChange={(e) => {
-              setError(null);
-              setNombre(e.target.value.toUpperCase());
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void guardar();
-              }
-            }}
-            placeholder={cfg.placeholder}
-            className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm uppercase outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-            autoFocus
-          />
-        </label>
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {cfg.campos.map((c) => (
+            <label key={c.name} className={c.ancho ? "sm:col-span-2" : ""}>
+              <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                {c.label}
+                {c.requerido ? <span className="ml-0.5 text-red-500">*</span> : null}
+              </span>
 
-        {tipo === "ubicacion" ? (
-          <label className="mt-3 block">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Tipo</span>
-            <select
-              value={tipoUbicacion}
-              onChange={(e) => setTipoUbicacion(e.target.value)}
-              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-            >
-              {TIPOS_UBICACION.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+              {c.tipo === "select" ? (
+                <select
+                  value={valores[c.name] ?? ""}
+                  onChange={(e) => set(c.name, e.target.value)}
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/30"
+                >
+                  {(c.opciones ?? []).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={valores[c.name] ?? ""}
+                  onChange={(e) =>
+                    set(c.name, c.mayusculas ? e.target.value.toUpperCase() : e.target.value)
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void guardar();
+                    }
+                  }}
+                  placeholder={c.placeholder}
+                  autoFocus={c.requerido}
+                  className={`h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/30 ${
+                    c.mayusculas ? "uppercase placeholder:normal-case" : ""
+                  }`}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+
+        <p className="mt-4 text-xs leading-relaxed text-slate-400">{cfg.nota}</p>
 
         {error ? (
           <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">
@@ -195,23 +286,23 @@ function ModalCrear({
           </p>
         ) : null}
 
-        <div className="mt-5 flex gap-2">
+        <div className="mt-6 flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={onCerrar}
             disabled={guardando}
-            className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 disabled:opacity-50"
+            className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={guardar}
-            disabled={guardando}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            disabled={guardando || faltaRequerido}
+            className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
             style={{ backgroundColor: "#4FAEB2" }}
           >
-            {guardando ? "Guardando…" : "Crear"}
+            {guardando ? "Guardando…" : cfg.accion}
           </button>
         </div>
       </div>
