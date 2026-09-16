@@ -43,15 +43,18 @@ export default function ControlMercaderia({
   const items = useMemo(() => reparto.items ?? [], [reparto.items]);
   const [accion, setAccion] = useState<"carga" | "transferencia" | null>(null);
 
+  // Solo lo que el repartidor tipeó. Lo demás sale de la fila del servidor.
+  //
+  // Antes esto se sembraba una sola vez con los productos que había al abrir la
+  // pantalla, y un producto que aparecía después —una carga de media mañana, o
+  // el reparto que se abre solo con la primera venta— no tenía entrada acá.
+  // Tipear en ese producto guardaba media ficha, sin `motivo`, y la pantalla se
+  // caía con "Application error": parecía que el campo no dejaba escribir.
+  //
   // Texto y no número, para distinguir "vacío" (sin contar) de "0" (contado y
   // no volvió nada).
-  const [conteos, setConteos] = useState<Record<string, { contado: string; motivo: string }>>(() =>
-    Object.fromEntries(
-      items.map((i) => [
-        i.producto_id,
-        { contado: i.contado === null ? "" : String(i.contado), motivo: i.motivo ?? "" },
-      ])
-    )
+  const [editados, setEditados] = useState<Record<string, { contado?: string; motivo?: string }>>(
+    {}
   );
   const [merma, setMerma] = useState("");
   const [efectivo, setEfectivo] = useState("");
@@ -61,28 +64,32 @@ export default function ControlMercaderia({
 
   function setCampo(id: string, campo: "contado" | "motivo", valor: string) {
     setError(null);
-    setConteos((prev) => ({ ...prev, [id]: { ...prev[id], [campo]: valor } }));
+    setEditados((prev) => ({ ...prev, [id]: { ...prev[id], [campo]: valor } }));
   }
 
   /** Filas con los números en vivo: al tipear, la diferencia se recalcula sola. */
   const filas = useMemo(
     () =>
       items.map((i) => {
-        const c = conteos[i.producto_id] ?? { contado: "", motivo: "" };
-        const sinContar = c.contado.trim() === "";
-        const contado = sinContar ? null : Number(c.contado);
+        const edit = editados[i.producto_id];
+        // Lo tipeado manda; si no se tocó, lo que ya tenía guardado el reparto.
+        const texto = edit?.contado ?? (i.contado === null ? "" : String(i.contado));
+        const motivoEdit = edit?.motivo ?? i.motivo ?? "";
+        const sinContar = texto.trim() === "";
+        const contado = sinContar ? null : Number(texto);
         const valido = contado === null || (Number.isFinite(contado) && contado >= 0);
         const diferencia = contado === null || !valido ? null : contado - i.teorico;
         return {
           ...i,
+          contadoTexto: texto,
           contadoEdit: contado,
-          motivoEdit: c.motivo,
+          motivoEdit,
           diferenciaEdit: abierto ? diferencia : i.diferencia,
           sinContar,
           valido,
         };
       }),
-    [items, conteos, abierto]
+    [items, editados, abierto]
   );
 
   const faltanContar = filas.filter((f) => f.sinContar).length;
@@ -227,7 +234,7 @@ export default function ControlMercaderia({
                   <input
                     inputMode="decimal"
                     placeholder="Conté…"
-                    value={conteos[f.producto_id]?.contado ?? ""}
+                    value={f.contadoTexto}
                     onChange={(e) => setCampo(f.producto_id, "contado", e.target.value)}
                     aria-label={`Cantidad contada de ${f.nombre}`}
                     className={`h-9 w-24 rounded-lg border px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2] ${
@@ -246,7 +253,7 @@ export default function ControlMercaderia({
               {f.diferenciaEdit !== null && f.diferenciaEdit !== 0 ? (
                 abierto ? (
                   <input
-                    value={conteos[f.producto_id]?.motivo ?? ""}
+                    value={f.motivoEdit}
                     onChange={(e) => setCampo(f.producto_id, "motivo", e.target.value)}
                     placeholder="Motivo de la diferencia (obligatorio)"
                     aria-label={`Motivo de la diferencia de ${f.nombre}`}
