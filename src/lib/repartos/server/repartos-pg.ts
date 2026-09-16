@@ -116,34 +116,51 @@ export async function listarRepartos(opts: {
 
   const ids = repartosQ.rows.map((r) => r.id);
 
+  // Las filas en cero no se muestran.
+  //
+  // Una carga y una descarga escriben la misma fila de `reparto_stock`: bajar
+  // todo lo que se había subido la deja en 0 en vez de borrarla. Esa fila
+  // después aparecía en el control de mercadería como un producto más —"salió
+  // 0, vendió 0, debería haber 0"— y encima pedía contarlo para poder cerrar.
+  //
+  // Se filtra al leer y no al escribir para que arregle también los repartos
+  // que ya tienen la fila. Alcanza con que *algo* haya pasado: si se vendió,
+  // si quedó algo arriba o si ya se contó, la fila queda aunque el resto dé 0.
   const itemsQ = await queryWithRetry<FilaItem>(
     pool,
-    `SELECT rs.reparto_id,
-            rs.producto_id,
-            p.nombre,
-            COALESCE(NULLIF(rs.unidad_medida, ''), p.unidad_medida, '') AS unidad,
-            rs.cantidad_inicial::text  AS cargado,
-            rs.cantidad_devuelta::text AS devuelto,
-            rs.cantidad_contada::text  AS contado,
-            rs.motivo_diferencia       AS motivo,
-            COALESCE(su.stock_actual, 0)::text AS teorico,
-            COALESCE((
-              SELECT sum(vi.cantidad)
-                FROM ${tVI} vi
-                JOIN ${tV} v ON v.id = vi.venta_id
-               WHERE v.reparto_id = rs.reparto_id
-                 AND vi.producto_id = rs.producto_id
-                 AND COALESCE(v.estado, '') <> 'anulada'
-            ), 0)::text AS vendido
-       FROM ${tS} rs
-       JOIN ${tP} p ON p.id = rs.producto_id
-       JOIN ${tR} r ON r.id = rs.reparto_id
-       JOIN ${tC} c ON c.id = r.camion_id
-       LEFT JOIN ${tSU} su
-              ON su.producto_id = rs.producto_id
-             AND su.ubicacion_id = c.ubicacion_id
-      WHERE rs.reparto_id = ANY($1::uuid[])
-      ORDER BY p.nombre`,
+    `SELECT * FROM (
+       SELECT rs.reparto_id,
+              rs.producto_id,
+              p.nombre,
+              COALESCE(NULLIF(rs.unidad_medida, ''), p.unidad_medida, '') AS unidad,
+              rs.cantidad_inicial::text  AS cargado,
+              rs.cantidad_devuelta::text AS devuelto,
+              rs.cantidad_contada::text  AS contado,
+              rs.motivo_diferencia       AS motivo,
+              COALESCE(su.stock_actual, 0)::text AS teorico,
+              COALESCE((
+                SELECT sum(vi.cantidad)
+                  FROM ${tVI} vi
+                  JOIN ${tV} v ON v.id = vi.venta_id
+                 WHERE v.reparto_id = rs.reparto_id
+                   AND vi.producto_id = rs.producto_id
+                   AND COALESCE(v.estado, '') <> 'anulada'
+              ), 0)::text AS vendido
+         FROM ${tS} rs
+         JOIN ${tP} p ON p.id = rs.producto_id
+         JOIN ${tR} r ON r.id = rs.reparto_id
+         JOIN ${tC} c ON c.id = r.camion_id
+         LEFT JOIN ${tSU} su
+                ON su.producto_id = rs.producto_id
+               AND su.ubicacion_id = c.ubicacion_id
+        WHERE rs.reparto_id = ANY($1::uuid[])
+     ) f
+      WHERE f.contado IS NOT NULL
+         OR COALESCE(f.cargado::numeric, 0)  > 0
+         OR COALESCE(f.vendido::numeric, 0)  > 0
+         OR COALESCE(f.devuelto::numeric, 0) > 0
+         OR COALESCE(f.teorico::numeric, 0)  > 0
+      ORDER BY f.nombre`,
     [ids]
   );
 

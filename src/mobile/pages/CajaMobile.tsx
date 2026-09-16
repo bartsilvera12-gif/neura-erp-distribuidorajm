@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
+import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
@@ -285,14 +286,24 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
   const { productos, isLoading } = useProductos(caja.repartoId);
   const [query, setQuery] = useState("");
 
+  // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo
+  // de la lista a mitad de la venta haría desaparecer una línea ya cargada.
+  const conStock = useMemo(
+    () => productos.filter((p) => p.stock_actual > 0 || caja.cantidadDe(p.id) > 0),
+    [productos, caja]
+  );
+  const ocultosSinStock = productos.length - conStock.length;
+
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = productos.filter((p) => p.stock_actual > 0 || caja.cantidadDe(p.id) > 0);
-    if (!q) return base;
-    return base.filter(
+    if (!q) return conStock;
+    return conStock.filter(
       (p) => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
     );
-  }, [productos, query, caja]);
+  }, [conStock, query]);
+
+  const camionDeLaVenta =
+    caja.repartosAbiertos.find((r) => r.id === caja.repartoId)?.camion ?? null;
 
   return (
     <div className="pt-4">
@@ -306,6 +317,10 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
         />
       </div>
 
+      {isLoading ? null : (
+        <AvisoCatalogoCaja camion={camionDeLaVenta} ocultos={ocultosSinStock} />
+      )}
+
       {isLoading ? (
         <p className="mt-6 text-center text-sm text-slate-400">Cargando productos…</p>
       ) : filtrados.length === 0 ? (
@@ -314,7 +329,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
             ? `Ningún producto coincide con “${query}”.`
             : caja.repartoId
               ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-              : "No hay productos con stock."}
+              : "Todavía no hay productos con stock. Cargalos desde Inventario."}
         </p>
       ) : (
         <ul className="mt-3 space-y-2">
