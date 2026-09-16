@@ -8,6 +8,7 @@ import MontoInput from "@/components/ui/MontoInput";
 import { getProducto, productoExiste, updateProducto } from "@/lib/inventario/storage";
 import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
+import CrearRapido from "@/components/inventario/CrearRapido";
 
 interface CatRow { id: string; nombre: string }
 interface UbiRow { id: string; nombre: string; tipo: string }
@@ -47,6 +48,24 @@ export default function EditarProductoPage() {
   const [categorias, setCategorias] = useState<CatRow[]>([]);
   const [ubicaciones, setUbicaciones] = useState<UbiRow[]>([]);
   const [proveedores, setProveedores] = useState<ProvRow[]>([]);
+
+
+  /** Vuelve a leer un catálogo después de crear algo desde el modal. */
+  async function recargarCatalogo(cual: "categorias" | "ubicaciones" | "proveedores") {
+    const url =
+      cual === "proveedores" ? "/api/proveedores" : `/api/inventario/${cual}`;
+    try {
+      const r = await fetch(url, { credentials: "include", cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || !j?.success) return;
+      if (cual === "categorias") setCategorias((j.data?.categorias ?? []) as CatRow[]);
+      if (cual === "ubicaciones") setUbicaciones((j.data?.ubicaciones ?? []) as UbiRow[]);
+      if (cual === "proveedores") setProveedores((j.data?.proveedores ?? []) as ProvRow[]);
+    } catch {
+      // Si falla la recarga, el creado aparece al volver a entrar: no vale
+      // interrumpir la carga del producto por eso.
+    }
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -410,12 +429,13 @@ export default function EditarProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {categorias.length === 0 ? "Todavía no cargaste categorías." : `${categorias.length} disponibles`}
                   </span>
-                  <Link
-                    href="/inventario/categorias"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="categoria"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("categorias");
+                      setCategoriaId(id);
+                    }}
+                  />
                 </div>
               </div>
               <div className="md:col-span-4 min-w-0">
@@ -430,12 +450,13 @@ export default function EditarProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {proveedores.length === 0 ? "Todavía no cargaste proveedores." : `${proveedores.length} disponibles`}
                   </span>
-                  <Link
-                    href="/proveedores/nuevo"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="proveedor"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("proveedores");
+                      setProveedorId(id);
+                    }}
+                  />
                 </div>
               </div>
               <div className="md:col-span-4 min-w-0">
@@ -450,12 +471,13 @@ export default function EditarProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {ubicaciones.length === 0 ? "Todavía no cargaste ubicaciones." : `${ubicaciones.length} disponibles`}
                   </span>
-                  <Link
-                    href="/inventario/ubicaciones"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="ubicacion"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("ubicaciones");
+                      setUbicacionId(id);
+                    }}
+                  />
                 </div>
               </div>
             </div>
