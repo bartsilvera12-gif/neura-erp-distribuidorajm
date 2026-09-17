@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ReceiptText, Settings } from "lucide-react";
 import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
+import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 
 /**
  * Navegación inferior de la UI mobile.
@@ -44,6 +45,9 @@ const NAV_ITEMS: NavItem[] = [
 export default function BottomNav() {
   const pathname = usePathname() ?? "/";
   const { puedeVer } = useAccesoRuta();
+  // Con el teclado abierto no queda pantalla para nada: la barra se va y vuelve
+  // al cerrarlo. Escribiendo no se navega a otra sección.
+  const teclado = useTecladoVirtual();
 
   const isActive = (item: NavItem): boolean => {
     if (item.matchPrefix) {
@@ -53,6 +57,8 @@ export default function BottomNav() {
   };
 
   const visibles = NAV_ITEMS.filter((item) => puedeVer(item.href) === true);
+
+  if (teclado) return null;
 
   return (
     <nav

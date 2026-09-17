@@ -2292,7 +2292,18 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
   { id: "anio", label: "Año"       },
 ];
 
-const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
+/**
+ * Pestañas del Dashboard que aplican a esta empresa.
+ *
+ * "Comercial" queda afuera: es el tablero de leads y prospectos de la agencia
+ * —embudo, etapas, tasa de conversión— y una distribuidora de alimentos no
+ * tiene ese pipeline. El módulo CRM tampoco está entre los que se le dieron de
+ * alta, así que la pestaña mostraba cifras en cero de algo que no se usa.
+ */
+const TAB_VALID: TabDash[] = ["financiero", "inventario", "ventas"];
+
+/** Pestañas que no se muestran aunque el catálogo de vistas las habilite. */
+const TABS_OCULTAS = new Set<string>(["comercial"]);
 
 /*
  * Los cuatro tableros de proyectos —panel gerencial, Ejecutivo, PM y SLA— se
@@ -2311,7 +2322,7 @@ function getInitialTab(): TabDash {
   if (typeof window === "undefined") return "comercial";
   const params = new URLSearchParams(window.location.search);
   const t = params.get("tab");
-  return t && isDashboardTabSlug(t) ? t : "comercial";
+  return t && isDashboardTabSlug(t) && !TABS_OCULTAS.has(t) ? t : "ventas";
 }
 
 export default function DashboardPage() {
@@ -2337,7 +2348,7 @@ export default function DashboardPage() {
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t && isDashboardTabSlug(t)) setTab(t);
+      if (t && isDashboardTabSlug(t) && !TABS_OCULTAS.has(t)) setTab(t);
     };
     syncFromUrl();
     window.addEventListener("popstate", syncFromUrl);
@@ -2380,7 +2391,13 @@ export default function DashboardPage() {
     if (dashScope.kind !== "scoped") return;
     const params = new URLSearchParams(window.location.search);
     const t = params.get("tab");
-    const next = t && isDashboardTabSlug(t) && dashScope.tabs.includes(t) ? t : dashScope.defaultTab;
+    // El catálogo de vistas puede traer "comercial"; acá no se muestra, así que
+    // tampoco se deja entrar por la URL ni quedar como pestaña por defecto.
+    const permitidas = dashScope.tabs.filter((x) => !TABS_OCULTAS.has(x));
+    const porDefecto = TABS_OCULTAS.has(dashScope.defaultTab)
+      ? (permitidas[0] ?? "ventas")
+      : dashScope.defaultTab;
+    const next = t && isDashboardTabSlug(t) && permitidas.includes(t) ? t : porDefecto;
     setTab(next);
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `?tab=${next}`);
@@ -2430,11 +2447,10 @@ export default function DashboardPage() {
       : "administrador";
 
   const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
-  const effectiveTabs: TabDash[] = baseTabs;
+  const effectiveTabs: TabDash[] = baseTabs.filter((t) => !TABS_OCULTAS.has(t));
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
   const TAB_META: Partial<Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }>> = {
-    comercial: { label: "Comercial", Icon: Icon.Comercial },
     financiero: { label: "Financiero", Icon: Icon.Financiero },
     inventario: { label: "Inventario", Icon: Icon.Inventario },
     ventas: { label: "Ventas", Icon: Icon.Ventas },

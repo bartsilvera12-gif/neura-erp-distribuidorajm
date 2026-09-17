@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import BottomNav from "./BottomNav";
 import MobileHeader from "./MobileHeader";
+import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 
 const STANDALONE_ROUTES = ["/login"];
@@ -24,6 +25,7 @@ const STANDALONE_ROUTES = ["/login"];
  */
 export default function MobileAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const teclado = useTecladoVirtual();
   // /m/* = app móvil del asesor (Capacitor/APK): pantalla completa, sin header/bottom-nav del ERP.
   const isStandalone =
     !!pathname && (STANDALONE_ROUTES.includes(pathname) || pathname.startsWith("/m/"));
@@ -42,9 +44,15 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
       */}
       <CapacitorPushRegister />
 
-      <MobileHeader />
+      {/* Con el teclado abierto, cada barra fija se come lo poco que queda:
+          la de la app se va igual que la de abajo y vuelve al cerrarlo. */}
+      {teclado ? null : <MobileHeader />}
 
-      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-16">
+      <main
+        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain ${
+          teclado ? "pb-2" : "pb-16"
+        }`}
+      >
         {children}
       </main>
 

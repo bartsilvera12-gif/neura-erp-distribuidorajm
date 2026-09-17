@@ -23,6 +23,7 @@ import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
+import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
@@ -59,7 +60,12 @@ export default function CajaMobile() {
   // Buscar o registrar un cliente ocupa la pantalla entera: mientras está
   // abierto, la barra fija de abajo taparía el botón de guardar.
   const [subCliente, setSubCliente] = useState<null | "lista" | "nuevo">(null);
-  const barraVisible = !(caja.paso === "cliente" && subCliente !== null);
+  // Escribiendo en un buscador, lo único que importa es el campo y la lista. El
+  // encabezado con el stepper y la barra de Continuar juntos miden más que lo
+  // que deja libre el teclado, y entre los dos no quedaba nada para los
+  // resultados.
+  const teclado = useTecladoVirtual();
+  const barraVisible = !teclado && !(caja.paso === "cliente" && subCliente !== null);
 
   if (caja.paso === "listo" && caja.ventaCreada) {
     return <Comprobante caja={caja} />;
@@ -68,7 +74,7 @@ export default function CajaMobile() {
 
   return (
     <div className="flex min-h-full flex-col bg-[#F8FAFC]">
-      <Encabezado caja={caja} />
+      <Encabezado caja={caja} compacto={teclado} />
 
       {/* El pb reserva el lugar de la barra fija de abajo. Cuando esa barra no
           está —buscando o registrando un cliente— reservarlo igual dejaba un
@@ -89,11 +95,15 @@ export default function CajaMobile() {
 
 // ── Encabezado con stepper ───────────────────────────────────────────────────
 
-function Encabezado({ caja }: { caja: CajaVenta }) {
+function Encabezado({ caja, compacto }: { caja: CajaVenta; compacto?: boolean }) {
   const indiceActual = PASOS_CAJA.findIndex((p) => p.id === caja.paso);
 
   return (
-    <header className="sticky top-0 z-10 bg-[var(--zentra-sidebar)] px-4 pb-4 pt-3 text-white">
+    <header
+      className={`sticky top-0 z-10 bg-[var(--zentra-sidebar)] px-4 text-white ${
+        compacto ? "py-2" : "pb-4 pt-3"
+      }`}
+    >
       <div className="flex items-center gap-2">
         {caja.paso === "cliente" ? (
           <Link
@@ -116,8 +126,9 @@ function Encabezado({ caja }: { caja: CajaVenta }) {
         <h1 className="text-base font-semibold">Nueva venta</h1>
       </div>
 
-      {/* Stepper: los pasos ya completados vuelven a ser tocables. */}
-      <ol className="mt-3 flex items-center gap-1.5">
+      {/* Stepper: los pasos ya completados vuelven a ser tocables. Con el teclado
+          abierto se esconde: son 64px que hacen falta para ver la lista. */}
+      <ol className={`mt-3 items-center gap-1.5 ${compacto ? "hidden" : "flex"}`}>
         {PASOS_CAJA.map((p, i) => {
           const completado = i < indiceActual;
           const actual = i === indiceActual;
@@ -150,7 +161,7 @@ function Encabezado({ caja }: { caja: CajaVenta }) {
       </ol>
 
       {/* A partir del paso 2 el cliente ya está definido: se muestra como contexto. */}
-      {caja.paso !== "cliente" ? (
+      {caja.paso !== "cliente" && !compacto ? (
         <p className="mt-3 truncate rounded-lg bg-white/10 px-3 py-1.5 text-xs">
           Cliente: <span className="font-semibold">{caja.nombreCliente}</span>
         </p>
