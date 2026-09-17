@@ -759,7 +759,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="30 DÍAS">30 días</option>
                   <option value="60 DÍAS">60 días</option>
                   <option value="90 DÍAS">90 días</option>
-                  <option value="MENSUAL">Mensual</option>
                 </select>
               </div>
               <div>
@@ -798,32 +797,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                 >
                   <option value="activo">Activo</option>
                   <option value="inactivo">Inactivo</option>
-                </select>
-              </div>
-            </div>
-
-            <div className={planBoxCls}>
-              <SectionTitle>Plan</SectionTitle>
-              <div>
-                <label className={labelClass}>Plan</label>
-                <select
-                  value={formSusc.plan_id}
-                  onChange={(e) => {
-                    const p = planes.find((x) => x.id === e.target.value);
-                    setFormSusc((prev) => ({
-                      ...prev,
-                      plan_id: e.target.value,
-                      precio: p ? String(p.precio) : prev.precio,
-                    }));
-                  }}
-                  className={inputClass}
-                >
-                  <option value="">— Seleccionar plan —</option>
-                  {planes.filter((p) => p.estado === "activo").map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre} — {p.moneda} {p.precio.toLocaleString("es-PY")}
-                    </option>
-                  ))}
                 </select>
               </div>
             </div>
