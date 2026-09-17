@@ -14,16 +14,24 @@ import {
   Landmark,
   Receipt,
   Search,
+  Share2,
   User,
+  UserPlus,
   Wallet,
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
+import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
+import {
+  compartirComprobante,
+  whatsappComprobante,
+} from "@/lib/ventas/compartir-comprobante";
+import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
@@ -48,6 +56,9 @@ const TEAL_OSCURO = "#3F8E91";
 
 export default function CajaMobile() {
   const caja = useCajaVenta();
+  // Buscar o registrar un cliente ocupa la pantalla entera: mientras está
+  // abierto, la barra fija de abajo taparía el botón de guardar.
+  const [subCliente, setSubCliente] = useState<null | "lista" | "nuevo">(null);
 
   if (caja.paso === "listo" && caja.ventaCreada) {
     return <Comprobante caja={caja} />;
@@ -60,13 +71,15 @@ export default function CajaMobile() {
 
       {/* pb generoso: la barra de acción es fija y taparía los últimos ítems. */}
       <div className="flex-1 px-4 pb-44">
-        {caja.paso === "cliente" ? <PasoCliente caja={caja} /> : null}
+        {caja.paso === "cliente" ? (
+          <PasoCliente caja={caja} sub={subCliente} setSub={setSubCliente} />
+        ) : null}
         {caja.paso === "productos" ? <PasoProductos caja={caja} /> : null}
         {caja.paso === "resumen" ? <PasoResumen caja={caja} /> : null}
         {caja.paso === "pago" ? <PasoPago caja={caja} /> : null}
       </div>
 
-      <BarraAccion caja={caja} />
+      {caja.paso === "cliente" && subCliente !== null ? null : <BarraAccion caja={caja} />}
     </div>
   );
 }
@@ -145,10 +158,17 @@ function Encabezado({ caja }: { caja: CajaVenta }) {
 
 // ── Paso 1: cliente ──────────────────────────────────────────────────────────
 
-function PasoCliente({ caja }: { caja: CajaVenta }) {
-  const { clientes, isLoading } = useClientes();
+function PasoCliente({
+  caja,
+  sub,
+  setSub,
+}: {
+  caja: CajaVenta;
+  sub: null | "lista" | "nuevo";
+  setSub: (v: null | "lista" | "nuevo") => void;
+}) {
+  const { clientes, isLoading, mutate } = useClientes();
   const [query, setQuery] = useState("");
-  const [eligiendo, setEligiendo] = useState(false);
 
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -166,7 +186,22 @@ function PasoCliente({ caja }: { caja: CajaVenta }) {
       .slice(0, 40);
   }, [clientes, query]);
 
-  if (eligiendo) {
+  if (sub === "nuevo") {
+    return (
+      <NuevoClienteRapido
+        onCancelar={() => setSub(null)}
+        onCreado={(c) => {
+          // Queda elegido para esta venta y además entra en la lista: si el
+          // vendedor vuelve atrás, lo encuentra buscándolo como a cualquier otro.
+          caja.elegirCliente(c);
+          void mutate();
+          setSub(null);
+        }}
+      />
+    );
+  }
+
+  if (sub === "lista") {
     return (
       <div className="pt-4">
         <div className="relative">
@@ -194,7 +229,7 @@ function PasoCliente({ caja }: { caja: CajaVenta }) {
                   type="button"
                   onClick={() => {
                     caja.elegirCliente(c);
-                    setEligiendo(false);
+                    setSub(null);
                   }}
                   className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left active:bg-slate-50"
                 >
@@ -215,7 +250,7 @@ function PasoCliente({ caja }: { caja: CajaVenta }) {
 
         <button
           type="button"
-          onClick={() => setEligiendo(false)}
+          onClick={() => setSub(null)}
           className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
         >
           Cancelar
@@ -234,7 +269,7 @@ function PasoCliente({ caja }: { caja: CajaVenta }) {
 
       <button
         type="button"
-        onClick={() => setEligiendo(true)}
+        onClick={() => setSub("lista")}
         className={`flex w-full items-center gap-3 rounded-xl border-2 bg-white p-4 text-left transition-colors ${
           identificado ? "border-[#4FAEB2]" : "border-slate-200"
         }`}
@@ -267,6 +302,23 @@ function PasoCliente({ caja }: { caja: CajaVenta }) {
             caja.sinNombre ? "border-[#4FAEB2] bg-[#4FAEB2]" : "border-slate-300"
           }`}
         />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setSub("nuevo")}
+        className="mt-3 flex w-full items-center gap-3 rounded-xl border-2 border-slate-200 bg-white p-4 text-left"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/10 text-[#4FAEB2]">
+          <UserPlus className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-slate-900">Registrar nuevo cliente</span>
+          <span className="block truncate text-xs text-slate-500">
+            Nombre y datos de contacto
+          </span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
       </button>
 
       {caja.sinNombre ? (
@@ -661,6 +713,8 @@ function BarraAccion({ caja }: { caja: CajaVenta }) {
 function Comprobante({ caja }: { caja: CajaVenta }) {
   const venta = caja.ventaCreada!;
   const { emisor } = useEmisor();
+  const [verFactura, setVerFactura] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // La unidad de cada producto no viaja en la venta, pero sí está en el
   // carrito que la acaba de generar: sin ella, 1,5 KG se lee como 1,5 a secas.
@@ -668,30 +722,108 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     caja.carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
   );
 
+  const datos: DatosComprobante = {
+    venta,
+    emisor,
+    cliente: caja.nombreCliente,
+    formaPago: etiquetaCobro(caja),
+    unidades,
+  };
+
+  const legal = esFacturaLegal(emisor);
+  const { fecha, hora } = fechaHora(venta.fecha);
+
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
       <div className="no-imprimir flex items-center gap-2 bg-[var(--zentra-sidebar)] px-4 py-3 text-white">
         <CheckCircle2 className="h-5 w-5 text-emerald-300" />
-        <h1 className="text-base font-semibold">Venta registrada</h1>
+        <h1 className="text-base font-semibold">Venta realizada</h1>
       </div>
 
-      <FacturaVenta
-        datos={{
-          venta,
-          emisor,
-          cliente: caja.nombreCliente,
-          formaPago: etiquetaCobro(caja),
-          unidades,
-        }}
-        telefonoCliente={caja.cliente?.telefono ?? null}
-      />
+      {/* El comprobante empieza cerrado: lo que el vendedor necesita ver de un
+          vistazo es el número y el total, y lo que necesita hacer es mandárselo
+          al cliente. La factura entera queda a un toque. */}
+      {verFactura ? (
+        <>
+          <FacturaVenta datos={datos} telefonoCliente={caja.cliente?.telefono ?? null} />
+          <div className="no-imprimir px-4">
+            <button
+              type="button"
+              onClick={() => setVerFactura(false)}
+              className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
+            >
+              Volver al resumen
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="mx-auto max-w-md px-4 py-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
+              <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+            </span>
+            <p className="mt-3 text-base font-bold text-slate-900">
+              {legal ? "¡Factura generada exitosamente!" : "¡Venta registrada!"}
+            </p>
 
-      <div className="no-imprimir space-y-2 px-4">
+            <dl className="mt-5 space-y-2 text-left">
+              <FilaComprobante
+                termino={legal ? "N.° de Factura" : "N.° de comprobante"}
+                valor={venta.numero_control}
+              />
+              <FilaComprobante termino="Fecha y hora" valor={`${fecha} ${hora}`} />
+              <FilaComprobante termino="Cliente" valor={caja.nombreCliente} />
+              <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                <dt className="text-sm font-semibold text-slate-900">Total</dt>
+                <dd className="text-xl font-bold tabular-nums text-slate-900">
+                  {formatGs(venta.total)}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          {aviso ? (
+            <p role="status" className="mt-3 rounded-lg bg-slate-100 p-2.5 text-xs text-slate-600">
+              {aviso}
+            </p>
+          ) : null}
+
+          <div className="mt-4 space-y-2">
+            <button
+              type="button"
+              onClick={() => setVerFactura(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white"
+              style={{ backgroundColor: TEAL }}
+            >
+              <FileText className="h-4 w-4" />
+              Ver factura
+            </button>
+            <button
+              type="button"
+              onClick={async () => setAviso(await compartirComprobante(datos))}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 py-3.5 text-sm font-semibold"
+              style={{ borderColor: TEAL, color: TEAL_OSCURO }}
+            >
+              <Share2 className="h-4 w-4" />
+              Compartir
+            </button>
+            <button
+              type="button"
+              onClick={() => whatsappComprobante(datos, caja.cliente?.telefono ?? null)}
+              className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
+            >
+              Enviar por WhatsApp
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="no-imprimir mt-4 space-y-2 px-4">
         <button
           type="button"
           onClick={caja.reiniciar}
-          className="w-full rounded-xl py-3.5 text-sm font-semibold text-white"
-          style={{ backgroundColor: TEAL }}
+          className="w-full rounded-xl border border-slate-200 bg-white py-3.5 text-sm font-semibold"
+          style={{ color: TEAL_OSCURO }}
         >
           Nueva venta
         </button>
@@ -702,6 +834,15 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           Ver arqueo del día
         </Link>
       </div>
+    </div>
+  );
+}
+
+function FilaComprobante({ termino, valor }: { termino: string; valor: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="text-sm text-slate-500">{termino}</dt>
+      <dd className="min-w-0 truncate text-sm font-semibold text-slate-900">{valor}</dd>
     </div>
   );
 }

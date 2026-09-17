@@ -3,13 +3,8 @@
 import { useState } from "react";
 import { FileText, Printer, Share2 } from "lucide-react";
 import { formatCantidad } from "@/lib/inventario/unidades";
-import {
-  comprobanteEnTexto,
-  esFacturaLegal,
-  fechaHora,
-  gs,
-  type DatosComprobante,
-} from "@/lib/ventas/comprobante";
+import { esFacturaLegal, fechaHora, gs, type DatosComprobante } from "@/lib/ventas/comprobante";
+import { compartirComprobante, whatsappComprobante } from "@/lib/ventas/compartir-comprobante";
 import { comprobantePdf, nombreArchivoPdf } from "@/lib/ventas/comprobante-pdf";
 
 /**
@@ -36,33 +31,12 @@ export default function FacturaVenta({
   const legal = esFacturaLegal(emisor);
   const [aviso, setAviso] = useState<string | null>(null);
 
-  const texto = comprobanteEnTexto(datos);
-
   async function compartir() {
-    setAviso(null);
-    const nav = navigator as Navigator & { share?: (d: { text: string; title: string }) => Promise<void> };
-    if (nav.share) {
-      try {
-        await nav.share({ title: `Venta ${venta.numero_control}`, text: texto });
-        return;
-      } catch {
-        // El usuario canceló el menú de compartir: no es un error que valga un
-        // cartel, pero si el navegador lo rechazó queda el portapapeles abajo.
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(texto);
-      setAviso("Comprobante copiado: pegalo donde lo necesites.");
-    } catch {
-      setAviso("Este navegador no deja compartir ni copiar automáticamente.");
-    }
+    setAviso(await compartirComprobante(datos));
   }
 
   function whatsapp() {
-    // Con teléfono del cliente abre su chat; sin teléfono, deja elegir a quién.
-    const limpio = (telefonoCliente ?? "").replace(/\D/g, "");
-    const base = limpio ? `https://wa.me/${limpio}` : "https://wa.me/";
-    window.open(`${base}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+    whatsappComprobante(datos, telefonoCliente);
   }
 
   async function pdf() {
