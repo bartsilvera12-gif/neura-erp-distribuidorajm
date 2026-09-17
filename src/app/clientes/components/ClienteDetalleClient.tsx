@@ -93,7 +93,6 @@ type ProyectoClienteRow = {
 const TABS: { id: TabId; label: string; showWhen?: (c: Cliente) => boolean }[] = [
   { id: "informacion",   label: "Información"      },
   { id: "estado_cuenta", label: "Estado de cuenta" },
-  { id: "suscripciones", label: "Suscripciones"    },
   { id: "proyectos",     label: "Proyectos"         },
   { id: "actividad",     label: "Actividad"         },
   { id: "notas",         label: "Notas"             },
@@ -1871,7 +1870,6 @@ export default function ClienteDetalleClient({
                       <option value="30 DÍAS">30 días</option>
                       <option value="60 DÍAS">60 días</option>
                       <option value="90 DÍAS">90 días</option>
-                      <option value="MENSUAL">Mensual</option>
                     </select>
                   </div>
                   <div>

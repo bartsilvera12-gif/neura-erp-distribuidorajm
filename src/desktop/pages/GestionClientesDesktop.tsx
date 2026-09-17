@@ -1099,12 +1099,6 @@ function GestionClientesPageInner() {
                     onClick={() => setModalFacturarVenta(true)}
                   />
                   <BotonOperativo label="Servicios asociados" icon="🔗" />
-                  <BotonOperativo
-                    label="Cambio de plan"
-                    icon="🔄"
-                    activo
-                    onClick={() => setModalCambioPlan(true)}
-                  />
                   <BotonOperativo label="Cambio fecha venc." icon="📅" />
                   <BotonOperativo
                     label="Historial cliente"
