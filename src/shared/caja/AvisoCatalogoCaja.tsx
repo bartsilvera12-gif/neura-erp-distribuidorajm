@@ -6,10 +6,10 @@ import { Info } from "lucide-react";
  * De dónde sale la lista de productos de la caja.
  *
  * La caja no muestra el catálogo entero y hay dos motivos distintos, los dos
- * invisibles hasta ahora: en la calle solo se puede vender lo que está arriba
- * del camión, y en cualquier caso un producto sin stock no se ofrece. El
- * resultado era una lista más corta que el inventario sin nada que lo
- * explicara, que se lee como que faltan productos.
+ * invisibles hasta ahora: la venta sale de donde está parado el que vende —el
+ * repartidor de su camión, el mostrador del salón—, y en cualquier caso un
+ * producto sin stock no se ofrece. El resultado era una lista más corta que el
+ * inventario sin nada que lo explicara, que se lee como que faltan productos.
  */
 export default function AvisoCatalogoCaja({
   camion,
@@ -37,7 +37,7 @@ export default function AvisoCatalogoCaja({
             <span className="font-semibold text-slate-700">{camion}</span>.
           </>
         ) : (
-          "Todos los productos del inventario."
+          "Lo que hay en el salón: el stock de la empresa menos lo que está arriba de los camiones."
         )}
         {sinStock}
       </span>

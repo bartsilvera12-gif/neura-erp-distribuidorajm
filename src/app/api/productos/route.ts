@@ -117,9 +117,49 @@ export async function GET(request: NextRequest) {
       if (yo) ubicacionId = await ubicacionDeMiCamion(pool, schema, empresaId, yo.id);
     }
 
+    // Stock del salón: el total de la empresa menos lo que está arriba de los
+    // camiones. Desde el mostrador no se puede vender mercadería que está
+    // viajando, y mostrarla llevaba a prometer lo que no hay.
+    //
+    // Se resta en vez de sumar las ubicaciones fijas a propósito: una empresa
+    // que todavía no lleva el depósito por ubicación no tiene filas ahí, y
+    // sumarlas daría cero en todo. Restando, el peor caso es el total de la
+    // empresa, que es como estaba antes.
+    const sqlSalon = `
+      WITH en_camiones AS (
+        SELECT su.producto_id, sum(su.stock_actual) AS cantidad
+          FROM ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
+          JOIN ${quoteSchemaTable(schema, "inventario_ubicaciones")} u
+            ON u.id = su.ubicacion_id
+         WHERE su.empresa_id = $1::uuid AND lower(btrim(COALESCE(u.tipo, ''))) = 'camion'
+         GROUP BY su.producto_id
+      )
+      SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
+             GREATEST(COALESCE(p.stock_actual, 0) - COALESCE(ec.cantidad, 0), 0) AS stock_actual,
+             p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
+             p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
+             p.imagen_path, p.imagen_url, p.categoria_principal_id,
+             p.ubicacion_principal_id, p.proveedor_principal_id
+        FROM ${t} p
+        LEFT JOIN en_camiones ec ON ec.producto_id = p.id
+       WHERE p.empresa_id = $1::uuid AND p.activo = true
+       ORDER BY p.nombre`;
+
+    // Sin las tablas de ubicación no hay camiones que descontar: el stock de la
+    // empresa es todo lo que hay, y es lo que se ofrece.
+    const hayUbicaciones = await queryWithRetry<{ su: string | null; u: string | null }>(
+      pool,
+      `SELECT to_regclass($1)::text AS su, to_regclass($2)::text AS u`,
+      [`${schema}.inventario_stock_ubicacion`, `${schema}.inventario_ubicaciones`]
+    );
+    const puedeDescontarCamiones =
+      hayUbicaciones.rows[0]?.su !== null && hayUbicaciones.rows[0]?.u !== null;
+
     const sql =
       ubicacionId === null
-        ? `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
+        ? puedeDescontarCamiones
+          ? sqlSalon
+          : `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
                   unidad_medida, metodo_valuacion, activo, created_at, updated_at,
                   codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
                   categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
