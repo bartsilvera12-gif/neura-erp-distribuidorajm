@@ -13,7 +13,8 @@ import {
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import type { ReporteVentas } from "@/lib/gerencia/ventas-data";
 import { gs, gsShort, pct, pctColor } from "@/lib/report/format";
-import { Kpi } from "@/components/ui/report";
+import { CalendarDays, Coins, Receipt, TrendingUp, Wallet } from "lucide-react";
+import { PanelGerencia, TarjetaKpi, THEAD_GERENCIA } from "./tarjetas";
 
 const TEAL = "#4FAEB2";
 
@@ -37,9 +38,12 @@ function diaLargo(ymd: string): string {
   });
 }
 
-/** Cantidad sin decimales de más: 9.4 KG pero 12 unidades. */
+/** Cantidad sin decimales de más y con coma, como se escribe acá: 9,4 KG pero 12 unidades. */
 function cant(n: number, unidad: string): string {
-  const s = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+  // Las cantidades se acumulan sumando floats, así que se redondea antes de
+  // mostrar: si no, 2,3 + 3,6 sale como 5,899999999999999.
+  const redondeado = Math.round((Number(n) || 0) * 1000) / 1000;
+  const s = redondeado.toLocaleString("es-PY", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
   return unidad ? `${s} ${unidad}` : s;
 }
 
@@ -120,7 +124,16 @@ export default function GerenciaClient() {
     <div className="space-y-6 pb-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Gerencia</h1>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Dirección
+            </p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Gerencia</h1>
           <p className="mt-1 text-sm text-slate-500">
             Venta por día, por camión y por producto.
           </p>
@@ -155,7 +168,7 @@ export default function GerenciaClient() {
         <>
           {/* ── Resumen del mes ── */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi
+            <TarjetaKpi
               label="Venta del mes"
               value={gs(r.total)}
               sub={
@@ -164,42 +177,52 @@ export default function GerenciaClient() {
                   : `${pct(r.variacion_pct)} vs ${gs(r.total_mes_anterior)}`
               }
               subColor={r.variacion_pct == null ? undefined : pctColor(r.variacion_pct)}
-              accent
+              icono={<TrendingUp className="h-4 w-4" />}
+              destacada
             />
-            <Kpi
+            <TarjetaKpi
               label="Ventas"
               value={String(r.ventas)}
               sub={r.ventas === 1 ? "orden registrada" : "órdenes registradas"}
+              icono={<Receipt className="h-4 w-4" />}
             />
-            <Kpi
+            <TarjetaKpi
               label="Ticket promedio"
               value={r.ventas > 0 ? gs(r.ticket_promedio) : "—"}
               sub="Por orden de venta"
+              icono={<Coins className="h-4 w-4" />}
             />
-            <Kpi
+            <TarjetaKpi
               label="Promedio por día"
               value={r.dias_con_venta > 0 ? gs(r.promedio_diario) : "—"}
               sub={`Sobre ${r.dias_con_venta} ${r.dias_con_venta === 1 ? "día con venta" : "días con venta"}`}
+              icono={<CalendarDays className="h-4 w-4" />}
             />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <Kpi label="Cobrado al contado" value={gs(r.contado)} />
-            <Kpi
+            <TarjetaKpi
+              label="Cobrado al contado"
+              value={gs(r.contado)}
+              sub="Plata que ya entró"
+              icono={<Wallet className="h-4 w-4" />}
+            />
+            <TarjetaKpi
               label="Vendido a crédito"
               value={gs(r.credito)}
               sub={r.credito > 0 ? "Todavía por cobrar" : "Nada fiado este mes"}
+              icono={<Receipt className="h-4 w-4" />}
             />
-            <Kpi
+            <TarjetaKpi
               label="Mejor día"
               value={r.mejor_dia ? gs(r.mejor_dia.total) : "—"}
               sub={r.mejor_dia ? diaLargo(r.mejor_dia.dia) : "Sin ventas en el mes"}
+              icono={<CalendarDays className="h-4 w-4" />}
             />
           </div>
 
           {/* ── Venta por día ── */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">Venta por día</h2>
+          <PanelGerencia titulo="Venta por día" bajada="Cuánto se facturó cada día del mes">
             {data.por_dia.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-400">
                 No hubo ventas en este mes.
@@ -233,12 +256,11 @@ export default function GerenciaClient() {
                 </ResponsiveContainer>
               </div>
             )}
-          </section>
+          </PanelGerencia>
 
           <div className="grid gap-4 lg:grid-cols-2">
             {/* ── Venta por camión ── */}
-            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">Venta por camión</h2>
+            <PanelGerencia titulo="Venta por camión" bajada="Qué camión tira del carro">
               {data.por_camion.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">
                   Todavía no hay ventas asociadas a un reparto.
@@ -247,7 +269,7 @@ export default function GerenciaClient() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-400">
+                      <tr className={THEAD_GERENCIA}>
                         <th className="pb-2 font-medium">Camión</th>
                         <th className="pb-2 font-medium">Ventas</th>
                         <th className="pb-2 pr-6 text-right font-medium">Vendido</th>
@@ -271,11 +293,10 @@ export default function GerenciaClient() {
                   </table>
                 </div>
               )}
-            </section>
+            </PanelGerencia>
 
             {/* ── Venta por producto ── */}
-            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">Venta por producto</h2>
+            <PanelGerencia titulo="Venta por producto" bajada="Qué sostiene la facturación">
               {data.por_producto.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">
                   No hubo productos vendidos en este mes.
@@ -285,7 +306,7 @@ export default function GerenciaClient() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-left text-xs uppercase tracking-wide text-slate-400">
+                        <tr className={THEAD_GERENCIA}>
                           <th className="pb-2 font-medium">Producto</th>
                           <th className="pb-2 pr-3 font-medium">Cantidad</th>
                           <th className="pb-2 pr-6 text-right font-medium">Vendido</th>
@@ -321,7 +342,7 @@ export default function GerenciaClient() {
                   ) : null}
                 </>
               )}
-            </section>
+            </PanelGerencia>
           </div>
         </>
       ) : null}

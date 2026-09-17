@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import SelectFromList from "@/components/inventario/SelectFromList";
 import CrearRapido from "@/components/inventario/CrearRapido";
-import { productoExiste, saveProducto } from "@/lib/inventario/storage";
+import { getProductos, productoExiste, saveProducto } from "@/lib/inventario/storage";
+import { sugerirSku } from "@/lib/inventario/sku";
 
 interface CatRow { id: string; nombre: string }
 interface UbiRow { id: string; nombre: string; tipo: string }
@@ -30,6 +31,10 @@ export default function NuevoProductoPage() {
     unidad_medida: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  /** SKU ya cargados, para que el correlativo sugerido no choque con uno existente. */
+  const [skusUsados, setSkusUsados] = useState<string[]>([]);
+  /** Se apaga apenas el usuario escribe su propio SKU: a partir de ahí no se pisa. */
+  const [skuAutomatico, setSkuAutomatico] = useState(true);
   const [generandoCodigo, setGenerandoCodigo] = useState(false);
   const [codigoGeneradoInterno, setCodigoGeneradoInterno] = useState(false);
 
@@ -78,6 +83,9 @@ export default function NuevoProductoPage() {
       if (cats?.categorias) setCategorias(cats.categorias as CatRow[]);
       if (ubis?.ubicaciones) setUbicaciones(ubis.ubicaciones as UbiRow[]);
       if (provs?.proveedores) setProveedores(provs.proveedores as ProvRow[]);
+
+      const productos = await getProductos();
+      if (!cancel) setSkusUsados(productos.map((p) => p.sku).filter(Boolean));
     })();
     return () => { cancel = true; };
   }, []);
@@ -149,7 +157,18 @@ export default function NuevoProductoPage() {
     setErrorDuplicado(null);
     setErrorGeneral(null);
     if (e.target.name === "codigo_barras") setCodigoGeneradoInterno(false);
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+
+    // Escribir el SKU a mano apaga la sugerencia; borrarlo la vuelve a encender.
+    if (e.target.name === "sku") setSkuAutomatico(e.target.value.trim() === "");
+
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "nombre" && skuAutomatico) {
+        next.sku = value.trim() ? sugerirSku(value, skusUsados) : "";
+      }
+      return next;
+    });
   }
 
   /**
@@ -234,7 +253,9 @@ export default function NuevoProductoPage() {
       return;
     }
 
-    const duplicado = await productoExiste(form.sku, form.nombre);
+    const sku = form.sku.trim() || sugerirSku(form.nombre, skusUsados);
+
+    const duplicado = await productoExiste(sku, form.nombre);
     if (duplicado) {
       setErrorDuplicado(
         `Ya existe "${duplicado.nombre}" con SKU ${duplicado.sku}.`
@@ -269,7 +290,7 @@ export default function NuevoProductoPage() {
       try {
         guardado = await saveProducto({
           nombre: form.nombre.trim().toUpperCase(),
-          sku: form.sku.trim().toUpperCase(),
+          sku: sku.toUpperCase(),
           costo_promedio: parseFloat(form.costo_promedio) || 0,
           precio_venta: parseFloat(form.precio_venta) || 0,
           stock_actual: parseInt(form.stock_actual) || 0,
@@ -402,10 +423,14 @@ export default function NuevoProductoPage() {
                 name="sku"
                 value={form.sku}
                 onChange={handleChange}
-                placeholder="Ej: OOTD-001"
+                placeholder="Se genera solo"
                 className={`${inputClass} uppercase`}
-                required
               />
+              <p className="mt-1 text-xs text-slate-400">
+                {skuAutomatico
+                  ? "Se arma solo con el nombre. Podés escribir el tuyo encima."
+                  : "SKU propio. Borralo para volver al automático."}
+              </p>
             </div>
 
             <div>

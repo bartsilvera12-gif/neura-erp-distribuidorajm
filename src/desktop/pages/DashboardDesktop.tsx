@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getConfig } from "@/lib/config/storage";
-import { getUsuarios } from "@/lib/usuarios/storage";
 import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
+import { isErpRolSupervisor, isErpRolUsuario } from "@/lib/usuarios/erp-rol-normalize";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 import type { ConfigGlobal } from "@/lib/config/types";
-import type { Usuario } from "@/lib/usuarios/types";
 import {
   esFacturaAnulada,
   esFacturaCorregidaNc,
@@ -362,6 +362,18 @@ function PipelineBar({ data, tone = "light" }: { data: PipelineBarRowZ[]; tone?:
   );
 }
 
+/**
+ * Número de una barra, legible.
+ *
+ * Las cantidades se acumulan sumando floats: 2,3 + 3,6 da 5,899999999999999 y
+ * eso era lo que salía impreso en el ranking, desbordando el panel. Se redondea
+ * a la milésima —que es el mínimo que se pesa— y se muestra con coma.
+ */
+function numeroBarra(valor: number): string {
+  const n = Math.round((Number(valor) || 0) * 1000) / 1000;
+  return n.toLocaleString("es-PY", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
 function HBarChart({
   data,
   color = "bg-blue-400",
@@ -382,8 +394,8 @@ function HBarChart({
               style={{ width: `${d.value > 0 ? Math.max((d.value / max) * 100, 3) : 0}%` }}
             />
           </div>
-          <span className={`w-8 shrink-0 text-right text-xs font-semibold tabular-nums ${z ? "" : "text-gray-700"}`} style={z ? { color: Z.text } : undefined}>
-            {d.value}
+          <span className={`w-14 shrink-0 text-right text-xs font-semibold tabular-nums ${z ? "" : "text-gray-700"}`} style={z ? { color: Z.text } : undefined}>
+            {numeroBarra(d.value)}
           </span>
         </div>
       ))}
@@ -732,7 +744,7 @@ function DashComercial({
   prospectos: ProspectoRaw[];
   clientes: ClienteRaw[];
   tipificaciones: TipificacionRaw[];
-  usuario: Usuario | null;
+  usuario: { nombre: string; nivel: string; area?: string } | null;
   periodo: Periodo;
   config: ConfigGlobal;
   facturas: FacturaRaw[];
@@ -780,7 +792,7 @@ function DashComercial({
     () =>
       prospectos.filter((p) => {
         if (isSupervisor && area === "ventas" && p.responsable)
-          return p.responsable.toUpperCase() === usuario?.nombre.toUpperCase();
+          return p.responsable.toUpperCase() === usuario?.nombre?.toUpperCase();
         return true;
       }),
     [prospectos, isSupervisor, area, usuario]
@@ -2018,7 +2030,7 @@ function DashVentas({
       map[l.producto_nombre] = (map[l.producto_nombre] ?? 0) + l.cantidad;
     });
     return Object.entries(map)
-      .map(([label, value]) => ({ label, value }))
+      .map(([label, value]) => ({ label, value: Math.round(value * 1000) / 1000 }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
   }, [ventasFilt]);
@@ -2303,12 +2315,11 @@ function getInitialTab(): TabDash {
 }
 
 export default function DashboardPage() {
+  const { usuario: usuarioSesion } = useUsuarioActual();
   const [dashScope, setDashScope] = useState<DashScope>({ kind: "pending" });
   const [tab,      setTab]      = useState<TabDash>(getInitialTab);
   const [periodo,  setPeriodo]  = useState<Periodo>("mes");
   const [config,   setConfig]   = useState<ConfigGlobal | null>(null);
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [usuarioId, setUsuarioId] = useState<number | null>(null);
 
   const [prospectos,     setProspectos]     = useState<ProspectoRaw[]>([]);
   const [clientes,       setClientes]       = useState<ClienteRaw[]>([]);
@@ -2378,14 +2389,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setConfig(getConfig());
-    const us = getUsuarios();
-    setUsuarios(us);
-
-    // Cargar sesión activa o default al primer admin
-    const saved = localStorage.getItem("neura_dash_usuario");
-    const savedId = saved ? parseInt(saved, 10) : null;
-    const defaultUser = us.find(u => u.nivel === "administrador") ?? us[0] ?? null;
-    setUsuarioId(savedId ?? defaultUser?.id ?? null);
 
     // Datos de módulos desde Supabase
     getDashboardData()
@@ -2417,13 +2420,14 @@ export default function DashboardPage() {
       });
   }, []);
 
-  function handleUsuarioChange(id: number) {
-    setUsuarioId(id);
-    localStorage.setItem("neura_dash_usuario", String(id));
-  }
-
-  const usuarioActivo = usuarios.find(u => u.id === usuarioId) ?? null;
-  const nivel = usuarioActivo?.nivel ?? "administrador";
+  // El nivel sale del rol del usuario logueado. Antes salía de una lista de
+  // usuarios de demo (ADMIN SISTEMA, JUAN PÉREZ) que no existen en la empresa:
+  // el selector "Viendo como" dejaba elegir entre gente inventada.
+  const nivel: "administrador" | "supervisor" | "usuario" = isErpRolSupervisor(usuarioSesion?.rol)
+    ? "supervisor"
+    : isErpRolUsuario(usuarioSesion?.rol)
+      ? "usuario"
+      : "administrador";
 
   const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
   const effectiveTabs: TabDash[] = baseTabs;
@@ -2456,15 +2460,6 @@ export default function DashboardPage() {
         <p className="text-sm text-gray-500 text-center max-w-sm">
           El dashboard solo está disponible para usuarios con nivel <strong>Supervisor</strong> o <strong>Administrador</strong>.
         </p>
-        <div className="flex items-center gap-2 text-sm text-gray-500 mt-2">
-          Cambiar a:
-          {usuarios.filter(u => u.nivel !== "usuario").map(u => (
-            <button key={u.id} onClick={() => handleUsuarioChange(u.id)}
-              className="px-3 py-1.5 rounded-lg bg-[#0EA5E9] hover:bg-[#0284C7] text-white text-xs font-medium transition-colors">
-              {u.nombre}
-            </button>
-          ))}
-        </div>
       </div>
     );
   }
@@ -2531,24 +2526,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          {usuarios.length > 0 && (
-            <div className="flex flex-col gap-1.5 sm:items-end">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                Viendo como
-              </span>
-              <select
-                value={usuarioId ?? ""}
-                onChange={(e) => handleUsuarioChange(parseInt(e.target.value, 10))}
-                className="rounded-xl border border-[#4FAEB2]/45 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-              >
-                {usuarios.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nombre} ({u.nivel})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
           <div className="flex flex-wrap gap-1 rounded-xl border border-[#4FAEB2]/45 bg-white p-1 shadow-sm">
             {PERIODO_OPTS.map((p) => {
               const active = periodo === p.id;
@@ -2608,7 +2585,7 @@ export default function DashboardPage() {
           prospectos={prospectos}
           clientes={clientes}
           tipificaciones={tipificaciones}
-          usuario={usuarioActivo}
+          usuario={usuarioSesion?.nombre ? { nombre: usuarioSesion.nombre, nivel } : null}
           periodo={periodo}
           config={config}
           facturas={facturas}

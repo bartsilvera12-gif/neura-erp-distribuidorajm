@@ -293,22 +293,22 @@ function requiereTimbrado(tipo: string | null): boolean {
 }
 
 /**
- * Validación de líneas para confirmar: descripción + monto > 0 + IVA, y la
- * cuenta contable solo si la empresa lleva contabilidad.
+ * La cuenta contable NO es obligatoria para confirmar un gasto.
  *
- * La cuenta existe para alimentar el asiento. Una empresa sin plan de cuentas
- * —la que registra sus gastos con comprobante e IVA, para el crédito fiscal y
- * el Libro de Compras, y no asienta nada— no tiene ninguna que elegir, y
- * exigírsela dejaba el módulo inutilizable: no se podía confirmar un gasto
- * nunca. Con plan de cuentas cargado la exigencia vuelve sola.
+ * Distribuidora JM carga gastos con comprobante e IVA y no lleva asientos. Antes
+ * esto dependía de si había plan de cuentas cargado, y al sembrarlo (migración
+ * 20, que es lo que hace andar Configuración Contable) Gastos habría vuelto a
+ * exigir una cuenta por línea de un día para el otro, sin que nadie lo pidiera.
+ *
+ * Si la línea trae cuenta, igual se valida y se guarda: quien lleva contabilidad
+ * no pierde nada, y quien no la lleva puede seguir cargando gastos.
  */
-function validateItemsForConfirm(items: GastoItemInput[], exigirCuenta: boolean): void {
+function validateItemsForConfirm(items: GastoItemInput[]): void {
   if (!Array.isArray(items) || items.length === 0) {
     throw new GastoError("El documento debe tener al menos una línea.");
   }
   for (const it of items) {
     if (!it.descripcion || !String(it.descripcion).trim()) throw new GastoError("Cada línea requiere una descripción.");
-    if (exigirCuenta && !it.cuenta_contable_id) throw new GastoError("Cada línea requiere una cuenta contable.");
     if (!(["exenta", "5", "10"] as string[]).includes(String(it.iva_tipo))) throw new GastoError("Tipo de IVA inválido en una línea (exenta, 5 o 10).");
     if (!(Number(it.subtotal) > 0)) throw new GastoError("El monto de cada línea debe ser mayor que cero.");
   }
@@ -366,8 +366,7 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
   const faltan = faltantesFiscales(h);
   if (faltan.length > 0) throw new GastoError(`Faltan datos para confirmar: ${faltan.join(", ")}.`);
   // Una sola consulta: decide si se exige cuenta contable y si se asienta.
-  const contabilidad = await llevaContabilidad(schema, empresaId);
-  validateItemsForConfirm(h.items, contabilidad);
+  validateItemsForConfirm(h.items);
   await assertCuentasValidas(schema, empresaId, h.items.map((i) => i.cuenta_contable_id ?? "").filter(Boolean));
   const { computed, totals } = sumTotals(h.items);
 
@@ -451,11 +450,12 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
     await insertItems(client, tI, empresaId, gastoId, computed);
 
     // Asiento contable balanceado, dentro de la MISMA transacción (rollback total
-    // si falla). Solo para empresas que llevan contabilidad: sin plan de cuentas
-    // no hay a qué imputar, y el gasto igual cumple su función —comprobante,
-    // timbrado e IVA para el crédito fiscal y el Libro de Compras—. Antes esto
-    // corría siempre y el alta moría buscando `configuracion_contable`.
-    if (contabilidad) {
+    // si falla). Solo cuando TODAS las líneas tienen cuenta: media imputación no
+    // es un asiento, y armarlo con una cuenta vacía tira abajo el alta del gasto
+    // entero. Sin imputar, el gasto igual cumple su función —comprobante,
+    // timbrado e IVA para el crédito fiscal y el Libro de Compras—.
+    const imputado = computed.every((it) => !!it.cuenta_contable_id);
+    if (imputado && (await llevaContabilidad(schema, empresaId))) {
       const config = await getConfigContable(schema, empresaId);
       const esContado = h.tipo_pago !== "credito";
       const lineasFiscales = computed.map((it) => ({

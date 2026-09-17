@@ -929,11 +929,17 @@ function GestionClientesPageInner() {
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15"
+        // Sin cliente elegido el buscador despliega su lista por encima del
+        // borde de la tarjeta: con `overflow-hidden` se cortaba a la altura del
+        // panel y del tercer cliente en adelante no se veía nada. Recortar solo
+        // hace falta en la vista de detalle, que sí tiene contenido scrolleable.
+        className={`flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15 ${
+          selected === null ? "" : "overflow-hidden"
+        }`}
         style={{ minHeight: "min(560px, calc(100dvh - 10.5rem))" }}
       >
         {selected === null ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+          <div className="flex flex-1 flex-col items-center gap-5 px-4 pb-8 pt-16">
             <div className="space-y-2 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#4FAEB2]">
                 <IconoLupa className="h-5 w-5" />
