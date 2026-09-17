@@ -90,7 +90,7 @@ export default function CajaDesktop() {
 
 function Catalogo({ caja }: { caja: CajaVenta }) {
   // Si la venta sale de un camión, el catálogo es el stock de ese camión.
-  const { productos, isLoading } = useProductos(caja.repartoId);
+  const { productos, origen, isLoading } = useProductos(caja.repartoId);
   const [query, setQuery] = useState("");
 
   // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo
@@ -109,8 +109,6 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
     );
   }, [conStock, query]);
 
-  const camionDeLaVenta =
-    caja.repartosAbiertos.find((r) => r.id === caja.repartoId)?.camion ?? null;
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -126,7 +124,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       </div>
 
       {isLoading ? null : (
-        <AvisoCatalogoCaja camion={camionDeLaVenta} ocultos={ocultosSinStock} />
+        <AvisoCatalogoCaja origen={origen} ocultos={ocultosSinStock} />
       )}
 
       {isLoading ? (

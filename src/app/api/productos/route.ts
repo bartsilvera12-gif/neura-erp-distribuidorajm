@@ -17,36 +17,47 @@ import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 
 /**
- * Ubicación de inventario del camión de un reparto.
+ * El camión de un reparto y su ubicación de inventario.
  *
- * Devuelve `null` si el reparto no existe, no es de esta empresa o su camión
- * todavía no tiene ubicación: en todos esos casos se cae al stock global en vez
- * de dejar la lista vacía sin explicación.
+ * Devuelve también el nombre y si el reparto existe, porque la respuesta le
+ * tiene que decir a la pantalla de qué está hablando. Antes esto devolvía
+ * `null` para tres situaciones distintas —reparto inexistente, camión sin
+ * ubicación, tablas que faltan— y las tres terminaban mostrando el inventario
+ * entero como si fuera la carga del camión.
  */
-async function ubicacionDelReparto(
+type CamionDelReparto = {
+  ubicacion_id: string | null;
+  camion: string | null;
+  existe: boolean;
+};
+
+async function camionDelReparto(
   pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
   schema: string,
   empresaId: string,
   repartoId: string
-): Promise<string | null> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(repartoId)) return null;
+): Promise<CamionDelReparto> {
+  const vacio: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(repartoId)) return vacio;
   const existe = await queryWithRetry<{ r: string | null; c: string | null; s: string | null }>(
     pool,
     `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c, to_regclass($3)::text AS s`,
     [`${schema}.repartos`, `${schema}.camiones`, `${schema}.inventario_stock_ubicacion`]
   );
   const e = existe.rows[0];
-  if (!e?.r || !e?.c || !e?.s) return null;
+  if (!e?.r || !e?.c || !e?.s) return vacio;
 
-  const q = await queryWithRetry<{ ubicacion_id: string | null }>(
+  const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
-    `SELECT c.ubicacion_id
+    `SELECT c.ubicacion_id, c.nombre
        FROM ${quoteSchemaTable(schema, "repartos")} r
        JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
       WHERE r.id = $1::uuid AND r.empresa_id = $2::uuid`,
     [repartoId, empresaId]
   );
-  return q.rows[0]?.ubicacion_id ?? null;
+  const row = q.rows[0];
+  if (!row) return vacio;
+  return { ubicacion_id: row.ubicacion_id, camion: row.nombre, existe: true };
 }
 
 /**
@@ -56,27 +67,30 @@ async function ubicacionDelReparto(
  * cuando falta la columna de la migración 13: en los dos casos el catálogo
  * vuelve a ser el stock general, que es lo correcto ahí.
  */
-async function ubicacionDeMiCamion(
+async function miCamion(
   pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
   schema: string,
   empresaId: string,
   usuarioId: string
-): Promise<string | null> {
+): Promise<CamionDelReparto> {
+  const vacio: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
   const cols = await queryWithRetry<{ c: string }>(
     pool,
     `SELECT column_name AS c FROM information_schema.columns
       WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'repartidor_id'`,
     [schema]
   );
-  if (cols.rows.length === 0) return null;
-  const q = await queryWithRetry<{ ubicacion_id: string | null }>(
+  if (cols.rows.length === 0) return vacio;
+  const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
-    `SELECT ubicacion_id FROM ${quoteSchemaTable(schema, "camiones")}
+    `SELECT ubicacion_id, nombre FROM ${quoteSchemaTable(schema, "camiones")}
       WHERE empresa_id = $1::uuid AND repartidor_id = $2::uuid AND activo = true
       LIMIT 1`,
     [empresaId, usuarioId]
   );
-  return q.rows[0]?.ubicacion_id ?? null;
+  const row = q.rows[0];
+  if (!row) return vacio;
+  return { ubicacion_id: row.ubicacion_id, camion: row.nombre, existe: true };
 }
 
 /**
@@ -107,15 +121,34 @@ export async function GET(request: NextRequest) {
     // depósito termina en una venta que el control de mercadería no puede
     // explicar.
     const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
-    let ubicacionId = repartoId ? await ubicacionDelReparto(pool, schema, empresaId, repartoId) : null;
+    let camion: CamionDelReparto = repartoId
+      ? await camionDelReparto(pool, schema, empresaId, repartoId)
+      : { ubicacion_id: null, camion: null, existe: false };
 
     // Sin reparto todavía —la primera venta del día— el catálogo igual tiene que
     // ser el del camión de quien vende. Si no, la primera venta de la mañana se
     // hace contra el stock del depósito y sale mercadería que nunca subió.
-    if (ubicacionId === null) {
+    if (!camion.existe) {
       const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
-      if (yo) ubicacionId = await ubicacionDeMiCamion(pool, schema, empresaId, yo.id);
+      if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
     }
+
+    // Cuando hay un camión de por medio, el catálogo es el suyo y punto. Si no
+    // se le pudo resolver la ubicación, la lista va VACÍA con el motivo: caer al
+    // stock de la empresa dejaba al repartidor vendiendo lo que está en el
+    // depósito, con el camión descargado, y eso no hay control de mercadería que
+    // lo explique después.
+    const ubicacionId = camion.ubicacion_id;
+    const camionSinUbicacion = camion.existe && camion.ubicacion_id === null;
+
+    // De dónde sale la lista. Viaja en la respuesta porque hasta ahora cada
+    // pantalla lo suponía por su cuenta y podía decir "salón" mostrando el
+    // camión, o al revés.
+    const origen = camionSinUbicacion
+      ? { tipo: "camion_sin_ubicacion" as const, camion: camion.camion }
+      : ubicacionId
+        ? { tipo: "camion" as const, camion: camion.camion }
+        : { tipo: "salon" as const, camion: null };
 
     // Stock del salón: el total de la empresa menos lo que está arriba de los
     // camiones. Desde el mostrador no se puede vender mercadería que está
@@ -178,11 +211,13 @@ export async function GET(request: NextRequest) {
             WHERE p.empresa_id = $1::uuid AND p.activo = true AND su.stock_actual > 0
             ORDER BY p.nombre`;
 
-    const { rows } = await queryWithRetry(
-      pool,
-      sql,
-      ubicacionId === null ? [empresaId] : [empresaId, ubicacionId]
-    );
+    const { rows } = camionSinUbicacion
+      ? { rows: [] as Record<string, unknown>[] }
+      : await queryWithRetry(
+          pool,
+          sql,
+          ubicacionId === null ? [empresaId] : [empresaId, ubicacionId]
+        );
     // La imagen vive en un bucket privado y se mira con una URL firmada que
     // dura una hora. La columna `imagen_url` de la tabla queda siempre en NULL
     // a propósito (una URL vencida guardada en la base es una imagen rota), así
@@ -194,7 +229,7 @@ export async function GET(request: NextRequest) {
     );
     const productos = rows.map((r, i) => ({ ...r, imagen_url: firmadas[i] ?? null }));
 
-    return NextResponse.json(successResponse({ productos }));
+    return NextResponse.json(successResponse({ productos, origen }));
   } catch (err) {
     console.error("[/api/productos GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudieron cargar los productos."), { status: 500 });

@@ -93,6 +93,36 @@ function rowToMovimiento(row: MovimientoRow): MovimientoInventario {
 // ─── Productos ─────────────────────────────────────────────────────────────────
 
 /** Lista productos via API server-side (PG directo, soporta tenants erp_* no expuestos). */
+/** De dónde salió la lista de la caja. Lo decide el servidor, no la pantalla. */
+export type OrigenCatalogo = {
+  tipo: "camion" | "salon" | "camion_sin_ubicacion";
+  camion: string | null;
+};
+
+/** Igual que `getProductos`, pero además dice de qué stock está hablando. */
+export async function getProductosConOrigen(
+  repartoId?: string | null
+): Promise<{ productos: Producto[]; origen: OrigenCatalogo }> {
+  const salon: OrigenCatalogo = { tipo: "salon", camion: null };
+  try {
+    const qs = repartoId ? `?reparto_id=${encodeURIComponent(repartoId)}` : "";
+    const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) {
+      console.error("[inventario] getProductos:", (j as { error?: string })?.error ?? r.status);
+      return { productos: [], origen: salon };
+    }
+    const data = j.data as { productos?: ProductoRow[]; origen?: OrigenCatalogo };
+    return {
+      productos: (data.productos ?? []).map(rowToProducto),
+      origen: data.origen ?? salon,
+    };
+  } catch (err) {
+    console.error("[inventario] getProductos:", err instanceof Error ? err.message : err);
+    return { productos: [], origen: salon };
+  }
+}
+
 export async function getProductos(repartoId?: string | null): Promise<Producto[]> {
   try {
     // Con reparto, el servidor devuelve el stock de ese camión en vez del

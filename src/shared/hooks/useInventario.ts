@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { getProductos } from "@/lib/inventario/storage";
+import { getProductosConOrigen, type OrigenCatalogo } from "@/lib/inventario/storage";
 import type { Producto } from "@/lib/inventario/types";
 
 /**
@@ -12,9 +12,9 @@ import type { Producto } from "@/lib/inventario/types";
  * que está arriba del camión.
  */
 export function useProductos(repartoId?: string | null) {
-  const swr = useSWR<Producto[]>(
+  const swr = useSWR<{ productos: Producto[]; origen: OrigenCatalogo }>(
     repartoId ? `inventario:productos:reparto:${repartoId}` : "inventario:productos",
-    () => getProductos(repartoId),
+    () => getProductosConOrigen(repartoId),
     {
       revalidateOnFocus: true,
       dedupingInterval: 30_000,
@@ -22,7 +22,9 @@ export function useProductos(repartoId?: string | null) {
     }
   );
   return {
-    productos: swr.data ?? [],
+    productos: swr.data?.productos ?? [],
+    /** De qué stock es la lista, según el servidor. */
+    origen: swr.data?.origen ?? null,
     isLoading: swr.isLoading,
     error: swr.error as Error | undefined,
     mutate: swr.mutate,

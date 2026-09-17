@@ -59,6 +59,7 @@ export default function CajaMobile() {
   // Buscar o registrar un cliente ocupa la pantalla entera: mientras está
   // abierto, la barra fija de abajo taparía el botón de guardar.
   const [subCliente, setSubCliente] = useState<null | "lista" | "nuevo">(null);
+  const barraVisible = !(caja.paso === "cliente" && subCliente !== null);
 
   if (caja.paso === "listo" && caja.ventaCreada) {
     return <Comprobante caja={caja} />;
@@ -69,8 +70,10 @@ export default function CajaMobile() {
     <div className="flex min-h-full flex-col bg-[#F8FAFC]">
       <Encabezado caja={caja} />
 
-      {/* pb generoso: la barra de acción es fija y taparía los últimos ítems. */}
-      <div className="flex-1 px-4 pb-44">
+      {/* El pb reserva el lugar de la barra fija de abajo. Cuando esa barra no
+          está —buscando o registrando un cliente— reservarlo igual dejaba un
+          hueco de 11rem abajo de todo. */}
+      <div className={`flex-1 px-4 ${barraVisible ? "pb-44" : "pb-8"}`}>
         {caja.paso === "cliente" ? (
           <PasoCliente caja={caja} sub={subCliente} setSub={setSubCliente} />
         ) : null}
@@ -79,7 +82,7 @@ export default function CajaMobile() {
         {caja.paso === "pago" ? <PasoPago caja={caja} /> : null}
       </div>
 
-      {caja.paso === "cliente" && subCliente !== null ? null : <BarraAccion caja={caja} />}
+      {barraVisible ? <BarraAccion caja={caja} /> : null}
     </div>
   );
 }
@@ -335,7 +338,7 @@ function PasoCliente({
 
 function PasoProductos({ caja }: { caja: CajaVenta }) {
   // Si la venta sale de un camión, el catálogo es el stock de ese camión.
-  const { productos, isLoading } = useProductos(caja.repartoId);
+  const { productos, origen, isLoading } = useProductos(caja.repartoId);
   const [query, setQuery] = useState("");
 
   // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo
@@ -354,8 +357,6 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
     );
   }, [conStock, query]);
 
-  const camionDeLaVenta =
-    caja.repartosAbiertos.find((r) => r.id === caja.repartoId)?.camion ?? null;
 
   return (
     <div className="pt-4">
@@ -370,7 +371,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
       </div>
 
       {isLoading ? null : (
-        <AvisoCatalogoCaja camion={camionDeLaVenta} ocultos={ocultosSinStock} />
+        <AvisoCatalogoCaja origen={origen} ocultos={ocultosSinStock} />
       )}
 
       {isLoading ? (
@@ -379,9 +380,11 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
         <p className="mt-6 text-center text-sm text-slate-400">
           {query
             ? `Ningún producto coincide con “${query}”.`
-            : caja.repartoId
-              ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-              : "Todavía no hay productos con stock. Cargalos desde Inventario."}
+            : origen?.tipo === "camion_sin_ubicacion"
+              ? "No se puede vender desde este camión hasta que tenga ubicación de inventario."
+              : origen?.tipo === "camion"
+                ? "El camión está vacío. Cargalo desde Repartos antes de salir."
+                : "Todavía no hay productos con stock en el salón. Cargalos desde Inventario."}
         </p>
       ) : (
         <ul className="mt-3 space-y-2">

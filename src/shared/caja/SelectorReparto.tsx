@@ -1,7 +1,18 @@
 "use client";
 
-import { Truck } from "lucide-react";
+import { AlertTriangle, Truck } from "lucide-react";
 import type { CajaVenta } from "@/shared/caja/useCajaVenta";
+
+/** Hoy en Paraguay, como `YYYY-MM-DD`, sin depender del huso del navegador. */
+function hoyPy(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion" }).format(new Date());
+}
+
+/** "14/04" para mostrar la fecha del reparto sin ocupar media línea. */
+function fechaCorta(ymd: string): string {
+  const [, m, d] = ymd.slice(0, 10).split("-");
+  return d && m ? `${d}/${m}` : ymd;
+}
 
 /**
  * De qué camión sale la mercadería de esta venta.
@@ -24,12 +35,29 @@ export default function SelectorReparto({ caja }: { caja: CajaVenta }) {
       </p>
 
       {unico ? (
-        <p className="text-sm text-slate-900">
-          Camión <span className="font-semibold">{caja.repartosAbiertos[0].camion}</span>
-          {caja.repartosAbiertos[0].repartidor ? (
-            <span className="text-slate-500"> · {caja.repartosAbiertos[0].repartidor}</span>
+        <>
+          <p className="text-sm text-slate-900">
+            Camión <span className="font-semibold">{caja.repartosAbiertos[0].camion}</span>
+            {caja.repartosAbiertos[0].repartidor ? (
+              <span className="text-slate-500"> · {caja.repartosAbiertos[0].repartidor}</span>
+            ) : null}
+            <span className="text-slate-500">
+              {" "}
+              · {fechaCorta(caja.repartosAbiertos[0].fecha)}
+            </span>
+          </p>
+          {/* Un reparto abierto de otro día es uno que nadie cerró. La venta de
+              hoy se le suma a esa jornada y el cierre de ayer sale mal. */}
+          {caja.repartosAbiertos[0].fecha.slice(0, 10) !== hoyPy() ? (
+            <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Este reparto es del {fechaCorta(caja.repartosAbiertos[0].fecha)} y sigue abierto.
+                Lo que vendas ahora se suma a esa jornada. Cerralo desde Repartos y abrí el de hoy.
+              </span>
+            </p>
           ) : null}
-        </p>
+        </>
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
@@ -47,11 +75,11 @@ export default function SelectorReparto({ caja }: { caja: CajaVenta }) {
                   }`}
                 >
                   Camión {r.camion}
-                  {r.repartidor ? (
-                    <span className="block text-[11px] font-normal text-slate-500">
-                      {r.repartidor}
-                    </span>
-                  ) : null}
+                  <span className="block text-[11px] font-normal text-slate-500">
+                    {r.repartidor ? `${r.repartidor} · ` : ""}
+                    {fechaCorta(r.fecha)}
+                    {r.fecha.slice(0, 10) !== hoyPy() ? " · sin cerrar" : ""}
+                  </span>
                 </button>
               );
             })}

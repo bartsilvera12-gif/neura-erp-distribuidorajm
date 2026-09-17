@@ -1,26 +1,42 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
+import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
  * De dónde sale la lista de productos de la caja.
  *
- * La caja no muestra el catálogo entero y hay dos motivos distintos, los dos
- * invisibles hasta ahora: la venta sale de donde está parado el que vende —el
- * repartidor de su camión, el mostrador del salón—, y en cualquier caso un
- * producto sin stock no se ofrece. El resultado era una lista más corta que el
- * inventario sin nada que lo explicara, que se lee como que faltan productos.
+ * El origen lo decide el servidor y viaja en la respuesta. Antes cada pantalla
+ * lo deducía por su cuenta —"si hay reparto elegido, es el camión"— y podía
+ * mentir en los dos sentidos: decir "camión X" mostrando el depósito entero
+ * porque ese camión no tenía ubicación de inventario, o decir "salón" mostrando
+ * el camión del repartidor logueado.
  */
 export default function AvisoCatalogoCaja({
-  camion,
+  origen,
   ocultos,
 }: {
-  /** Nombre del camión cuando la venta sale de un reparto. */
-  camion: string | null;
+  origen: OrigenCatalogo | null;
   /** Productos que existen pero no se ofrecen por no tener stock. */
   ocultos: number;
 }) {
-  if (!camion && ocultos === 0) return null;
+  // El camión sin ubicación de inventario no es un detalle de la lista: es un
+  // camión que no puede vender nada hasta que alguien lo arregle.
+  if (origen?.tipo === "camion_sin_ubicacion") {
+    return (
+      <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900">
+        <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          El camión <span className="font-semibold">{origen.camion ?? "asignado"}</span> no tiene
+          ubicación de inventario, así que no se sabe qué lleva arriba. No se puede vender desde
+          este camión hasta darle una: Repartos → Camiones.
+        </span>
+      </p>
+    );
+  }
+
+  if (!origen) return null;
+  if (origen.tipo === "salon" && ocultos === 0) return null;
 
   const sinStock =
     ocultos === 0
@@ -31,10 +47,10 @@ export default function AvisoCatalogoCaja({
     <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
       <Info aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
       <span>
-        {camion ? (
+        {origen.tipo === "camion" ? (
           <>
             Solo lo que hay arriba del camión{" "}
-            <span className="font-semibold text-slate-700">{camion}</span>.
+            <span className="font-semibold text-slate-700">{origen.camion ?? "—"}</span>.
           </>
         ) : (
           "Lo que hay en el salón: el stock de la empresa menos lo que está arriba de los camiones."
