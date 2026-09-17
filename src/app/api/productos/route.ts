@@ -120,17 +120,28 @@ export async function GET(request: NextRequest) {
     // vendedor puede vender en la calle. Ofrecerle un producto que está en el
     // depósito termina en una venta que el control de mercadería no puede
     // explicar.
+    // `para=venta` marca que la lista es para vender. SOLO ahí se acota al
+    // camión o al salón.
+    //
+    // Inventario pide la misma lista y es otra cosa: es el maestro de productos
+    // de la empresa. Acotarlo al camión le escondía productos —y con un camión
+    // sin ubicación de inventario se la dejaba vacía, que se leía como que el
+    // alta no había guardado nada—.
+    const paraVenta = request.nextUrl.searchParams.get("para") === "venta";
     const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
-    let camion: CamionDelReparto = repartoId
-      ? await camionDelReparto(pool, schema, empresaId, repartoId)
-      : { ubicacion_id: null, camion: null, existe: false };
 
-    // Sin reparto todavía —la primera venta del día— el catálogo igual tiene que
-    // ser el del camión de quien vende. Si no, la primera venta de la mañana se
-    // hace contra el stock del depósito y sale mercadería que nunca subió.
-    if (!camion.existe) {
-      const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
-      if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
+    let camion: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
+    if (paraVenta) {
+      if (repartoId) camion = await camionDelReparto(pool, schema, empresaId, repartoId);
+
+      // Sin reparto todavía —la primera venta del día— el catálogo igual tiene
+      // que ser el del camión de quien vende. Si no, la primera venta de la
+      // mañana se hace contra el stock del depósito y sale mercadería que nunca
+      // subió.
+      if (!camion.existe) {
+        const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
+        if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
+      }
     }
 
     // Cuando hay un camión de por medio, el catálogo es el suyo y punto. Si no
@@ -148,7 +159,9 @@ export async function GET(request: NextRequest) {
       ? { tipo: "camion_sin_ubicacion" as const, camion: camion.camion }
       : ubicacionId
         ? { tipo: "camion" as const, camion: camion.camion }
-        : { tipo: "salon" as const, camion: null };
+        : paraVenta
+          ? { tipo: "salon" as const, camion: null }
+          : { tipo: "empresa" as const, camion: null };
 
     // Stock del salón: el total de la empresa menos lo que está arriba de los
     // camiones. Desde el mostrador no se puede vender mercadería que está
@@ -190,7 +203,7 @@ export async function GET(request: NextRequest) {
 
     const sql =
       ubicacionId === null
-        ? puedeDescontarCamiones
+        ? puedeDescontarCamiones && paraVenta
           ? sqlSalon
           : `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
                   unidad_medida, metodo_valuacion, activo, created_at, updated_at,

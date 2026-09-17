@@ -36,6 +36,8 @@ export default function AvisoCatalogoCaja({
   }
 
   if (!origen) return null;
+  // `empresa` es el maestro de Inventario, que no pasa por acá.
+  if (origen.tipo === "empresa") return null;
   if (origen.tipo === "salon" && ocultos === 0) return null;
 
   const sinStock =

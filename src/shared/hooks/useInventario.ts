@@ -1,19 +1,37 @@
 "use client";
 
 import useSWR from "swr";
-import { getProductosConOrigen, type OrigenCatalogo } from "@/lib/inventario/storage";
+import { getProductos, getProductosConOrigen, type OrigenCatalogo } from "@/lib/inventario/storage";
 import type { Producto } from "@/lib/inventario/types";
 
 /**
- * Lista de productos.
+ * Maestro de productos de la empresa, con su stock total.
  *
- * Con `repartoId`, el stock que trae es el del camión de ese reparto y no el de
- * la empresa. La caja lo usa así para que en la calle solo se pueda vender lo
- * que está arriba del camión.
+ * Lo usan Inventario y la carga del camión. NO se acota a ningún camión: para
+ * vender está `useCatalogoVenta`.
  */
-export function useProductos(repartoId?: string | null) {
+export function useProductos() {
+  const swr = useSWR<Producto[]>("inventario:productos", () => getProductos(), {
+    revalidateOnFocus: true,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  });
+  return {
+    productos: swr.data ?? [],
+    isLoading: swr.isLoading,
+    error: swr.error as Error | undefined,
+    mutate: swr.mutate,
+  };
+}
+
+/**
+ * Catálogo de la caja: lo que se puede vender desde donde está parado quien
+ * vende. Con `repartoId`, el stock del camión de ese reparto; sin él, el del
+ * salón. `origen` dice cuál de los dos, según el servidor.
+ */
+export function useCatalogoVenta(repartoId?: string | null) {
   const swr = useSWR<{ productos: Producto[]; origen: OrigenCatalogo }>(
-    repartoId ? `inventario:productos:reparto:${repartoId}` : "inventario:productos",
+    repartoId ? `caja:catalogo:reparto:${repartoId}` : "caja:catalogo",
     () => getProductosConOrigen(repartoId),
     {
       revalidateOnFocus: true,

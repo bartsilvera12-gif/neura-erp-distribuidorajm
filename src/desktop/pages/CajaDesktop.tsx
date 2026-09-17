@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
-import { useProductos } from "@/shared/hooks/useInventario";
+import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
@@ -90,7 +90,7 @@ export default function CajaDesktop() {
 
 function Catalogo({ caja }: { caja: CajaVenta }) {
   // Si la venta sale de un camión, el catálogo es el stock de ese camión.
-  const { productos, origen, isLoading } = useProductos(caja.repartoId);
+  const { productos, origen, isLoading } = useCatalogoVenta(caja.repartoId);
   const [query, setQuery] = useState("");
 
   // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo

@@ -95,17 +95,26 @@ function rowToMovimiento(row: MovimientoRow): MovimientoInventario {
 /** Lista productos via API server-side (PG directo, soporta tenants erp_* no expuestos). */
 /** De dónde salió la lista de la caja. Lo decide el servidor, no la pantalla. */
 export type OrigenCatalogo = {
-  tipo: "camion" | "salon" | "camion_sin_ubicacion";
+  /** `empresa` = maestro de inventario, sin acotar a camión ni salón. */
+  tipo: "camion" | "salon" | "camion_sin_ubicacion" | "empresa";
   camion: string | null;
 };
 
-/** Igual que `getProductos`, pero además dice de qué stock está hablando. */
+/**
+ * Catálogo PARA VENDER: lo que hay arriba del camión, o lo del salón.
+ *
+ * Lleva `para=venta` a propósito. La misma ruta sirve el maestro de Inventario,
+ * y ahí acotar al camión escondía productos: un alta nueva no aparecía y parecía
+ * que no se había guardado.
+ */
 export async function getProductosConOrigen(
   repartoId?: string | null
 ): Promise<{ productos: Producto[]; origen: OrigenCatalogo }> {
   const salon: OrigenCatalogo = { tipo: "salon", camion: null };
   try {
-    const qs = repartoId ? `?reparto_id=${encodeURIComponent(repartoId)}` : "";
+    const qs = repartoId
+      ? `?para=venta&reparto_id=${encodeURIComponent(repartoId)}`
+      : "?para=venta";
     const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
