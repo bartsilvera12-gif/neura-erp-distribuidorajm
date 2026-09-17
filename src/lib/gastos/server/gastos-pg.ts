@@ -292,17 +292,44 @@ function requiereTimbrado(tipo: string | null): boolean {
   return !(t === "" || t === "recibo" || t === "otro");
 }
 
-/** Validación estricta de líneas para confirmar (cuenta + descripción + monto > 0 + IVA). */
-function validateItemsForConfirm(items: GastoItemInput[]): void {
+/**
+ * Validación de líneas para confirmar: descripción + monto > 0 + IVA, y la
+ * cuenta contable solo si la empresa lleva contabilidad.
+ *
+ * La cuenta existe para alimentar el asiento. Una empresa sin plan de cuentas
+ * —la que registra sus gastos con comprobante e IVA, para el crédito fiscal y
+ * el Libro de Compras, y no asienta nada— no tiene ninguna que elegir, y
+ * exigírsela dejaba el módulo inutilizable: no se podía confirmar un gasto
+ * nunca. Con plan de cuentas cargado la exigencia vuelve sola.
+ */
+function validateItemsForConfirm(items: GastoItemInput[], exigirCuenta: boolean): void {
   if (!Array.isArray(items) || items.length === 0) {
     throw new GastoError("El documento debe tener al menos una línea.");
   }
   for (const it of items) {
     if (!it.descripcion || !String(it.descripcion).trim()) throw new GastoError("Cada línea requiere una descripción.");
-    if (!it.cuenta_contable_id) throw new GastoError("Cada línea requiere una cuenta contable.");
+    if (exigirCuenta && !it.cuenta_contable_id) throw new GastoError("Cada línea requiere una cuenta contable.");
     if (!(["exenta", "5", "10"] as string[]).includes(String(it.iva_tipo))) throw new GastoError("Tipo de IVA inválido en una línea (exenta, 5 o 10).");
     if (!(Number(it.subtotal) > 0)) throw new GastoError("El monto de cada línea debe ser mayor que cero.");
   }
+}
+
+/** `true` si la empresa tiene al menos una cuenta contable usable. */
+async function llevaContabilidad(schema: string, empresaId: string): Promise<boolean> {
+  const existe = await pool().query<{ t: string | null }>(
+    `SELECT to_regclass($1)::text AS t`,
+    [`${schema}.plan_cuentas`]
+  );
+  if (!existe.rows[0]?.t) return false;
+  const tPC = quoteSchemaTable(schema, "plan_cuentas");
+  const { rows } = await pool().query<{ hay: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM ${tPC}
+        WHERE empresa_id = $1::uuid AND activo = true AND asentable = true
+     ) AS hay`,
+    [empresaId]
+  );
+  return rows[0]?.hay === true;
 }
 
 async function fetchGastoIdByIdempotency(schema: string, empresaId: string, key: string): Promise<string | null> {
@@ -338,7 +365,9 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
 
   const faltan = faltantesFiscales(h);
   if (faltan.length > 0) throw new GastoError(`Faltan datos para confirmar: ${faltan.join(", ")}.`);
-  validateItemsForConfirm(h.items);
+  // Una sola consulta: decide si se exige cuenta contable y si se asienta.
+  const contabilidad = await llevaContabilidad(schema, empresaId);
+  validateItemsForConfirm(h.items, contabilidad);
   await assertCuentasValidas(schema, empresaId, h.items.map((i) => i.cuenta_contable_id ?? "").filter(Boolean));
   const { computed, totals } = sumTotals(h.items);
 
@@ -370,8 +399,13 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
     }
 
     // Reserva del correlativo DENTRO de la transacción (un rollback lo revierte).
+    //
+    // La función se busca en el schema de la empresa y no en `neura`, que estaba
+    // escrito fijo: este ERP corre sobre su propio schema y no debe depender de
+    // otro para numerar un gasto. Si ese schema no existe —o existe y es de otro
+    // cliente— la numeración fallaba o, peor, se servía de un contador ajeno.
     const { rows: num } = await client.query<{ numero: string }>(
-      `SELECT neura.next_numero_gasto_empresa($1::uuid) AS numero`, [empresaId]
+      `SELECT ${quoteSchemaTable(schema, "next_numero_gasto_empresa")}($1::uuid) AS numero`, [empresaId]
     );
     const numero = num[0].numero;
 
@@ -416,31 +450,37 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
 
     await insertItems(client, tI, empresaId, gastoId, computed);
 
-    // Asiento contable balanceado, dentro de la MISMA transacción (rollback total si falla).
-    const config = await getConfigContable(schema, empresaId);
-    const esContado = h.tipo_pago !== "credito";
-    const lineasFiscales = computed.map((it) => ({
-      cuenta_contable_id: it.cuenta_contable_id as string,
-      descripcion: it.descripcion,
-      subtotal: it.subtotal,
-      iva_tipo: it.iva_tipo,
-      monto_iva: it.monto_iva,
-    }));
-    const lineasAsiento = construirLineasDocumento({
-      config, lineasFiscales, total: totals.total, esContado,
-      contrapartidaContado: h.cuenta_contrapartida_id, proveedorId: h.proveedor_id,
-      documento_tipo: "gasto", documento_id: gastoId,
-    });
-    const asiento = await generarAsientoEnTx(client, schema, empresaId, {
-      origen_tipo: "gasto_servicio", origen_id: gastoId, evento_origen: "confirmacion",
-      fecha_contable: (h.fecha_contable ?? h.fecha_comprobante) as string,
-      glosa: `Gasto y Servicio ${numero}`, moneda: h.moneda ?? "PYG", tipo_cambio: h.tipo_cambio ?? 1,
-      lineas: lineasAsiento, createdBy: userId,
-    });
-    await client.query(
-      `UPDATE ${tG} SET estado_contable='contabilizado', asiento_contable_id = $3::uuid WHERE id = $1::uuid AND empresa_id = $2::uuid`,
-      [gastoId, empresaId, asiento.id]
-    );
+    // Asiento contable balanceado, dentro de la MISMA transacción (rollback total
+    // si falla). Solo para empresas que llevan contabilidad: sin plan de cuentas
+    // no hay a qué imputar, y el gasto igual cumple su función —comprobante,
+    // timbrado e IVA para el crédito fiscal y el Libro de Compras—. Antes esto
+    // corría siempre y el alta moría buscando `configuracion_contable`.
+    if (contabilidad) {
+      const config = await getConfigContable(schema, empresaId);
+      const esContado = h.tipo_pago !== "credito";
+      const lineasFiscales = computed.map((it) => ({
+        cuenta_contable_id: it.cuenta_contable_id as string,
+        descripcion: it.descripcion,
+        subtotal: it.subtotal,
+        iva_tipo: it.iva_tipo,
+        monto_iva: it.monto_iva,
+      }));
+      const lineasAsiento = construirLineasDocumento({
+        config, lineasFiscales, total: totals.total, esContado,
+        contrapartidaContado: h.cuenta_contrapartida_id, proveedorId: h.proveedor_id,
+        documento_tipo: "gasto", documento_id: gastoId,
+      });
+      const asiento = await generarAsientoEnTx(client, schema, empresaId, {
+        origen_tipo: "gasto_servicio", origen_id: gastoId, evento_origen: "confirmacion",
+        fecha_contable: (h.fecha_contable ?? h.fecha_comprobante) as string,
+        glosa: `Gasto y Servicio ${numero}`, moneda: h.moneda ?? "PYG", tipo_cambio: h.tipo_cambio ?? 1,
+        lineas: lineasAsiento, createdBy: userId,
+      });
+      await client.query(
+        `UPDATE ${tG} SET estado_contable='contabilizado', asiento_contable_id = $3::uuid WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+        [gastoId, empresaId, asiento.id]
+      );
+    }
 
     await client.query("COMMIT");
     return (await getGasto(schema, empresaId, gastoId))!.header;
