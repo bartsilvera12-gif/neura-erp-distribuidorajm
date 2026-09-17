@@ -6,17 +6,25 @@ import {
   Banknote,
   CheckCircle2,
   CreditCard,
+  FileText,
   Landmark,
   Receipt,
   Search,
+  Share2,
   Trash2,
   User,
+  UserPlus,
   Wallet,
   X,
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useProductos } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
+import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
+import FacturaVenta from "@/shared/caja/FacturaVenta";
+import { useEmisor } from "@/shared/hooks/useEmisor";
+import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
+import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
@@ -409,8 +417,9 @@ function OpcionesMoneda({ caja }: { caja: CajaVenta }) {
 // ── Cliente ──────────────────────────────────────────────────────────────────
 
 function SelectorCliente({ caja }: { caja: CajaVenta }) {
-  const { clientes } = useClientes();
+  const { clientes, mutate } = useClientes();
   const [abierto, setAbierto] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
   const [query, setQuery] = useState("");
 
   const filtrados = useMemo(() => {
@@ -435,7 +444,19 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
         Cliente
       </p>
 
-      {abierto ? (
+      {registrando ? (
+        <NuevoClienteRapido
+          mostrarTitulo={false}
+          onCancelar={() => setRegistrando(false)}
+          onCreado={(c) => {
+            // Queda elegido para esta venta y además entra en la lista, así el
+            // buscador de al lado lo encuentra como a cualquier otro.
+            caja.elegirCliente(c);
+            void mutate();
+            setRegistrando(false);
+          }}
+        />
+      ) : abierto ? (
         <div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -455,6 +476,11 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+          {filtrados.length === 0 ? (
+            <p className="mt-3 text-center text-xs text-slate-400">
+              Ningún cliente coincide con “{query}”.
+            </p>
+          ) : null}
           <ul className="mt-2 max-h-56 overflow-y-auto">
             {filtrados.map((c) => (
               <li key={c.id}>
@@ -475,6 +501,17 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
               </li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={() => {
+              setAbierto(false);
+              setRegistrando(true);
+            }}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Registrar nuevo cliente
+          </button>
         </div>
       ) : (
         <div className="flex items-center gap-2">
@@ -489,6 +526,15 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
             <span className="truncate text-sm text-slate-900">
               {caja.cliente ? clienteNombre(caja.cliente) : "Identificar cliente"}
             </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRegistrando(true)}
+            aria-label="Registrar nuevo cliente"
+            title="Registrar nuevo cliente"
+            className="shrink-0 rounded-lg border-2 border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <UserPlus className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -511,7 +557,47 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
 
 function Comprobante({ caja }: { caja: CajaVenta }) {
   const venta = caja.ventaCreada!;
-  const fecha = new Date(venta.fecha);
+  const { emisor } = useEmisor();
+  const [verFactura, setVerFactura] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const { fecha, hora } = fechaHora(venta.fecha);
+
+  // La unidad de cada producto no viaja en la venta, pero sí está en el carrito
+  // que la acaba de generar: sin ella, 1,5 KG se lee como 1,5 a secas.
+  const unidades = Object.fromEntries(
+    caja.carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
+  );
+
+  const cobro = caja.aCredito
+    ? "A crédito"
+    : (METODOS_PAGO.find((m) => m.value === caja.metodoPago)?.label ?? "—");
+
+  const datos: DatosComprobante = {
+    venta,
+    emisor,
+    cliente: caja.nombreCliente,
+    formaPago: cobro,
+    unidades,
+  };
+
+  const legal = esFacturaLegal(emisor);
+
+  if (verFactura) {
+    return (
+      <div className="mx-auto max-w-lg p-6">
+        <FacturaVenta datos={datos} telefonoCliente={caja.cliente?.telefono ?? null} />
+        <div className="no-imprimir px-4">
+          <button
+            type="button"
+            onClick={() => setVerFactura(false)}
+            className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Volver al resumen
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-lg p-6">
@@ -519,26 +605,18 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
           <CheckCircle2 className="h-9 w-9 text-emerald-500" />
         </div>
-        <h1 className="mt-4 text-xl font-bold text-slate-900">¡Venta registrada!</h1>
+        <h1 className="mt-4 text-xl font-bold text-slate-900">
+          {legal ? "¡Factura generada exitosamente!" : "¡Venta registrada!"}
+        </h1>
 
         <dl className="mt-6 space-y-2 text-left">
-          <Dato label="N.° de venta" valor={venta.numero_control} />
           <Dato
-            label="Fecha y hora"
-            valor={`${fecha.toLocaleDateString("es-PY")} ${fecha.toLocaleTimeString("es-PY", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}`}
+            label={legal ? "N.° de factura" : "N.° de venta"}
+            valor={venta.numero_control}
           />
+          <Dato label="Fecha y hora" valor={`${fecha} ${hora}`} />
           <Dato label="Cliente" valor={caja.nombreCliente} />
-          <Dato
-            label="Cobro"
-            valor={
-              caja.aCredito
-                ? "A crédito"
-                : (METODOS_PAGO.find((m) => m.value === caja.metodoPago)?.label ?? "—")
-            }
-          />
+          <Dato label="Cobro" valor={cobro} />
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <dt className="text-sm font-semibold text-slate-900">Total</dt>
             <dd className="text-2xl font-bold tabular-nums text-slate-900">
@@ -547,7 +625,37 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           </div>
         </dl>
 
+        {aviso ? (
+          <p role="status" className="mt-4 rounded-lg bg-slate-100 p-2.5 text-xs text-slate-600">
+            {aviso}
+          </p>
+        ) : null}
+
+        {/* El comprobante no se abre solo: lo que el cajero necesita leer de un
+            vistazo es el número y el total. Imprimirlo o mandárselo al cliente
+            queda a un clic, dentro de la factura. */}
         <div className="mt-6 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setVerFactura(true)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white"
+            style={{ backgroundColor: TEAL }}
+          >
+            <FileText className="h-4 w-4" />
+            Ver factura
+          </button>
+          <button
+            type="button"
+            onClick={async () => setAviso(await compartirComprobante(datos))}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-semibold"
+            style={{ borderColor: TEAL, color: "#3F8E91" }}
+          >
+            <Share2 className="h-4 w-4" />
+            Compartir
+          </button>
+        </div>
+
+        <div className="mt-2 flex gap-2">
           <Link
             href="/ventas/arqueo"
             className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
@@ -557,8 +665,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           <button
             type="button"
             onClick={caja.reiniciar}
-            className="flex-1 rounded-xl py-3 text-sm font-semibold text-white"
-            style={{ backgroundColor: TEAL }}
+            className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
           >
             Nueva venta
           </button>

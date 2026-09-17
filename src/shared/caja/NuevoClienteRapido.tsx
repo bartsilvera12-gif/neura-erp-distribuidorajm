@@ -20,9 +20,12 @@ const TEAL = "#4FAEB2";
 export default function NuevoClienteRapido({
   onCreado,
   onCancelar,
+  /** En escritorio el panel ya se titula "Cliente": repetirlo sobra. */
+  mostrarTitulo = true,
 }: {
   onCreado: (cliente: Cliente) => void;
   onCancelar: () => void;
+  mostrarTitulo?: boolean;
 }) {
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -61,10 +64,12 @@ export default function NuevoClienteRapido({
   }
 
   return (
-    <div className="pt-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
-        Registrar nuevo cliente
-      </p>
+    <div className={mostrarTitulo ? "pt-4" : ""}>
+      {mostrarTitulo ? (
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Registrar nuevo cliente
+        </p>
+      ) : null}
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
         <Campo label="Nombre y apellido" obligatorio>
