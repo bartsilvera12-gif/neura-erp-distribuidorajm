@@ -2,14 +2,18 @@
 -- 20. Plan de Cuentas y Configuración Contable
 -- ============================================================================
 --
--- Síntoma: en Configuración → Contable los campos no se pueden completar. No es
--- que el formulario esté roto: los selectores se llenan con las cuentas del plan
--- de cuentas, y `plan_cuentas` no existe en este schema. El endpoint que las
--- lista devuelve 500, la pantalla recibe una lista vacía y no hay nada que
--- elegir en ningún campo.
+-- Síntoma: en Configuración → Contable los campos no se pueden completar. Los
+-- selectores se llenan con las cuentas del plan de cuentas y no hay ninguna
+-- cargada, así que no hay nada que elegir en ningún campo.
 --
--- Esto crea las dos tablas que faltan y siembra un plan de cuentas mínimo para
--- una distribuidora paraguaya, con las cuentas que los asientos automáticos
+-- `plan_cuentas` SÍ existe, pero con la mitad de las columnas: la creó la
+-- migración 19 como tabla mínima, solo para que el detalle de un gasto no se
+-- cayera al hacerle LEFT JOIN. Le faltan `nivel`, `naturaleza`, `cuenta_padre_id`
+-- y el resto de lo que lee la pantalla de contabilidad. Por eso esto no crea a
+-- ciegas: completa lo que falte, exista la tabla o no.
+--
+-- Además crea `configuracion_contable` y `periodos_contables`, y siembra un plan
+-- mínimo para una distribuidora paraguaya con las cuentas que los asientos
 -- necesitan: IVA crédito y débito 10% y 5%, proveedores, clientes, caja, banco,
 -- ventas gravadas y exentas.
 --
@@ -28,6 +32,8 @@ DECLARE
   v_schema   text := 'distribuidorajmerp';
   v_empresa  uuid;
   v_creadas  text[] := ARRAY[]::text[];
+  v_agregadas text[] := ARRAY[]::text[];
+  v_col      record;
   v_cuenta   record;
   v_padre    uuid;
   v_n        int := 0;
@@ -102,6 +108,62 @@ BEGIN
     EXECUTE format('CREATE INDEX idx_plan_cuentas_asentables ON %I.plan_cuentas (empresa_id, activo, asentable)', v_schema);
 
     v_creadas := v_creadas || 'plan_cuentas'::text;
+  ELSE
+    -- Ya existía. Se completa columna por columna: agregar una que ya está no
+    -- se intenta, y las que están no se tocan ni pierden datos.
+    FOR v_col IN
+      SELECT * FROM (VALUES
+        ('nivel',           'integer NOT NULL DEFAULT 1'),
+        ('naturaleza',      'text NOT NULL DEFAULT ''D'''),
+        ('asentable',       'boolean NOT NULL DEFAULT true'),
+        ('centro_costo',    'boolean NOT NULL DEFAULT false'),
+        ('moneda',          'text'),
+        ('tipo_cambio',     'numeric'),
+        ('cuenta_sset',     'text'),
+        ('cuenta_padre_id', 'uuid'),
+        ('activo',          'boolean NOT NULL DEFAULT true'),
+        ('created_at',      'timestamptz NOT NULL DEFAULT now()'),
+        ('updated_at',      'timestamptz NOT NULL DEFAULT now()')
+      ) AS t(campo, tipo)
+    LOOP
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = v_schema AND table_name = 'plan_cuentas'
+           AND column_name = v_col.campo
+      ) THEN
+        EXECUTE format('ALTER TABLE %I.plan_cuentas ADD COLUMN %I %s',
+                       v_schema, v_col.campo, v_col.tipo);
+        v_agregadas := v_agregadas || ('plan_cuentas.' || v_col.campo)::text;
+      END IF;
+    END LOOP;
+
+    -- El padre apunta a la misma tabla. Va aparte porque la columna puede
+    -- haberse creado recién arriba.
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+       WHERE conrelid = (v_schema || '.plan_cuentas')::regclass
+         AND conname = 'plan_cuentas_padre_fk'
+    ) THEN
+      EXECUTE format(
+        'ALTER TABLE %I.plan_cuentas ADD CONSTRAINT plan_cuentas_padre_fk '
+        || 'FOREIGN KEY (cuenta_padre_id) REFERENCES %I.plan_cuentas(id) ON DELETE SET NULL',
+        v_schema, v_schema);
+    END IF;
+
+    -- La siembra hace ON CONFLICT (empresa_id, cuenta): sin unicidad, falla.
+    -- La 19 ya la dejó puesta con otro nombre; esto cubre que no esté.
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint c
+       WHERE c.conrelid = (v_schema || '.plan_cuentas')::regclass
+         AND c.contype = 'u'
+         AND (SELECT array_agg(a.attname::text ORDER BY a.attname)
+                FROM unnest(c.conkey) k
+                JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k)
+             = ARRAY['cuenta', 'empresa_id']
+    ) THEN
+      EXECUTE format('ALTER TABLE %I.plan_cuentas ADD CONSTRAINT plan_cuentas_codigo_unico '
+                     || 'UNIQUE (empresa_id, cuenta)', v_schema);
+    END IF;
   END IF;
 
   -- ── configuracion_contable ────────────────────────────────────────────────
@@ -224,11 +286,13 @@ BEGIN
   EXECUTE format('ALTER TABLE %I.configuracion_contable ENABLE ROW LEVEL SECURITY', v_schema);
   EXECUTE format('ALTER TABLE %I.periodos_contables ENABLE ROW LEVEL SECURITY', v_schema);
 
-  IF array_length(v_creadas, 1) IS NULL THEN
-    RAISE NOTICE 'las tablas ya existían; se revisó la siembra (% cuentas).', v_n;
-  ELSE
-    RAISE NOTICE 'creadas: %. Cuentas sembradas/revisadas: %.', array_to_string(v_creadas, ', '), v_n;
+  IF array_length(v_creadas, 1) IS NOT NULL THEN
+    RAISE NOTICE 'tablas creadas: %.', array_to_string(v_creadas, ', ');
   END IF;
+  IF array_length(v_agregadas, 1) IS NOT NULL THEN
+    RAISE NOTICE 'columnas agregadas a tablas que ya existían: %.', array_to_string(v_agregadas, ', ');
+  END IF;
+  RAISE NOTICE 'cuentas sembradas/revisadas: %.', v_n;
 END;
 $$;
 
