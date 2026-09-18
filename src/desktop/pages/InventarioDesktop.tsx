@@ -34,6 +34,13 @@ interface UbicacionMin { id: string; nombre: string; tipo: string }
 export default function InventarioPage() {
   const { isAdmin } = useIsAdmin();
   const [todos, setTodos] = useState<Producto[]>([]);
+  /**
+   * Mientras no llegó la lista, la tabla no puede decir "0 de 0 productos": eso
+   * se lee como "no hay nada cargado" y es lo que se reportó como que los
+   * productos no aparecían. Hasta que responda el servidor se muestra que está
+   * cargando, y recién ahí se sabe si están o no.
+   */
+  const [cargando, setCargando] = useState(true);
   const [ubicaciones, setUbicaciones] = useState<UbicacionMin[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -50,9 +57,14 @@ export default function InventarioPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getProductos().then((data) => {
-      if (!cancelled) setTodos(data);
-    });
+    setCargando(true);
+    getProductos()
+      .then((data) => {
+        if (!cancelled) setTodos(data);
+      })
+      .finally(() => {
+        if (!cancelled) setCargando(false);
+      });
     // Ubicaciones para el filtro
     fetch("/api/inventario/ubicaciones", { credentials: "include", cache: "no-store" })
       .then((r) => r.json())
@@ -202,9 +214,18 @@ export default function InventarioPage() {
             </select>
           </div>
           <span className="ml-auto text-[11px] text-slate-400">
-            {productos.length} de {filtradosTodos.length}
-            {filtradosTodos.length !== todos.length ? ` · ${todos.length} en total` : ""}
-            {" "}producto{filtradosTodos.length === 1 ? "" : "s"}
+            {cargando ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#4FAEB2]" />
+                Cargando productos…
+              </span>
+            ) : (
+              <>
+                {productos.length} de {filtradosTodos.length}
+                {filtradosTodos.length !== todos.length ? ` · ${todos.length} en total` : ""}
+                {" "}producto{filtradosTodos.length === 1 ? "" : "s"}
+              </>
+            )}
           </span>
           <p className="hidden text-[11px] text-slate-400 xl:block">
             Los productos ingresan desde <span className="font-medium text-slate-500">Compras</span>
@@ -232,7 +253,26 @@ export default function InventarioPage() {
             </thead>
 
             <tbody>
-              {productos.map((p) => {
+              {cargando ? (
+                // Filas fantasma: la tabla no se achica de golpe cuando llegan
+                // los datos y se ve que está trabajando, no que está vacía.
+                [0, 1, 2].map((i) => (
+                  <tr key={`esqueleto-${i}`} className="border-b border-slate-200 last:border-0">
+                    <td colSpan={10} className="py-4">
+                      <span className="block h-4 w-full animate-pulse rounded bg-slate-100" />
+                    </td>
+                  </tr>
+                ))
+              ) : productos.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-sm text-slate-400">
+                    {query.trim()
+                      ? `Ningún producto coincide con “${query.trim()}”.`
+                      : "Todavía no hay productos cargados."}
+                  </td>
+                </tr>
+              ) : null}
+              {(cargando ? [] : productos).map((p) => {
                 const stockBajo = p.stock_actual <= p.stock_minimo;
                 const margen = calcularMargenVenta(p.costo_promedio, p.precio_venta);
                 return (
