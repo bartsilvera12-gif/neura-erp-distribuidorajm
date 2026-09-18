@@ -15,6 +15,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
+import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
 /**
  * El camión de un reparto y su ubicación de inventario.
@@ -138,9 +139,18 @@ export async function GET(request: NextRequest) {
       // que ser el del camión de quien vende. Si no, la primera venta de la
       // mañana se hace contra el stock del depósito y sale mercadería que nunca
       // subió.
+      //
+      // SOLO para el vendedor móvil, que es el que vende de su camión. El
+      // administrador y el cajero venden del salón aunque figuren como
+      // repartidores de algún camión: sin este filtro, al admin que se asignó
+      // un camión para probar se le acotaba la caja a ese camión y se quedaba
+      // sin catálogo. Es la misma regla que aplica la pantalla (`useCajaVenta`);
+      // acá faltaba, así que las dos podían no coincidir.
       if (!camion.existe) {
         const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
-        if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
+        if (yo && alcanceRepartos(yo.rol) === "propios") {
+          camion = await miCamion(pool, schema, empresaId, yo.id);
+        }
       }
     }
 
