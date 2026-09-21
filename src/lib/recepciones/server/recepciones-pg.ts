@@ -213,7 +213,7 @@ export async function confirmarRecepcion(
     }
 
     const { rows: num } = await client.query<{ numero: string }>(
-      `SELECT neura.next_numero_recepcion_empresa($1::uuid) AS numero`, [empresaId]
+      `SELECT ${quoteSchemaTable(schema, "next_numero_recepcion_empresa")}($1::uuid) AS numero`, [empresaId]
     );
 
     let recepcion: RecepcionRow;

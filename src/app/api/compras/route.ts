@@ -89,11 +89,12 @@ async function postMultilinea(
       return NextResponse.json(errorResponse(e.message), { status: e.status });
     }
     const code = (e as { code?: string })?.code;
-    console.error("[/api/compras POST multilinea]", { schema, empresaId, code, msg: e instanceof Error ? e.message : e });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[/api/compras POST multilinea]", { schema, empresaId, code, msg });
     if (code === "23503") {
       return NextResponse.json(errorResponse("Proveedor, producto o cuenta inválidos."), { status: 400 });
     }
-    return NextResponse.json(errorResponse("No se pudo guardar la compra."), { status: 500 });
+    return NextResponse.json(errorResponse(msg || "No se pudo guardar la compra."), { status: 500 });
   }
 }
 
@@ -219,13 +220,17 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
+      // El motivo real va al cliente. El mensaje genérico obligaba a entrar a
+      // los logs del servidor para saber si faltaba una columna, una tabla o un
+      // permiso, y en pantalla no había forma de distinguirlos.
       return NextResponse.json(
-        errorResponse("No se pudo guardar la compra. Revisá los datos e intentá nuevamente."),
+        errorResponse(msg || "No se pudo guardar la compra. Revisá los datos e intentá nuevamente."),
         { status: 500 }
       );
     }
   } catch (err) {
-    console.error("[/api/compras POST] outer", err instanceof Error ? err.message : err);
-    return NextResponse.json(errorResponse("No se pudo guardar la compra."), { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/api/compras POST] outer", msg);
+    return NextResponse.json(errorResponse(msg || "No se pudo guardar la compra."), { status: 500 });
   }
 }
