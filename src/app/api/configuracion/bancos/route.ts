@@ -11,6 +11,17 @@ function normNombre(s: string): string {
   return String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
+/** Entidades que pueden ser origen de un cobro por transferencia. */
+export const TIPOS = ["banco", "billetera", "financiera", "cooperativa"];
+
+/** El 23505 puede venir del nombre o del código: hay que decir cuál. */
+export function mensajeDuplicado(error: { message?: string; details?: string }): string {
+  const texto = `${error.message ?? ""} ${error.details ?? ""}`;
+  return texto.includes("codigo")
+    ? "Ya existe una entidad con ese código"
+    : "Ya existe una entidad con ese nombre";
+}
+
 function esAdmin(rol: string | null): boolean {
   const r = String(rol ?? "").trim();
   return r === "super_admin" || esRolAdminEmpresaOGlobal(r);
@@ -25,7 +36,7 @@ export async function GET(request: Request) {
     const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
     const { data, error } = await supabase
       .from("bancos")
-      .select("id, nombre, activo, sort_order")
+      .select("id, codigo, nombre, tipo, activo, sort_order")
       .eq("empresa_id", auth.empresaId)
       .order("sort_order", { ascending: true })
       .order("nombre", { ascending: true });
@@ -49,9 +60,13 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse("Sin permiso para editar el catálogo de bancos"), { status: 403 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as { nombre?: unknown; sort_order?: unknown };
+    const body = (await request.json().catch(() => ({}))) as {
+      nombre?: unknown; codigo?: unknown; tipo?: unknown; sort_order?: unknown;
+    };
     const nombre = typeof body.nombre === "string" ? body.nombre.trim() : "";
     if (!nombre) return NextResponse.json(errorResponse("Indicá el nombre del banco"), { status: 400 });
+    const codigo = typeof body.codigo === "string" && body.codigo.trim() ? body.codigo.trim().toUpperCase() : null;
+    const tipo = TIPOS.includes(String(body.tipo)) ? String(body.tipo) : "banco";
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
     const { data, error } = await supabase
@@ -60,14 +75,16 @@ export async function POST(request: Request) {
         empresa_id: auth.empresaId,
         nombre,
         nombre_norm: normNombre(nombre),
+        codigo,
+        tipo,
         sort_order: Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : 0,
       })
-      .select("id, nombre, activo, sort_order")
+      .select("id, codigo, nombre, tipo, activo, sort_order")
       .single();
 
     if (error) {
       const status = error.code === "23505" ? 409 : 400;
-      const msg = error.code === "23505" ? "Ya existe un banco con ese nombre" : error.message;
+      const msg = error.code === "23505" ? mensajeDuplicado(error) : error.message;
       return NextResponse.json(errorResponse(msg), { status });
     }
     return NextResponse.json(successResponse({ banco: data }), { status: 201 });
