@@ -17,6 +17,7 @@ import {
   estadoStyle,
   rangeForView,
   tituloPeriodo,
+  etiquetaPeriodo,
   type AgendaView,
 } from "./calendar-utils";
 import { DEFAULT_PREFS, getAgendaPrefs, setAgendaPrefs, type AgendaPrefs } from "./agenda-prefs";
@@ -64,6 +65,8 @@ export default function AgendaClient() {
   const [estado, setEstado] = useState("");
   const [responsableId, setResponsableId] = useState("");
   const [q, setQ] = useState("");
+  // Cuántas coincidencias hay fuera del período visible (para el aviso).
+  const [enOtrasFechas, setEnOtrasFechas] = useState(0);
 
   // Modales
   const [formOpen, setFormOpen] = useState(false);
@@ -95,6 +98,15 @@ export default function AgendaClient() {
   // En el listado, escribir en el buscador amplía la ventana de búsqueda.
   const buscando = view === "lista" && q.trim().length > 0;
 
+  /** Ventana amplia para las búsquedas que no se limitan al período visible. */
+  const ventanaAmplia = useCallback(
+    (a: Date) => ({
+      desde: new Date(a.getFullYear() - 1, 0, 1).toISOString(),
+      hasta: new Date(a.getFullYear() + 2, 0, 1).toISOString(),
+    }),
+    []
+  );
+
   const loadCitas = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -105,8 +117,9 @@ export default function AgendaClient() {
         // Buscar es buscar: en el listado la búsqueda no se limita al mes que
         // se está mirando, porque si no "MEET" no aparece salvo que ya estés
         // parado en el mes correcto.
-        params.set("desde", new Date(anchor.getFullYear() - 1, 0, 1).toISOString());
-        params.set("hasta", new Date(anchor.getFullYear() + 2, 0, 1).toISOString());
+        const v = ventanaAmplia(anchor);
+        params.set("desde", v.desde);
+        params.set("hasta", v.hasta);
       } else {
         params.set("desde", start.toISOString());
         params.set("hasta", end.toISOString());
@@ -127,7 +140,7 @@ export default function AgendaClient() {
     } finally {
       setLoading(false);
     }
-  }, [view, anchor, estado, responsableId, q, buscando]);
+  }, [view, anchor, estado, responsableId, q, buscando, ventanaAmplia]);
 
   useEffect(() => {
     loadOptions();
@@ -137,6 +150,35 @@ export default function AgendaClient() {
   useEffect(() => {
     loadCitas();
   }, [loadCitas]);
+
+  // Si buscás en un calendario (día/semana/mes) y no hay coincidencias en el
+  // período visible, el calendario queda vacío y parece roto. Contamos cuántas
+  // hay en otras fechas para poder ofrecer el salto al listado.
+  useEffect(() => {
+    const texto = q.trim();
+    if (view === "lista" || texto === "" || loading || citas.length > 0) {
+      setEnOtrasFechas(0);
+      return;
+    }
+    let cancelado = false;
+    (async () => {
+      try {
+        const v = ventanaAmplia(anchor);
+        const params = new URLSearchParams({ desde: v.desde, hasta: v.hasta, q: texto });
+        if (estado) params.set("estado", estado);
+        if (responsableId) params.set("responsable_id", responsableId);
+        const res = await fetchWithSupabaseSession(`/api/agenda?${params.toString()}`);
+        const json = await res.json();
+        if (cancelado) return;
+        setEnOtrasFechas(res.ok && json?.success ? (json.data as unknown[]).length : 0);
+      } catch {
+        if (!cancelado) setEnOtrasFechas(0);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [q, view, anchor, estado, responsableId, loading, citas.length, ventanaAmplia]);
 
   function refreshAll() {
     setFormOpen(false);
@@ -324,6 +366,23 @@ export default function AgendaClient() {
 
       {error && (
         <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+      )}
+
+      {/* Buscaste en un calendario y no hay nada en este período, pero sí en
+          otras fechas: ofrecemos el salto en vez de dejar la pantalla muda. */}
+      {enOtrasFechas > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-sm text-amber-800">
+            No hay coincidencias con «{q.trim()}» en {etiquetaPeriodo(view)}.{" "}
+            {enOtrasFechas === 1 ? "Hay 1 en otra fecha." : `Hay ${enOtrasFechas} en otras fechas.`}
+          </p>
+          <button
+            onClick={() => setView("lista")}
+            className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+          >
+            Ver en Listado
+          </button>
+        </div>
       )}
 
       {/* Vista activa */}

@@ -97,6 +97,14 @@ export const MONTHS_ES = [
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ];
 
+/** Cómo nombrar el período de cada vista dentro de una frase. */
+export function etiquetaPeriodo(view: AgendaView): string {
+  if (view === "dia") return "este día";
+  if (view === "semana") return "esta semana";
+  if (view === "mes") return "este mes";
+  return "el listado";
+}
+
 export function tituloPeriodo(view: AgendaView, anchor: Date): string {
   if (view === "dia") {
     return anchor.toLocaleDateString("es-PY", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
