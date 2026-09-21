@@ -99,6 +99,7 @@ function transformar(fuente) {
   for (const v of fuente) {
     const k = v?.key;
     if (!k) continue;
+    if (vistos.has(k)) continue;
     vistos.add(k);
     if (RE_EMPRESA.test(k)) {
       omitidas.push([k, "identidad de empresa del ERP original"]);
@@ -194,6 +195,7 @@ async function main() {
     } else {
       await api("POST", `/applications/${destino}/envs`, cuerpo);
       creadas++;
+      existentes.add(e.key);
     }
   }
   for (const v of aBorrar) {
