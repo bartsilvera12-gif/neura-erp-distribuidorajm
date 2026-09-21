@@ -5,6 +5,10 @@ import { createVentaTransaccionalPg } from "@/lib/ventas/server/create-venta-pg"
 import type { CreateVentaItemInput } from "@/lib/ventas/server/create-venta-pg";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
+import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
+import { asegurarRepartoAbierto } from "@/lib/repartos/server/asegurar-reparto";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import type { Venta, LineaVenta } from "@/lib/ventas/types";
 
 function asItems(body: unknown): CreateVentaItemInput[] | null {
@@ -116,6 +120,36 @@ export async function POST(request: NextRequest) {
         ? null
         : String(o.observaciones).slice(0, 4000);
 
+    const repartoRaw = o.reparto_id;
+    const repartoId =
+      repartoRaw === null || repartoRaw === undefined || repartoRaw === ""
+        ? null
+        : String(repartoRaw);
+
+    const METODOS_VALIDOS = ["efectivo", "tarjeta", "transferencia", "cheque", "mixto"] as const;
+    type Metodo = (typeof METODOS_VALIDOS)[number];
+    const metodoRaw = String(o.metodo_pago ?? "").trim().toLowerCase();
+    const metodoPago = (METODOS_VALIDOS as readonly string[]).includes(metodoRaw)
+      ? (metodoRaw as Metodo)
+      : null;
+
+    const cajaRaw = o.caja_id;
+    const cajaId =
+      cajaRaw === null || cajaRaw === undefined || cajaRaw === "" ? null : String(cajaRaw);
+
+    // Una venta de contado cobra plata: sin medio de cobro no se sabe cómo
+    // entró, y el arqueo queda sin poder cuadrar.
+    if (tipoVenta === "CONTADO" && metodoPago === null) {
+      return NextResponse.json(errorResponse("Indicá con qué se cobra la venta."), { status: 400 });
+    }
+    // A crédito no se cobra ahora: un medio de cobro acá sería mentira.
+    if (tipoVenta === "CREDITO" && metodoPago !== null) {
+      return NextResponse.json(
+        errorResponse("Una venta a crédito no se cobra al emitirla: el medio se registra al cobrar."),
+        { status: 400 }
+      );
+    }
+
     const subtotalDeclarado = Number(o.subtotal);
     const montoIvaDeclarado = Number(o.monto_iva);
     const totalDeclarado = Number(o.total);
@@ -130,6 +164,50 @@ export async function POST(request: NextRequest) {
 
     const schema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
 
+    // Vender a crédito es comprometer plata de la empresa: se puede negar por
+    // usuario. Se valida acá y no solo escondiendo el switch en la pantalla.
+    if (
+      tipoVenta === "CREDITO" &&
+      !(await puede(
+        { schema, empresaId: auth.empresa_id, email: auth.user.email },
+        "venta.credito"
+      ))
+    ) {
+      return NextResponse.json(errorResponse("No tenés permiso para vender a crédito."), {
+        status: 403,
+      });
+    }
+
+    // Toda venta de contado necesita una caja donde imputarse, pero pedirla a
+    // mano era un paso que en la calle nadie daba: el vendedor quiere cobrar.
+    // Si no hay ninguna abierta se abre una en 0, que es el saldo real —el
+    // camión sale sin plata en el cajón—, y se cierra con el cierre de reparto.
+    let cajaFinal = cajaId;
+    if (tipoVenta === "CONTADO" && cajaFinal === null) {
+      cajaFinal = await asegurarCajaAbierta(schema, auth.empresa_id, auth.usuarioCatalogId);
+      if (cajaFinal === null) {
+        return NextResponse.json(
+          errorResponse("No se pudo abrir la caja para cobrar esta venta."),
+          { status: 409 }
+        );
+      }
+    }
+
+    // Si el que vende tiene un camión asignado, la venta sale de su reparto
+    // aunque nadie lo haya abierto esa mañana: se abre solo, con el saldo que
+    // quedó arriba del cierre anterior. Sin esto la venta queda sin camión, la
+    // mercadería sale del stock general y el cierre del día dice "sin reparto"
+    // con el camión en la calle.
+    let repartoFinal = repartoId;
+    if (repartoFinal === null) {
+      const yo = await usuarioDelSchema({
+        schema,
+        empresaId: auth.empresa_id,
+        email: auth.user.email,
+      });
+      repartoFinal = await asegurarRepartoAbierto(schema, auth.empresa_id, yo?.id ?? null);
+    }
+
     const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
       schema,
       empresaId: auth.empresa_id,
@@ -138,6 +216,9 @@ export async function POST(request: NextRequest) {
       moneda,
       tipoCambio,
       tipoVenta,
+      metodoPago,
+      cajaId: cajaFinal,
+      repartoId: repartoFinal,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,

@@ -93,9 +93,51 @@ function rowToMovimiento(row: MovimientoRow): MovimientoInventario {
 // ─── Productos ─────────────────────────────────────────────────────────────────
 
 /** Lista productos via API server-side (PG directo, soporta tenants erp_* no expuestos). */
-export async function getProductos(): Promise<Producto[]> {
+/** De dónde salió la lista de la caja. Lo decide el servidor, no la pantalla. */
+export type OrigenCatalogo = {
+  /** `empresa` = maestro de inventario, sin acotar a camión ni salón. */
+  tipo: "camion" | "salon" | "camion_sin_ubicacion" | "empresa";
+  camion: string | null;
+};
+
+/**
+ * Catálogo PARA VENDER: lo que hay arriba del camión, o lo del salón.
+ *
+ * Lleva `para=venta` a propósito. La misma ruta sirve el maestro de Inventario,
+ * y ahí acotar al camión escondía productos: un alta nueva no aparecía y parecía
+ * que no se había guardado.
+ */
+export async function getProductosConOrigen(
+  repartoId?: string | null
+): Promise<{ productos: Producto[]; origen: OrigenCatalogo }> {
+  const salon: OrigenCatalogo = { tipo: "salon", camion: null };
   try {
-    const r = await fetch("/api/productos", { credentials: "include", cache: "no-store" });
+    const qs = repartoId
+      ? `?para=venta&reparto_id=${encodeURIComponent(repartoId)}`
+      : "?para=venta";
+    const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) {
+      console.error("[inventario] getProductos:", (j as { error?: string })?.error ?? r.status);
+      return { productos: [], origen: salon };
+    }
+    const data = j.data as { productos?: ProductoRow[]; origen?: OrigenCatalogo };
+    return {
+      productos: (data.productos ?? []).map(rowToProducto),
+      origen: data.origen ?? salon,
+    };
+  } catch (err) {
+    console.error("[inventario] getProductos:", err instanceof Error ? err.message : err);
+    return { productos: [], origen: salon };
+  }
+}
+
+export async function getProductos(repartoId?: string | null): Promise<Producto[]> {
+  try {
+    // Con reparto, el servidor devuelve el stock de ese camión en vez del
+    // global: lo que el vendedor tiene arriba es lo único que puede vender.
+    const qs = repartoId ? `?reparto_id=${encodeURIComponent(repartoId)}` : "";
+    const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
       console.error("[inventario] getProductos:", (j as { error?: string })?.error ?? r.status);
@@ -208,6 +250,29 @@ export async function updateProductoPrecios(
   datos: { precio_venta?: number; costo_promedio?: number }
 ): Promise<void> {
   await updateProducto(productoId, datos);
+}
+
+/**
+ * Borra un producto (DELETE /api/productos/[id]).
+ *
+ * Devuelve cómo terminó: `eliminado` si no tenía historial y se fue de la base,
+ * `desactivado` si lo tenía y solo se le dio de baja. La pantalla lo dice,
+ * porque no es lo mismo para quien después busca ese producto en un informe.
+ */
+export async function deleteProducto(
+  id: string
+): Promise<{ modo: "eliminado" | "desactivado"; nombre: string }> {
+  const res = await fetch(`/api/productos/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  const json = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (!res.ok || !json?.success) {
+    throw new Error(
+      (json as { error?: string })?.error ?? `Error ${res.status} al borrar el producto.`
+    );
+  }
+  return (json as { data: { modo: "eliminado" | "desactivado"; nombre: string } }).data;
 }
 
 /** Actualiza producto via API server-side (PATCH /api/productos/[id]). */

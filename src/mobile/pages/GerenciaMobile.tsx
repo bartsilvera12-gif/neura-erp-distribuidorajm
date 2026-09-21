@@ -1,31 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDownRight, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Crown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Package, Truck } from "lucide-react";
 import { useGerenciaComercial } from "@/shared/hooks/useGerencia";
-import { gsShort } from "@/lib/report/format";
+import { gs, gsShort, pct, pctColor } from "@/lib/report/format";
+
+const TEAL = "#4FAEB2";
 
 /**
- * Gerencia mobile — tablero ejecutivo simplificado.
- *  - Selector de periodo (mes anterior / mes actual).
- *  - KPIs grandes: facturado, cobrado, pendiente, MRR.
- *  - Top 5 clientes del periodo.
- *  - Top categorías de revenue.
+ * Gerencia en el celular: cuánto se vendió este mes, qué camión lo vendió y qué
+ * producto.
+ *
+ * Es la versión chica del mismo reporte del escritorio, sin el gráfico por día:
+ * en una pantalla de mano el detalle diario no se lee, así que queda el mejor
+ * día y el promedio, que son los dos números que se miran de parado.
  */
 export default function GerenciaMobile() {
   const [period, setPeriod] = useState(currentPeriod());
   const { report, isLoading, error } = useGerenciaComercial(period);
-
-  const kpis = report?.kpis;
+  const r = report?.resumen;
 
   return (
     <div className="mx-auto max-w-md p-4 pb-24">
       <header className="mb-3">
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Gerencia</h1>
-        <p className="mt-0.5 text-xs text-slate-500">Tablero ejecutivo</p>
+        <p className="mt-0.5 text-xs text-slate-500">Venta por día, camión y producto</p>
       </header>
 
-      {/* Selector de periodo */}
       <div className="mb-4 flex items-center gap-2">
         <button
           type="button"
@@ -55,176 +56,167 @@ export default function GerenciaMobile() {
         </div>
       ) : null}
 
-      {/* KPIs principales */}
+      {report && !report.disponible ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Este schema todavía no tiene la tabla de ventas.
+        </div>
+      ) : null}
+
       <section className="mb-4 grid grid-cols-2 gap-3">
-        <KpiBox
-          label="Facturado"
-          value={kpis ? gsShort(kpis.facturado_mes) : "—"}
-          variacion={kpis?.variacion_facturado_pct ?? null}
-          tone="primary"
-          isLoading={isLoading}
+        <Caja
+          label="Venta del mes"
+          value={r ? gsShort(r.total) : "—"}
+          sub={r?.variacion_pct == null ? undefined : `${pct(r.variacion_pct)} vs mes anterior`}
+          subColor={r?.variacion_pct == null ? undefined : pctColor(r.variacion_pct)}
+          destacado
+          cargando={isLoading}
         />
-        <KpiBox
-          label="Cobrado"
-          value={kpis ? gsShort(kpis.cobrado_mes) : "—"}
-          variacion={kpis?.variacion_cobrado_pct ?? null}
-          tone="emerald"
-          isLoading={isLoading}
+        <Caja label="Ventas" value={r ? String(r.ventas) : "—"} cargando={isLoading} />
+        <Caja
+          label="Ticket promedio"
+          value={r && r.ventas > 0 ? gsShort(r.ticket_promedio) : "—"}
+          cargando={isLoading}
         />
-        <KpiBox
-          label="Pendiente"
-          value={kpis ? gsShort(kpis.pendiente_cobro) : "—"}
-          tone="amber"
-          isLoading={isLoading}
+        <Caja
+          label="Promedio por día"
+          value={r && r.dias_con_venta > 0 ? gsShort(r.promedio_diario) : "—"}
+          sub={r ? `${r.dias_con_venta} ${r.dias_con_venta === 1 ? "día" : "días"} con venta` : undefined}
+          cargando={isLoading}
         />
-        <KpiBox
-          label="MRR"
-          value={kpis ? gsShort(kpis.mrr) : "—"}
-          sub={report?.mrr ? `${report.mrr.subs_activas} subs activas` : undefined}
-          tone="violet"
-          isLoading={isLoading}
-        />
+        <Caja label="Al contado" value={r ? gsShort(r.contado) : "—"} cargando={isLoading} />
+        <Caja label="A crédito" value={r ? gsShort(r.credito) : "—"} cargando={isLoading} />
       </section>
 
-      {/* Top clientes */}
-      <section className="mb-4">
-        <div className="mb-2 flex items-center gap-2">
-          <Crown className="h-3.5 w-3.5 text-amber-500" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Top clientes</h2>
-        </div>
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
-        ) : !report?.top_clientes || report.top_clientes.length === 0 ? (
-          <p className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs text-slate-500">
-            Sin movimientos en el periodo.
+      {r?.mejor_dia ? (
+        <div className="mb-4 rounded-2xl border border-[#4FAEB2]/30 bg-[#4FAEB2]/5 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-slate-500">Mejor día del mes</p>
+          <p className="mt-0.5 text-sm font-bold text-slate-900">
+            {diaLargo(r.mejor_dia.dia)} · {gs(r.mejor_dia.total)}
           </p>
-        ) : (
-          <ul className="space-y-2">
-            {report.top_clientes.slice(0, 5).map((c, i) => (
-              <li key={i}>
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
-                      {i + 1}
-                    </span>
-                    <p className="truncate text-sm font-medium text-slate-900">{c.cliente}</p>
-                  </div>
-                  <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">
-                    {gsShort(c.facturado)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Top categorías */}
-      <section>
-        <div className="mb-2 flex items-center gap-2">
-          <BarChart3 className="h-3.5 w-3.5 text-[#4FAEB2]" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Revenue por categoría</h2>
         </div>
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
-        ) : !report?.revenue_por_categoria || report.revenue_por_categoria.length === 0 ? (
-          <p className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs text-slate-500">Sin datos.</p>
-        ) : (
-          <ul className="space-y-2">
-            {report.revenue_por_categoria.slice(0, 5).map((c) => (
-              <li key={c.categoria}>
-                <CategoriaBar
-                  categoria={c.categoria}
-                  valor={c.facturado}
-                  max={report.revenue_por_categoria[0]?.facturado ?? 1}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      ) : null}
+
+      <Ranking
+        titulo="Por camión"
+        icono={<Truck className="h-3.5 w-3.5" />}
+        vacio="Todavía no hay ventas asociadas a un reparto."
+        filas={(report?.por_camion ?? []).map((c) => ({
+          nombre: c.camion,
+          detalle: `${c.ventas} ${c.ventas === 1 ? "venta" : "ventas"}`,
+          total: c.total,
+          participacion: c.participacion,
+        }))}
+      />
+
+      <Ranking
+        titulo="Por producto"
+        icono={<Package className="h-3.5 w-3.5" />}
+        vacio="No hubo productos vendidos este mes."
+        filas={(report?.por_producto ?? []).slice(0, 10).map((p) => ({
+          nombre: p.producto,
+          detalle: cant(p.cantidad, p.unidad),
+          total: p.total,
+          participacion: p.participacion,
+        }))}
+      />
     </div>
   );
 }
 
-function KpiBox({
+// ── Piezas ───────────────────────────────────────────────────────────────────
+
+function Caja({
   label,
   value,
-  variacion,
   sub,
-  tone,
-  isLoading,
+  subColor,
+  destacado,
+  cargando,
 }: {
   label: string;
   value: string;
-  variacion?: number | null;
   sub?: string;
-  tone: "primary" | "emerald" | "amber" | "violet";
-  isLoading?: boolean;
+  subColor?: string;
+  destacado?: boolean;
+  cargando?: boolean;
 }) {
-  const toneCls = {
-    primary: "border-slate-200",
-    emerald: "border-emerald-200",
-    amber: "border-amber-200",
-    violet: "border-violet-200",
-  }[tone];
   return (
-    <div className={`rounded-2xl border bg-white p-3 ${toneCls}`}>
-      <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-lg font-bold leading-tight tabular-nums text-slate-900">
-        {isLoading ? <span className="inline-block h-5 w-20 animate-pulse rounded bg-slate-200" /> : value}
+    <div
+      className={`rounded-2xl border p-3 ${
+        destacado ? "border-[#4FAEB2]/40 bg-[#4FAEB2]/5" : "border-slate-200 bg-white"
+      }`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">
+        {cargando && value === "—" ? "…" : value}
       </p>
-      {variacion != null ? (
-        <p
-          className={`mt-0.5 flex items-center gap-0.5 text-[11px] font-medium ${
-            variacion > 0 ? "text-emerald-600" : variacion < 0 ? "text-rose-600" : "text-slate-500"
-          }`}
-        >
-          {variacion > 0 ? <ArrowUpRight className="h-3 w-3" /> : variacion < 0 ? <ArrowDownRight className="h-3 w-3" /> : null}
-          {(variacion > 0 ? "+" : "") + variacion.toFixed(1)}% vs mes ant.
-        </p>
-      ) : sub ? (
-        <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p>
-      ) : null}
+      {sub ? <p className={`mt-0.5 text-[11px] ${subColor ?? "text-slate-400"}`}>{sub}</p> : null}
     </div>
   );
 }
 
-const CAT_LABEL: Record<string, string> = {
-  contabilidad: "Contabilidad",
-  saas_erp: "SaaS / ERP",
-  web_landing: "Web / Landing",
-  marketing: "Marketing",
-  branding: "Branding",
-  otros: "Otros",
-  sin_clasificar: "Sin clasificar",
-};
-
-function CategoriaBar({ categoria, valor, max }: { categoria: string; valor: number; max: number }) {
-  const pct = max > 0 ? Math.round((valor / max) * 100) : 0;
-  const label = CAT_LABEL[categoria] ?? categoria;
+function Ranking({
+  titulo,
+  icono,
+  vacio,
+  filas,
+}: {
+  titulo: string;
+  icono: React.ReactNode;
+  vacio: string;
+  filas: { nombre: string; detalle: string; total: number; participacion: number }[];
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-slate-700">{label}</p>
-        <p className="text-xs font-semibold tabular-nums text-slate-900">{gsShort(valor)}</p>
-      </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-[#4FAEB2]" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
+    <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+      <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <span className="text-[#4FAEB2]">{icono}</span>
+        {titulo}
+      </h2>
+      {filas.length === 0 ? (
+        <p className="py-4 text-center text-xs text-slate-400">{vacio}</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {filas.map((f) => (
+            <li key={f.nombre}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                  {f.nombre}
+                </span>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                  {gsShort(f.total)}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.max(2, Math.round(f.participacion * 100))}%`,
+                      backgroundColor: TEAL,
+                    }}
+                  />
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-400">{f.detalle}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+function cant(n: number, unidad: string): string {
+  const s = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+  return unidad ? `${s} ${unidad}` : s;
+}
+
+function diaLargo(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-PY", { weekday: "long", day: "numeric", month: "long" });
+}
 
 function currentPeriod(): string {
   const d = new Date();

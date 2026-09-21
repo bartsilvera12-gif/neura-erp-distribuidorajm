@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
+   * Salida standalone: genera .next/standalone con server.js y solo el subconjunto
+   * de node_modules que el trazado de Next detecta como necesario. La imagen final
+   * deja de arrastrar todo el proyecto → "exporting layers" mucho más corta.
+   * Arranca con `node server.js` (no `next start`).
+   */
+  output: "standalone",
+  /**
    * El host de build self-hosted (Coolify/nixpacks) tiene RAM acotada y el
    * OOM-killer mata la fase "Running TypeScript"/ESLint de `next build`
    * (SIGKILL, exit 255) en builds fríos con dependencias pesadas (recharts).
@@ -12,6 +19,27 @@ const nextConfig: NextConfig = {
    * swap/upgrade de RAM al host de build → reactivar.
    */
   typescript: { ignoreBuildErrors: true },
+  /**
+   * Ayuda en línea, apagada para Distribuidora JM.
+   *
+   * El módulo existe en el código pero sus cinco tablas (`ayuda_articulos`,
+   * `ayuda_categorias`, `ayuda_articulo_versiones`, `ayuda_articulo_adjuntos`,
+   * `ayuda_articulo_feedback`) no están en este schema, así que entrar solo
+   * puede terminar en un error. Se saca la tarjeta de Configuración y se
+   * cierran también las URLs, porque ocultar el botón no alcanza: la dirección
+   * escrita a mano seguiría llegando.
+   *
+   * Para reactivarlo: crear esas tablas, borrar este bloque y devolver la
+   * tarjeta "Ayuda en línea" en ConfiguracionDesktop.
+   */
+  async redirects() {
+    return [
+      { source: "/configuracion/ayuda", destination: "/configuracion", permanent: false },
+      { source: "/configuracion/ayuda/:path*", destination: "/configuracion", permanent: false },
+      { source: "/ayuda", destination: "/dashboard", permanent: false },
+      { source: "/ayuda/:path*", destination: "/dashboard", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

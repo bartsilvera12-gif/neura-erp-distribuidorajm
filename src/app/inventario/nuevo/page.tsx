@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import SelectorUnidad from "@/components/inventario/SelectorUnidad";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import SelectFromList from "@/components/inventario/SelectFromList";
-import { productoExiste, saveProducto } from "@/lib/inventario/storage";
-import type { MetodoValuacion } from "@/lib/inventario/types";
+import CrearRapido from "@/components/inventario/CrearRapido";
+import { getProductos, productoExiste, saveProducto } from "@/lib/inventario/storage";
+import { sugerirSku } from "@/lib/inventario/sku";
 
 interface CatRow { id: string; nombre: string }
 interface UbiRow { id: string; nombre: string; tipo: string }
@@ -27,9 +29,12 @@ export default function NuevoProductoPage() {
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
-    metodo_valuacion: "CPP" as MetodoValuacion,
   });
   const [submitting, setSubmitting] = useState(false);
+  /** SKU ya cargados, para que el correlativo sugerido no choque con uno existente. */
+  const [skusUsados, setSkusUsados] = useState<string[]>([]);
+  /** Se apaga apenas el usuario escribe su propio SKU: a partir de ahí no se pisa. */
+  const [skuAutomatico, setSkuAutomatico] = useState(true);
   const [generandoCodigo, setGenerandoCodigo] = useState(false);
   const [codigoGeneradoInterno, setCodigoGeneradoInterno] = useState(false);
 
@@ -40,6 +45,24 @@ export default function NuevoProductoPage() {
   const [categorias, setCategorias] = useState<CatRow[]>([]);
   const [ubicaciones, setUbicaciones] = useState<UbiRow[]>([]);
   const [proveedores, setProveedores] = useState<ProvRow[]>([]);
+
+
+  /** Vuelve a leer un catálogo después de crear algo desde el modal. */
+  async function recargarCatalogo(cual: "categorias" | "ubicaciones" | "proveedores") {
+    const url =
+      cual === "proveedores" ? "/api/proveedores" : `/api/inventario/${cual}`;
+    try {
+      const r = await fetch(url, { credentials: "include", cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || !j?.success) return;
+      if (cual === "categorias") setCategorias((j.data?.categorias ?? []) as CatRow[]);
+      if (cual === "ubicaciones") setUbicaciones((j.data?.ubicaciones ?? []) as UbiRow[]);
+      if (cual === "proveedores") setProveedores((j.data?.proveedores ?? []) as ProvRow[]);
+    } catch {
+      // Si falla la recarga, el creado aparece al volver a entrar: no vale
+      // interrumpir la carga del producto por eso.
+    }
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -60,6 +83,9 @@ export default function NuevoProductoPage() {
       if (cats?.categorias) setCategorias(cats.categorias as CatRow[]);
       if (ubis?.ubicaciones) setUbicaciones(ubis.ubicaciones as UbiRow[]);
       if (provs?.proveedores) setProveedores(provs.proveedores as ProvRow[]);
+
+      const productos = await getProductos();
+      if (!cancel) setSkusUsados(productos.map((p) => p.sku).filter(Boolean));
     })();
     return () => { cancel = true; };
   }, []);
@@ -131,7 +157,18 @@ export default function NuevoProductoPage() {
     setErrorDuplicado(null);
     setErrorGeneral(null);
     if (e.target.name === "codigo_barras") setCodigoGeneradoInterno(false);
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+
+    // Escribir el SKU a mano apaga la sugerencia; borrarlo la vuelve a encender.
+    if (e.target.name === "sku") setSkuAutomatico(e.target.value.trim() === "");
+
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "nombre" && skuAutomatico) {
+        next.sku = value.trim() ? sugerirSku(value, skusUsados) : "";
+      }
+      return next;
+    });
   }
 
   /**
@@ -216,7 +253,9 @@ export default function NuevoProductoPage() {
       return;
     }
 
-    const duplicado = await productoExiste(form.sku, form.nombre);
+    const sku = form.sku.trim() || sugerirSku(form.nombre, skusUsados);
+
+    const duplicado = await productoExiste(sku, form.nombre);
     if (duplicado) {
       setErrorDuplicado(
         `Ya existe "${duplicado.nombre}" con SKU ${duplicado.sku}.`
@@ -251,13 +290,16 @@ export default function NuevoProductoPage() {
       try {
         guardado = await saveProducto({
           nombre: form.nombre.trim().toUpperCase(),
-          sku: form.sku.trim().toUpperCase(),
+          sku: sku.toUpperCase(),
           costo_promedio: parseFloat(form.costo_promedio) || 0,
           precio_venta: parseFloat(form.precio_venta) || 0,
           stock_actual: parseInt(form.stock_actual) || 0,
           stock_minimo: parseInt(form.stock_minimo) || 0,
           unidad_medida: form.unidad_medida.trim().toUpperCase(),
-          metodo_valuacion: form.metodo_valuacion,
+          // Valuación: siempre costo promedio. Era un selector en el formulario,
+          // pero la distribuidora no lleva FIFO ni LIFO y elegir mal el método
+          // cambia el costo de todo el inventario sin que nadie lo note.
+          metodo_valuacion: "CPP",
           codigo_barras: codigo,
           codigo_barras_interno: interno,
           categoria_principal_id: categoriaId,
@@ -381,21 +423,25 @@ export default function NuevoProductoPage() {
                 name="sku"
                 value={form.sku}
                 onChange={handleChange}
-                placeholder="Ej: OOTD-001"
+                placeholder="Se genera solo"
                 className={`${inputClass} uppercase`}
-                required
               />
+              <p className="mt-1 text-xs text-slate-400">
+                {skuAutomatico
+                  ? "Se arma solo con el nombre. Podés escribir el tuyo encima."
+                  : "SKU propio. Borralo para volver al automático."}
+              </p>
             </div>
 
             <div>
-              <label className={labelClass}>Unidad de medida</label>
-              <input
-                type="text"
-                name="unidad_medida"
+              <label className={labelClass} htmlFor="unidad_medida">
+                Unidad de medida
+              </label>
+              <SelectorUnidad
+                id="unidad_medida"
                 value={form.unidad_medida}
-                onChange={handleChange}
-                placeholder="Ej: UNIDAD, KG, LT"
-                className={`${inputClass} uppercase`}
+                onChange={(unidad_medida) => setForm((f) => ({ ...f, unidad_medida }))}
+                className={inputClass}
                 required
               />
             </div>
@@ -605,12 +651,13 @@ export default function NuevoProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {categorias.length === 0 ? "Todavía no cargaste categorías." : `${categorias.length} disponibles`}
                   </span>
-                  <Link
-                    href="/inventario/categorias"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="categoria"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("categorias");
+                      setCategoriaId(id);
+                    }}
+                  />
                 </div>
               </div>
 
@@ -627,12 +674,13 @@ export default function NuevoProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {proveedores.length === 0 ? "Todavía no cargaste proveedores." : `${proveedores.length} disponibles`}
                   </span>
-                  <Link
-                    href="/proveedores/nuevo"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="proveedor"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("proveedores");
+                      setProveedorId(id);
+                    }}
+                  />
                 </div>
               </div>
 
@@ -649,12 +697,13 @@ export default function NuevoProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {ubicaciones.length === 0 ? "Todavía no cargaste ubicaciones." : `${ubicaciones.length} disponibles`}
                   </span>
-                  <Link
-                    href="/inventario/ubicaciones"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="ubicacion"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("ubicaciones");
+                      setUbicacionId(id);
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -696,21 +745,6 @@ export default function NuevoProductoPage() {
                 Se generará automáticamente un movimiento de inventario inicial con {form.stock_actual} unidades al guardar.
               </p>
             )}
-          </div>
-
-          {/* Método de valuación */}
-          <div>
-            <label className={labelClass}>Método de valuación</label>
-            <select
-              name="metodo_valuacion"
-              value={form.metodo_valuacion}
-              onChange={handleChange}
-              className={inputClass}
-            >
-              <option value="CPP">CPP — Costo Promedio Ponderado</option>
-              <option value="FIFO">FIFO — Primero en entrar, primero en salir</option>
-              <option value="LIFO">LIFO — Último en entrar, primero en salir</option>
-            </select>
           </div>
 
           {/* Acciones */}

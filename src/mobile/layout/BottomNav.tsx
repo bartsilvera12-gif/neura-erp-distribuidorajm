@@ -2,18 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, MessageCircle, ShoppingCart, Users, Menu } from "lucide-react";
+import { Home, ReceiptText, Settings } from "lucide-react";
+import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
+import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 
 /**
- * Navegación inferior fija para la UI mobile. 5 secciones primarias + "Más" que abre
- * el menú completo en un sheet desde la izquierda (reutiliza el sidebar existente
- * inicialmente; más adelante se reemplaza por una pantalla de menú nativa mobile).
+ * Navegación inferior de la UI mobile.
  *
- * Diseño:
- *  - Altura 56px (estándar Material/iOS bottom nav).
- *  - Safe area bottom (env(safe-area-inset-bottom)) para iPhones con notch.
- *  - Activo: ícono + label en color de marca.
- *  - Inactivo: ícono outline + label en muted.
+ * Tres secciones: Inicio (el menú de tiles), Órdenes de venta y Configuración.
+ * Todo lo demás se alcanza desde los tiles de Inicio, que es como se usa en la
+ * calle: pocas opciones grandes.
+ *
+ * Órdenes de venta está acá y no Reportes porque es lo que se abre varias veces
+ * por jornada: ver lo que se vendió y anular la venta que salió mal. Los
+ * reportes se miran en la computadora, al final del día.
+ *
+ * Sin botón "Más": el menú completo sigue a un toque del ☰ del header, así que
+ * la barra queda limpia sin dejar encerrado a quien administra desde el celular.
+ *
+ * Cada pestaña respeta los módulos de la empresa: ofrecer Reportes a quien no
+ * los tiene es ofrecer una puerta cerrada.
  */
 
 type NavItem = {
@@ -24,19 +32,22 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Inicio", icon: LayoutDashboard },
+  { href: "/", label: "Inicio", icon: Home },
+  { href: "/ventas", label: "Órdenes de venta", icon: ReceiptText, matchPrefix: "/ventas" },
   {
-    href: "/dashboard/conversaciones",
-    label: "Chats",
-    icon: MessageCircle,
-    matchPrefix: "/dashboard/conversaciones",
+    href: "/configuracion",
+    label: "Configuración",
+    icon: Settings,
+    matchPrefix: "/configuracion",
   },
-  { href: "/ventas", label: "Ventas", icon: ShoppingCart, matchPrefix: "/ventas" },
-  { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: "/clientes" },
 ];
 
-export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
+export default function BottomNav() {
   const pathname = usePathname() ?? "/";
+  const { puedeVer } = useAccesoRuta();
+  // Con el teclado abierto no queda pantalla para nada: la barra se va y vuelve
+  // al cerrarlo. Escribiendo no se navega a otra sección.
+  const teclado = useTecladoVirtual();
 
   const isActive = (item: NavItem): boolean => {
     if (item.matchPrefix) {
@@ -45,6 +56,10 @@ export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
     return pathname === item.href;
   };
 
+  const visibles = NAV_ITEMS.filter((item) => puedeVer(item.href) === true);
+
+  if (teclado) return null;
+
   return (
     <nav
       aria-label="Navegación principal"
@@ -52,7 +67,7 @@ export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="mx-auto flex h-14 max-w-3xl items-stretch justify-around">
-        {NAV_ITEMS.map((item) => {
+        {visibles.map((item) => {
           const Icon = item.icon;
           const active = isActive(item);
           return (
@@ -61,7 +76,7 @@ export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={`flex h-full min-h-[44px] flex-col items-center justify-center gap-0.5 px-1 transition-colors ${
-                  active ? "text-[#0EA5E9]" : "text-slate-500 hover:text-slate-700"
+                  active ? "text-[#4FAEB2]" : "text-slate-500 hover:text-slate-700"
                 }`}
               >
                 <Icon className="h-5 w-5" aria-hidden />
@@ -70,17 +85,6 @@ export default function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
             </li>
           );
         })}
-        <li className="flex-1">
-          <button
-            type="button"
-            onClick={onOpenMenu}
-            className="flex h-full min-h-[44px] w-full flex-col items-center justify-center gap-0.5 px-1 text-slate-500 transition-colors hover:text-slate-700"
-            aria-label="Abrir menú completo"
-          >
-            <Menu className="h-5 w-5" aria-hidden />
-            <span className="text-[10px] font-medium tracking-tight">Más</span>
-          </button>
-        </li>
       </ul>
     </nav>
   );

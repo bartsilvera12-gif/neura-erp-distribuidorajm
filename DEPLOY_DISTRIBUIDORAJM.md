@@ -27,13 +27,19 @@ devuelve cada uno.
 | 02 | `02_catalogo_modulos.sql` | Copia el catálogo `modulos` (lista de módulos del producto). |
 | 03 | `03_empresa_admin_modulos.sql` | Empresa + usuario admin + los módulos habilitados. |
 | 04 | `04_verificacion.sql` | Solo lectura. Compara origen vs destino y busca fugas. |
-| 05 | `05_camion_seed.sql` | Alta del primer camión de reparto. Correr **después** de aplicar la migración `20260914130000_repartos_modulo.sql`. |
+| 05 | `05_forma_pago.sql` | **No ejecutar.** Quedó anulado: agregaba `ventas.forma_pago`, redundante con `metodo_pago`. |
+| 06 | `06_repartos.sql` | **No ejecutar.** Quedó anulado: el schema ya trae `repartos`, `reparto_stock` y `camiones`. |
+| 07 | `07_metodo_pago.sql` | Saca `ventas.forma_pago` si el 05 llegó a correr y agrega `cheque` a los CHECK de `ventas.metodo_pago` y `caja_movimientos.medio_pago`. |
 
 ### Antes de ejecutar
 
 El schema origen es **`instemaq`** y ya está fijado en los scripts 01, 02 y
 04: no hay nada que ajustar ahí. Lo único que tenés que tocar es
 **`v_password` en el 03**, antes de ejecutarlo.
+
+El 05 y el 06 son archivos anulados: están en el repo para que quede el
+registro de por qué no van, y si los corrés se abortan solos. El 07 sí hay que
+correrlo, después del 04.
 
 Si querés confirmar el origen antes de arrancar, corré el 00: `instemaq` tiene
 que aparecer con las tablas `empresas`, `usuarios`, `modulos`,

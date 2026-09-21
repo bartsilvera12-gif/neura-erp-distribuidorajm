@@ -145,7 +145,7 @@ export async function generarAsientoEnTx(client: Client, schemaRaw: string, empr
   if (ex[0]) return { id: ex[0].id, numero: ex[0].numero_asiento };
 
   const { rows: num } = await client.query<{ numero: string }>(
-    `SELECT neura.next_numero_asiento_empresa($1::uuid) AS numero`, [empresaId]
+    `SELECT ${quoteSchemaTable(schema, "next_numero_asiento_empresa")}($1::uuid) AS numero`, [empresaId]
   );
   const numero = num[0].numero;
 

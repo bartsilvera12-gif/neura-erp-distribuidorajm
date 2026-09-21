@@ -3,6 +3,7 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
+import { TIPOS, mensajeDuplicado } from "../route";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,8 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
 
     const body = (await request.json().catch(() => ({}))) as {
       nombre?: unknown;
+      codigo?: unknown;
+      tipo?: unknown;
       activo?: unknown;
       sort_order?: unknown;
     };
@@ -37,6 +40,11 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
       patch.nombre = nombre;
       patch.nombre_norm = normNombre(nombre);
     }
+    if (typeof body.codigo === "string") {
+      const codigo = body.codigo.trim().toUpperCase();
+      patch.codigo = codigo === "" ? null : codigo;
+    }
+    if (typeof body.tipo === "string" && TIPOS.includes(body.tipo)) patch.tipo = body.tipo;
     if (typeof body.activo === "boolean") patch.activo = body.activo;
     if (body.sort_order != null && Number.isFinite(Number(body.sort_order))) patch.sort_order = Number(body.sort_order);
 
@@ -46,17 +54,52 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
       .update(patch)
       .eq("id", id)
       .eq("empresa_id", auth.empresaId)
-      .select("id, nombre, activo, sort_order")
+      .select("id, codigo, nombre, tipo, activo, sort_order")
       .single();
 
     if (error) {
       const status = error.code === "23505" ? 409 : 400;
-      const msg = error.code === "23505" ? "Ya existe un banco con ese nombre" : error.message;
+      const msg = error.code === "23505" ? mensajeDuplicado(error) : error.message;
       return NextResponse.json(errorResponse(msg), { status });
     }
     return NextResponse.json(successResponse({ banco: data }));
   } catch (e) {
     const message = e instanceof Error ? e.message : "No se pudo actualizar el banco";
+    return NextResponse.json(errorResponse(message), { status: 400 });
+  }
+}
+
+/**
+ * DELETE — borra una entidad del catálogo. Solo admin.
+ *
+ * Borrar es seguro para el historial: los cobros guardan el NOMBRE del banco
+ * en su propia columna, no una referencia a esta fila. Un cobro de 2024 sigue
+ * diciendo "Banco Continental" aunque hoy se borre del catálogo.
+ */
+export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await requireTenantUserApiAccess(request);
+    if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
+    if (!esAdmin(auth.rol)) {
+      return NextResponse.json(errorResponse("Sin permiso para editar el catálogo de bancos"), { status: 403 });
+    }
+    const { id } = await ctx.params;
+    if (!id) return NextResponse.json(errorResponse("Falta el id"), { status: 400 });
+
+    const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
+    const { data, error } = await supabase
+      .from("bancos")
+      .delete()
+      .eq("id", id)
+      .eq("empresa_id", auth.empresaId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+    if (!data) return NextResponse.json(errorResponse("No se encontró la entidad"), { status: 404 });
+    return NextResponse.json(successResponse({ id }));
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "No se pudo borrar la entidad";
     return NextResponse.json(errorResponse(message), { status: 400 });
   }
 }

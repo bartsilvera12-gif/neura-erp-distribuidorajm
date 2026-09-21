@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
+import { Ban, Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
+import { anularVenta } from "@/lib/ventas/storage";
+import { hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
 import { useVentas } from "@/shared/hooks/useVentas";
 import type { Venta, TipoVenta } from "@/lib/ventas/types";
 
@@ -20,22 +22,32 @@ import type { Venta, TipoVenta } from "@/lib/ventas/types";
  * tap a card abre el detalle desktop como fallback.
  */
 export default function VentasMobile() {
-  const { ventas, isLoading, error } = useVentas();
+  const { ventas, isLoading, error, mutate } = useVentas();
+  const [anulando, setAnulando] = useState<Venta | null>(null);
+  // El día de hoy y nada más: la jornada es lo que se mira, y una lista con las
+  // ventas de todo el mes obliga a buscar la de recién entre cientos.
+  const [fecha, setFecha] = useState(hoyEnAsuncion());
+  const [todasLasFechas, setTodasLasFechas] = useState(false);
   const [query, setQuery] = useState("");
 
-  const metricasHoy = useMemo(() => calcularMetricasHoy(ventas), [ventas]);
+  const metricasHoy = useMemo(() => calcularMetricasDia(ventas, fecha), [ventas, fecha]);
 
   const ventasFiltradas = useMemo(() => {
     const q = query.trim().toLowerCase();
     const ordenadas = [...ventas].sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""));
-    if (!q) return ordenadas;
-    return ordenadas.filter(
+    const delDia = todasLasFechas
+      ? ordenadas
+      : ordenadas.filter((v) => diaEnAsuncion(v.fecha) === fecha);
+    if (!q) return delDia;
+    return delDia.filter(
       (v) =>
         v.numero_control.toLowerCase().includes(q) ||
         String(v.total).includes(q) ||
         v.items.some((i) => i.producto_nombre.toLowerCase().includes(q))
     );
-  }, [ventas, query]);
+  }, [ventas, query, fecha, todasLasFechas]);
+
+  const esHoy = fecha === hoyEnAsuncion();
 
   return (
     <div className="mx-auto max-w-md p-4 pb-24">
@@ -43,20 +55,38 @@ export default function VentasMobile() {
       <header className="mb-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Caja</h1>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">Órdenes de venta</h1>
             <p className="mt-0.5 text-xs text-slate-500">
               {metricasHoy.cantidad === 0
-                ? "Aún no hubo ventas hoy."
-                : `${metricasHoy.cantidad} ${metricasHoy.cantidad === 1 ? "venta" : "ventas"} hoy`}
+                ? esHoy
+                  ? "Aún no hubo ventas hoy."
+                  : "Sin ventas ese día."
+                : `${metricasHoy.cantidad} ${metricasHoy.cantidad === 1 ? "venta" : "ventas"}${
+                    esHoy ? " hoy" : ""
+                  }`}
             </p>
           </div>
-          <Link
-            href="/ventas/nueva"
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#3F8E91]"
-          >
-            <Plus className="h-4 w-4" />
-            Nueva
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/ventas/repartos"
+              className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 active:bg-slate-50"
+            >
+              Repartos
+            </Link>
+            <Link
+              href="/ventas/arqueo"
+              className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 active:bg-slate-50"
+            >
+              Arqueo
+            </Link>
+            <Link
+              href="/ventas/nueva"
+              className="flex items-center gap-1.5 rounded-full bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#3F8E91]"
+            >
+              <Plus className="h-4 w-4" />
+              Nueva
+            </Link>
+          </div>
         </div>
 
         {/* Card de facturación del día */}
@@ -66,7 +96,7 @@ export default function VentasMobile() {
               <TrendingUp className="h-4 w-4" />
             </div>
             <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
-              Facturación de hoy
+              {esHoy ? "Facturación de hoy" : "Facturación del día"}
             </p>
           </div>
           <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
@@ -79,6 +109,36 @@ export default function VentasMobile() {
           ) : null}
         </div>
       </header>
+
+      {/* Filtro de fecha: por defecto hoy. */}
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          type="date"
+          value={fecha}
+          max={hoyEnAsuncion()}
+          onChange={(e) => {
+            setTodasLasFechas(false);
+            setFecha(e.target.value || hoyEnAsuncion());
+          }}
+          aria-label="Fecha de las ventas"
+          disabled={todasLasFechas}
+          className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[#4FAEB2]/30 disabled:bg-slate-50 disabled:text-slate-400"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setTodasLasFechas((v) => !v);
+            if (todasLasFechas) setFecha(hoyEnAsuncion());
+          }}
+          className={`h-10 shrink-0 rounded-xl border px-3 text-xs font-semibold ${
+            todasLasFechas
+              ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+              : "border-slate-200 bg-white text-slate-600"
+          }`}
+        >
+          {todasLasFechas ? "Ver solo un día" : "Todas"}
+        </button>
+      </div>
 
       {/* Buscador */}
       <div className="relative mb-3">
@@ -103,28 +163,124 @@ export default function VentasMobile() {
       {isLoading ? (
         <SkeletonList />
       ) : ventasFiltradas.length === 0 ? (
-        <EmptyState hayBusqueda={!!query.trim()} total={ventas.length} />
+        <EmptyState hayBusqueda={!!query.trim()} total={ventas.length} esHoy={esHoy} />
       ) : (
         <ul className="space-y-2">
           {ventasFiltradas.map((v) => (
-            <VentaCard key={v.id} venta={v} />
+            <VentaCard key={v.id} venta={v} onAnular={() => setAnulando(v)} />
           ))}
         </ul>
       )}
+
+      {anulando ? (
+        <ModalAnular
+          venta={anulando}
+          onCerrar={() => setAnulando(null)}
+          onAnulada={() => {
+            setAnulando(null);
+            mutate();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Anular pide el motivo. No es burocracia: la mercadería vuelve al camión y el
+ * cobro sale del arqueo, así que al cerrar el día alguien va a preguntar por
+ * qué, y la respuesta tiene que estar en la venta y no en la memoria de nadie.
+ */
+function ModalAnular({
+  venta,
+  onCerrar,
+  onAnulada,
+}: {
+  venta: Venta;
+  onCerrar: () => void;
+  onAnulada: () => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirmar() {
+    if (guardando) return;
+    setGuardando(true);
+    setError(null);
+    const res = await anularVenta(venta.id, motivo.trim());
+    setGuardando(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    onAnulada();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4">
+      <div className="w-full max-w-sm rounded-t-2xl bg-white p-5 sm:rounded-2xl">
+        <h2 className="text-base font-bold text-slate-900">Anular {venta.numero_control}</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          La mercadería vuelve al camión y el cobro sale del arqueo. La venta queda a la vista,
+          marcada como anulada.
+        </p>
+
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Motivo</span>
+          <input
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Ej: el cliente devolvió todo"
+            className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+            autoFocus
+          />
+        </label>
+
+        {error ? (
+          <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={onCerrar}
+            disabled={guardando}
+            className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-600 disabled:opacity-50"
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={confirmar}
+            disabled={guardando}
+            className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {guardando ? "Anulando…" : "Anular venta"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Card de venta ────────────────────────────────────────────────────────────
 
-function VentaCard({ venta }: { venta: Venta }) {
+function VentaCard({ venta, onAnular }: { venta: Venta; onAnular: () => void }) {
+  const anulada = (venta.estado ?? "") === "anulada";
   const cantidadItems = venta.items.reduce((s, i) => s + i.cantidad, 0);
   const primerItem = venta.items[0];
   const itemsExtra = venta.items.length - 1;
 
   return (
     <li>
-      <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-transform active:scale-[0.99]">
+      <div
+        className={`flex flex-col gap-2.5 rounded-2xl border bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] ${
+          anulada ? "border-slate-200 opacity-60" : "border-slate-200"
+        }`}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -132,8 +288,13 @@ function VentaCard({ venta }: { venta: Venta }) {
                 {venta.numero_control}
               </span>
               <TipoVentaBadge tipo={venta.tipo_venta} />
+              {anulada ? (
+                <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                  Anulada
+                </span>
+              ) : null}
             </div>
-            <p className="mt-1 truncate text-sm font-medium text-slate-900">
+            <p className={`mt-1 truncate text-sm font-medium ${anulada ? "text-slate-500 line-through" : "text-slate-900"}`}>
               {primerItem ? primerItem.producto_nombre : "Sin productos"}
               {itemsExtra > 0 ? (
                 <span className="ml-1 text-slate-500">+{itemsExtra} más</span>
@@ -142,7 +303,11 @@ function VentaCard({ venta }: { venta: Venta }) {
             <p className="mt-0.5 text-[11px] text-slate-500">{formatFecha(venta.fecha)}</p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-base font-bold tabular-nums text-slate-900">
+            <p
+              className={`text-base font-bold tabular-nums ${
+                anulada ? "text-slate-400 line-through" : "text-slate-900"
+              }`}
+            >
               {formatGs(venta.total)}
             </p>
             <p className="text-[11px] text-slate-500">
@@ -150,6 +315,17 @@ function VentaCard({ venta }: { venta: Venta }) {
             </p>
           </div>
         </div>
+
+        {anulada ? null : (
+          <button
+            type="button"
+            onClick={onAnular}
+            className="inline-flex items-center justify-center gap-1.5 self-end rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 active:bg-red-50 active:text-red-600"
+          >
+            <Ban className="h-3.5 w-3.5" />
+            Anular
+          </button>
+        )}
       </div>
     </li>
   );
@@ -169,7 +345,15 @@ function TipoVentaBadge({ tipo }: { tipo: TipoVenta }) {
 
 // ── Estados vacíos ───────────────────────────────────────────────────────────
 
-function EmptyState({ hayBusqueda, total }: { hayBusqueda: boolean; total: number }) {
+function EmptyState({
+  hayBusqueda,
+  total,
+  esHoy,
+}: {
+  hayBusqueda: boolean;
+  total: number;
+  esHoy: boolean;
+}) {
   if (hayBusqueda) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
@@ -190,7 +374,20 @@ function EmptyState({ hayBusqueda, total }: { hayBusqueda: boolean; total: numbe
       </div>
     );
   }
-  return null;
+  // Hay ventas, pero ninguna del día elegido: decirlo y no dejar la pantalla en
+  // blanco, que se lee como que algo se rompió.
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center">
+      <ShoppingCart className="mx-auto h-8 w-8 text-slate-300" />
+      <p className="mt-2 text-sm font-medium text-slate-700">
+        {esHoy ? "Todavía no hubo ventas hoy" : "Sin ventas ese día"}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        Cambiá la fecha o tocá <span className="font-semibold text-slate-700">Todas</span> para ver
+        el resto.
+      </p>
+    </div>
+  );
 }
 
 function SkeletonList() {
@@ -219,14 +416,22 @@ function SkeletonList() {
 
 type MetricasHoy = { facturacion: number; cantidad: number; ticketPromedio: number };
 
-function calcularMetricasHoy(ventas: Venta[]): MetricasHoy {
-  const hoy = new Date();
-  const yMatch = hoy.getFullYear();
-  const mMatch = hoy.getMonth();
-  const dMatch = hoy.getDate();
+/** Día de una venta en hora de Paraguay, YYYY-MM-DD. */
+function diaEnAsuncion(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Asuncion",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+function calcularMetricasDia(ventas: Venta[], dia: string): MetricasHoy {
+  // Una venta anulada no factura: dejarla en el total haría que el número de
+  // arriba nunca coincida con el arqueo ni con el cierre.
   const deHoy = ventas.filter((v) => {
-    const d = new Date(v.fecha);
-    return d.getFullYear() === yMatch && d.getMonth() === mMatch && d.getDate() === dMatch;
+    if ((v.estado ?? "") === "anulada") return false;
+    return diaEnAsuncion(v.fecha) === dia;
   });
   const facturacion = deHoy.reduce((s, v) => s + v.total, 0);
   return {

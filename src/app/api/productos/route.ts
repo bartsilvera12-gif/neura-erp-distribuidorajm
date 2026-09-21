@@ -13,10 +13,93 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
+import { signProductoImagen } from "@/lib/inventario/imagen-storage";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
+import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 
 /**
- * GET /api/productos — lista todos los productos activos via PG directo
+ * El camión de un reparto y su ubicación de inventario.
+ *
+ * Devuelve también el nombre y si el reparto existe, porque la respuesta le
+ * tiene que decir a la pantalla de qué está hablando. Antes esto devolvía
+ * `null` para tres situaciones distintas —reparto inexistente, camión sin
+ * ubicación, tablas que faltan— y las tres terminaban mostrando el inventario
+ * entero como si fuera la carga del camión.
+ */
+type CamionDelReparto = {
+  ubicacion_id: string | null;
+  camion: string | null;
+  existe: boolean;
+};
+
+async function camionDelReparto(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  schema: string,
+  empresaId: string,
+  repartoId: string
+): Promise<CamionDelReparto> {
+  const vacio: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(repartoId)) return vacio;
+  const existe = await queryWithRetry<{ r: string | null; c: string | null; s: string | null }>(
+    pool,
+    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c, to_regclass($3)::text AS s`,
+    [`${schema}.repartos`, `${schema}.camiones`, `${schema}.inventario_stock_ubicacion`]
+  );
+  const e = existe.rows[0];
+  if (!e?.r || !e?.c || !e?.s) return vacio;
+
+  const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
+    pool,
+    `SELECT c.ubicacion_id, c.nombre
+       FROM ${quoteSchemaTable(schema, "repartos")} r
+       JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
+      WHERE r.id = $1::uuid AND r.empresa_id = $2::uuid`,
+    [repartoId, empresaId]
+  );
+  const row = q.rows[0];
+  if (!row) return vacio;
+  return { ubicacion_id: row.ubicacion_id, camion: row.nombre, existe: true };
+}
+
+/**
+ * Ubicación del camión asignado a este usuario, si tiene uno.
+ *
+ * `null` cuando no hay camión suyo (un administrador vendiendo de mostrador) o
+ * cuando falta la columna de la migración 13: en los dos casos el catálogo
+ * vuelve a ser el stock general, que es lo correcto ahí.
+ */
+async function miCamion(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  schema: string,
+  empresaId: string,
+  usuarioId: string
+): Promise<CamionDelReparto> {
+  const vacio: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
+  const cols = await queryWithRetry<{ c: string }>(
+    pool,
+    `SELECT column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'repartidor_id'`,
+    [schema]
+  );
+  if (cols.rows.length === 0) return vacio;
+  const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
+    pool,
+    `SELECT ubicacion_id, nombre FROM ${quoteSchemaTable(schema, "camiones")}
+      WHERE empresa_id = $1::uuid AND repartidor_id = $2::uuid AND activo = true
+      LIMIT 1`,
+    [empresaId, usuarioId]
+  );
+  const row = q.rows[0];
+  if (!row) return vacio;
+  return { ubicacion_id: row.ubicacion_id, camion: row.nombre, existe: true };
+}
+
+/**
+ * GET /api/productos — lista los productos activos via PG directo
  * (soporta tenants erp_* no expuestos por PostgREST).
+ *
+ * Con `?reparto_id=` devuelve solo lo que hay arriba de ese camión, con la
+ * cantidad de esa ubicación en `stock_actual`.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -32,17 +115,144 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
     }
     const t = quoteSchemaTable(schema, "productos");
-    const { rows } = await queryWithRetry(pool,
-      `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
-              unidad_medida, metodo_valuacion, activo, created_at, updated_at,
-              codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
-              categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
-         FROM ${t}
-        WHERE empresa_id = $1::uuid AND activo = true
-        ORDER BY nombre`,
-      [empresaId]
+
+    // `reparto_id` cambia de qué stock se habla. Sin él, el stock global de la
+    // empresa; con él, lo que hay arriba de ESE camión, que es lo único que el
+    // vendedor puede vender en la calle. Ofrecerle un producto que está en el
+    // depósito termina en una venta que el control de mercadería no puede
+    // explicar.
+    // `para=venta` marca que la lista es para vender. SOLO ahí se acota al
+    // camión o al salón.
+    //
+    // Inventario pide la misma lista y es otra cosa: es el maestro de productos
+    // de la empresa. Acotarlo al camión le escondía productos —y con un camión
+    // sin ubicación de inventario se la dejaba vacía, que se leía como que el
+    // alta no había guardado nada—.
+    const paraVenta = request.nextUrl.searchParams.get("para") === "venta";
+    const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
+
+    let camion: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
+    if (paraVenta) {
+      if (repartoId) camion = await camionDelReparto(pool, schema, empresaId, repartoId);
+
+      // Sin reparto todavía —la primera venta del día— el catálogo igual tiene
+      // que ser el del camión de quien vende. Si no, la primera venta de la
+      // mañana se hace contra el stock del depósito y sale mercadería que nunca
+      // subió.
+      //
+      // SOLO para el vendedor móvil, que es el que vende de su camión. El
+      // administrador y el cajero venden del salón aunque figuren como
+      // repartidores de algún camión: sin este filtro, al admin que se asignó
+      // un camión para probar se le acotaba la caja a ese camión y se quedaba
+      // sin catálogo. Es la misma regla que aplica la pantalla (`useCajaVenta`);
+      // acá faltaba, así que las dos podían no coincidir.
+      if (!camion.existe) {
+        const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
+        if (yo && alcanceRepartos(yo.rol) === "propios") {
+          camion = await miCamion(pool, schema, empresaId, yo.id);
+        }
+      }
+    }
+
+    // Cuando hay un camión de por medio, el catálogo es el suyo y punto. Si no
+    // se le pudo resolver la ubicación, la lista va VACÍA con el motivo: caer al
+    // stock de la empresa dejaba al repartidor vendiendo lo que está en el
+    // depósito, con el camión descargado, y eso no hay control de mercadería que
+    // lo explique después.
+    const ubicacionId = camion.ubicacion_id;
+    const camionSinUbicacion = camion.existe && camion.ubicacion_id === null;
+
+    // De dónde sale la lista. Viaja en la respuesta porque hasta ahora cada
+    // pantalla lo suponía por su cuenta y podía decir "salón" mostrando el
+    // camión, o al revés.
+    const origen = camionSinUbicacion
+      ? { tipo: "camion_sin_ubicacion" as const, camion: camion.camion }
+      : ubicacionId
+        ? { tipo: "camion" as const, camion: camion.camion }
+        : paraVenta
+          ? { tipo: "salon" as const, camion: null }
+          : { tipo: "empresa" as const, camion: null };
+
+    // Stock del salón: el total de la empresa menos lo que está arriba de los
+    // camiones. Desde el mostrador no se puede vender mercadería que está
+    // viajando, y mostrarla llevaba a prometer lo que no hay.
+    //
+    // Se resta en vez de sumar las ubicaciones fijas a propósito: una empresa
+    // que todavía no lleva el depósito por ubicación no tiene filas ahí, y
+    // sumarlas daría cero en todo. Restando, el peor caso es el total de la
+    // empresa, que es como estaba antes.
+    const sqlSalon = `
+      WITH en_camiones AS (
+        SELECT su.producto_id, sum(su.stock_actual) AS cantidad
+          FROM ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
+          JOIN ${quoteSchemaTable(schema, "inventario_ubicaciones")} u
+            ON u.id = su.ubicacion_id
+         WHERE su.empresa_id = $1::uuid AND lower(btrim(COALESCE(u.tipo, ''))) = 'camion'
+         GROUP BY su.producto_id
+      )
+      SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
+             GREATEST(COALESCE(p.stock_actual, 0) - COALESCE(ec.cantidad, 0), 0) AS stock_actual,
+             p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
+             p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
+             p.imagen_path, p.imagen_url, p.categoria_principal_id,
+             p.ubicacion_principal_id, p.proveedor_principal_id
+        FROM ${t} p
+        LEFT JOIN en_camiones ec ON ec.producto_id = p.id
+       WHERE p.empresa_id = $1::uuid AND p.activo = true
+       ORDER BY p.nombre`;
+
+    // Sin las tablas de ubicación no hay camiones que descontar: el stock de la
+    // empresa es todo lo que hay, y es lo que se ofrece.
+    const hayUbicaciones = await queryWithRetry<{ su: string | null; u: string | null }>(
+      pool,
+      `SELECT to_regclass($1)::text AS su, to_regclass($2)::text AS u`,
+      [`${schema}.inventario_stock_ubicacion`, `${schema}.inventario_ubicaciones`]
     );
-    return NextResponse.json(successResponse({ productos: rows }));
+    const puedeDescontarCamiones =
+      hayUbicaciones.rows[0]?.su !== null && hayUbicaciones.rows[0]?.u !== null;
+
+    const sql =
+      ubicacionId === null
+        ? puedeDescontarCamiones && paraVenta
+          ? sqlSalon
+          : `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
+                  unidad_medida, metodo_valuacion, activo, created_at, updated_at,
+                  codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
+                  categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
+             FROM ${t}
+            WHERE empresa_id = $1::uuid AND activo = true
+            ORDER BY nombre`
+        : `SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
+                  COALESCE(su.stock_actual, 0) AS stock_actual,
+                  p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
+                  p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
+                  p.imagen_path, p.imagen_url, p.categoria_principal_id,
+                  p.ubicacion_principal_id, p.proveedor_principal_id
+             FROM ${t} p
+             JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
+               ON su.producto_id = p.id AND su.ubicacion_id = $2::uuid
+            WHERE p.empresa_id = $1::uuid AND p.activo = true AND su.stock_actual > 0
+            ORDER BY p.nombre`;
+
+    const { rows } = camionSinUbicacion
+      ? { rows: [] as Record<string, unknown>[] }
+      : await queryWithRetry(
+          pool,
+          sql,
+          ubicacionId === null ? [empresaId] : [empresaId, ubicacionId]
+        );
+    // La imagen vive en un bucket privado y se mira con una URL firmada que
+    // dura una hora. La columna `imagen_url` de la tabla queda siempre en NULL
+    // a propósito (una URL vencida guardada en la base es una imagen rota), así
+    // que la firma se genera acá, en cada lectura, a partir de `imagen_path`.
+    const firmadas = await Promise.all(
+      rows.map((r) =>
+        r.imagen_path ? signProductoImagen(ctx.supabase, r.imagen_path, 3600) : null
+      )
+    );
+    const productos = rows.map((r, i) => ({ ...r, imagen_url: firmadas[i] ?? null }));
+
+    return NextResponse.json(successResponse({ productos, origen }));
   } catch (err) {
     console.error("[/api/productos GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudieron cargar los productos."), { status: 500 });

@@ -78,6 +78,12 @@ function parseNotas(notas: unknown): NotaCliente[] {
     }));
 }
 
+/** Fila cruda de `clientes` → `Cliente`. Exportado para el alta rápida de la caja,
+ *  que recibe la fila del POST y necesita el mismo objeto que la lista. */
+export function clienteDesdeFila(row: Record<string, unknown>): Cliente {
+  return rowToCliente(row as unknown as SupabaseRow);
+}
+
 function rowToCliente(row: SupabaseRow): Cliente {
   const nombreContacto = row.nombre_contacto ?? row.nombre ?? "";
   const now = new Date().toISOString();

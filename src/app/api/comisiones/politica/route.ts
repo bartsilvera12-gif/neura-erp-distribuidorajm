@@ -363,3 +363,69 @@ export async function PUT(request: Request) {
     return NextResponse.json(errorResponse(msg), { status: 500 });
   }
 }
+
+/**
+ * DELETE — borra la política de comisiones de la empresa y sus escalas.
+ *
+ * Es el "empezar de cero": después de esto el módulo queda sin reglas y no
+ * calcula comisión para nadie hasta que se cargue una política nueva.
+ *
+ * El historial de versiones NO se borra. Es el registro de con qué reglas se
+ * liquidó cada período; borrarlo dejaría liquidaciones ya pagadas sin forma de
+ * explicar cómo se calcularon.
+ */
+export async function DELETE(request: Request) {
+  const traceId = traceFromRequest(request);
+
+  const auth = await requireComisionesModuleAccess(request);
+  if (!auth.ok) {
+    return politicaJson(withTrace(errorResponse(auth.message), traceId), auth.status, traceId);
+  }
+  if (!puedeConfigurarComisiones(auth.rol)) {
+    return politicaJson(
+      withTrace(errorResponse("Solo un administrador puede borrar la política de comisiones."), traceId),
+      403,
+      traceId
+    );
+  }
+
+  try {
+    const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    const { data: existing } = await sb
+      .from("comision_politicas")
+      .select("id")
+      .eq("empresa_id", auth.empresaId)
+      .maybeSingle();
+
+    const politicaId = (existing as { id?: string } | null)?.id;
+    if (!politicaId) {
+      // Nada que borrar no es un error: el resultado es el que se pedía.
+      return politicaJson(withTrace(successResponse({ borrada: false }), traceId), 200, traceId);
+    }
+
+    // Primero las escalas: cuelgan de la política.
+    const { error: escErr } = await sb
+      .from("comision_escalas")
+      .delete()
+      .eq("empresa_id", auth.empresaId)
+      .eq("politica_id", politicaId);
+    if (escErr) {
+      return politicaJson(withTrace(errorResponse(escErr.message), traceId), 400, traceId);
+    }
+
+    const { error: polErr } = await sb
+      .from("comision_politicas")
+      .delete()
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", politicaId);
+    if (polErr) {
+      return politicaJson(withTrace(errorResponse(polErr.message), traceId), 400, traceId);
+    }
+
+    return politicaJson(withTrace(successResponse({ borrada: true }), traceId), 200, traceId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error";
+    return politicaJson(withTrace(errorResponse(msg), traceId), 500, traceId);
+  }
+}

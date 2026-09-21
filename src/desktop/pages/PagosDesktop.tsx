@@ -5,8 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { enRangoCalendario, rangoDesdeHastaInputs, toCalendarDateStr } from "@/lib/fechas/calendario";
 import { getFacturas } from "@/lib/gestion-clientes/storage";
 import { getClientes } from "@/lib/clientes/storage";
-import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
-import { useMapNombreTipoServicioCatalogo } from "@/lib/clientes/use-map-nombre-tipo-servicio";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import type { Cliente } from "@/lib/clientes/types";
@@ -18,12 +16,6 @@ import { TZ_PY } from "@/lib/format/hora-py";
 
 const INPUT_CLS =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
-const SELECT_CLS =
-  "w-full appearance-none rounded-xl border border-slate-200 bg-white bg-[length:14px_14px] bg-[right_0.85rem_center] bg-no-repeat px-3.5 py-2.5 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
-const CHEVRON_STYLE = {
-  backgroundImage:
-    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
-} as const;
 const LABEL_CLS = "block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1.5";
 
 // ── Iconos ────────────────────────────────────────────────────────────────────
@@ -105,7 +97,6 @@ interface PagoCobrado {
   cliente_nombre: string;
   cliente_tipo_nombre: string;
   cliente_tipo_slug: string | null;
-  /** Tipo de servicio EFECTIVO (plan de la suscripción; fallback al cliente). Se filtra por esto. */
   servicio_tipo_slug: string | null;
   servicio_tipo_nombre: string;
   monto: number;
@@ -128,7 +119,6 @@ export default function PagosPage() {
   const [facturaSeleccionada, setFacturaSeleccionada] = useState<Factura | null>(null);
   const [filtroDesde, setFiltroDesde] = useState("");
   const [filtroHasta, setFiltroHasta] = useState("");
-  const [filtroTipoCliente, setFiltroTipoCliente] = useState("");
   const [filtroNombre, setFiltroNombre] = useState("");
 
   const rangoFechas = useMemo(
@@ -151,7 +141,6 @@ export default function PagosPage() {
     getClientes().then(setClientes);
   }, []);
 
-  const mapNombreTipoServicio = useMapNombreTipoServicioCatalogo(clientes);
 
   async function fetchCobrados() {
     setCargandoCobrados(true);
@@ -231,23 +220,8 @@ export default function PagosPage() {
     const q = filtroNombre.trim().toLowerCase();
     const porNombre = (f: Factura) => q === "" || nombreDe(f).includes(q);
 
-    let base: Factura[];
-    if (filtroTipoCliente === "") {
-      base = pendientesPorFecha;
-    } else if (filtroTipoCliente === "__sin__") {
-      base = pendientesPorFecha.filter((f) => {
-        const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
-        return !c || !(c.tipo_servicio_cliente ?? "").trim();
-      });
-    } else {
-      const slug = filtroTipoCliente.toLowerCase();
-      base = pendientesPorFecha.filter((f) => {
-        const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
-        return (c?.tipo_servicio_cliente ?? "").trim().toLowerCase() === slug;
-      });
-    }
-    return base.filter(porNombre).sort(cmp);
-  }, [pendientesPorFecha, filtroTipoCliente, filtroNombre, clientes]);
+    return pendientesPorFecha.filter(porNombre).sort(cmp);
+  }, [pendientesPorFecha, filtroNombre, clientes]);
 
   const cobradosPorFecha = useMemo(() => {
     if (!rangoFechas) return cobrados;
@@ -258,33 +232,8 @@ export default function PagosPage() {
     const q = filtroNombre.trim().toLowerCase();
     const porNombre = (p: PagoCobrado) =>
       q === "" || (p.cliente_nombre ?? "").toLowerCase().includes(q);
-    // Filtra por el SERVICIO efectivo del pago (plan de la suscripción; fallback cliente),
-    // así "Contable" trae solo cobros de planes Contables — cada área mide lo suyo.
-    let base: PagoCobrado[];
-    if (filtroTipoCliente === "") base = cobradosPorFecha;
-    else if (filtroTipoCliente === "__sin__")
-      base = cobradosPorFecha.filter((p) => p.servicio_tipo_slug == null);
-    else {
-      const slug = filtroTipoCliente.toLowerCase();
-      base = cobradosPorFecha.filter((p) => p.servicio_tipo_slug === slug);
-    }
-    return base.filter(porNombre);
-  }, [cobradosPorFecha, filtroTipoCliente, filtroNombre]);
-
-  const opcionesTipoFiltro = useMemo(() => {
-    const s = new Set<string>();
-    for (const c of clientes) {
-      const t = (c.tipo_servicio_cliente ?? "").trim().toLowerCase();
-      if (t) s.add(t);
-    }
-    for (const k of Object.keys(mapNombreTipoServicio)) s.add(k);
-    return [...s]
-      .sort()
-      .map((slug) => ({
-        value: slug,
-        label: etiquetaVisibleTipoServicio(slug, mapNombreTipoServicio),
-      }));
-  }, [clientes, mapNombreTipoServicio]);
+    return cobradosPorFecha.filter(porNombre);
+  }, [cobradosPorFecha, filtroNombre]);
 
   const totalesPendientesVista = useMemo(
     () =>
@@ -318,17 +267,6 @@ export default function PagosPage() {
       ) as Record<string, string>,
     [clientes]
   );
-  const labelTipoClienteFila = useCallback(
-    (clienteId: string) => {
-      const c = clientes.find((x) => String(x.id) === String(clienteId));
-      if (!c) return "—";
-      const t = (c.tipo_servicio_cliente ?? "").trim();
-      if (!t) return "Sin clasificar";
-      return etiquetaVisibleTipoServicio(t, mapNombreTipoServicio);
-    },
-    [clientes, mapNombreTipoServicio]
-  );
-
   const METODO_LABELS: Record<string, string> = {
     efectivo: "Efectivo",
     transferencia: "Transferencia",
@@ -337,12 +275,11 @@ export default function PagosPage() {
     otro: "Otro",
   };
 
-  const hasFilters = Boolean(filtroDesde || filtroHasta || filtroTipoCliente || filtroNombre.trim());
+  const hasFilters = Boolean(filtroDesde || filtroHasta || filtroNombre.trim());
 
   function limpiarFiltros() {
     setFiltroDesde("");
     setFiltroHasta("");
-    setFiltroTipoCliente("");
     setFiltroNombre("");
   }
 
@@ -449,23 +386,6 @@ export default function PagosPage() {
               className={INPUT_CLS}
             />
           </div>
-          <div className="min-w-[14rem] flex-1">
-            <label className={LABEL_CLS}>Tipo de servicio</label>
-            <select
-              value={filtroTipoCliente}
-              onChange={(e) => setFiltroTipoCliente(e.target.value)}
-              className={SELECT_CLS}
-              style={CHEVRON_STYLE}
-            >
-              <option value="">Todos los tipos</option>
-              <option value="__sin__">Sin clasificar</option>
-              {opcionesTipoFiltro.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
           {hasFilters ? (
             <button
               type="button"
@@ -527,7 +447,7 @@ export default function PagosPage() {
               cta={
                 <button
                   type="button"
-                  onClick={() => setFiltroTipoCliente("")}
+                  onClick={limpiarFiltros}
                   className="text-xs font-semibold text-[#4FAEB2] hover:text-[#3F8E91] hover:underline"
                 >
                   Ver todos los tipos
@@ -582,14 +502,6 @@ export default function PagosPage() {
                         </Link>
                       </td>
                       <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
-                        <span
-                          className="inline-block max-w-[18rem] truncate 2xl:max-w-none"
-                          title={labelTipoClienteFila(String(f.cliente_id))}
-                        >
-                          {labelTipoClienteFila(String(f.cliente_id))}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
                         <span className="inline-block max-w-[12rem] truncate">
                           {vendedorPorCliente[String(f.cliente_id)] ?? "—"}
                         </span>
@@ -632,13 +544,7 @@ export default function PagosPage() {
                   <tr className="border-t-2 border-slate-100 bg-slate-50/80" role="status">
                     <td colSpan={5} className="px-3 py-4 first:pl-5 sm:px-4">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-700">
-                        {rangoFechas
-                          ? filtroTipoCliente
-                            ? "Suma con filtros activos"
-                            : "Suma en el rango de fechas"
-                          : filtroTipoCliente
-                            ? "Suma con filtros activos"
-                            : "Suma de la vista"}
+                        {rangoFechas ? "Suma en el rango de fechas" : "Suma de la vista"}
                       </p>
                       <p className="mt-0.5 text-[10px] text-slate-500">
                         {pendientesVista.length} registro{pendientesVista.length === 1 ? "" : "s"} · recalcula
@@ -722,7 +628,7 @@ export default function PagosPage() {
               cta={
                 <button
                   type="button"
-                  onClick={() => setFiltroTipoCliente("")}
+                  onClick={limpiarFiltros}
                   className="text-xs font-semibold text-[#4FAEB2] hover:text-[#3F8E91] hover:underline"
                 >
                   Ver todos los tipos
@@ -734,7 +640,7 @@ export default function PagosPage() {
               <table className="w-full min-w-[1040px] table-auto border-separate border-spacing-0 text-sm">
                 <thead className="bg-slate-50/80">
                   <tr>
-                    {["Factura", "Cliente", "Tipo de servicio", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
+                    {["Factura", "Cliente", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
                       (h) => (
                         <th
                           key={h}
@@ -807,13 +713,7 @@ export default function PagosPage() {
                         role="status"
                       >
                         <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-700 sm:max-w-[40%]">
-                          {rangoFechas
-                            ? filtroTipoCliente
-                              ? "Total cobrado (filtros activos)"
-                              : "Total cobrado en el rango"
-                            : filtroTipoCliente
-                              ? "Total cobrado (filtros activos)"
-                              : "Total cobrado en esta vista"}
+                          {rangoFechas ? "Total cobrado en el rango" : "Total cobrado en esta vista"}
                         </p>
                         <p
                           className="min-w-0 flex-1 whitespace-nowrap text-center text-base font-bold tabular-nums text-[#3F8E91] sm:text-lg"

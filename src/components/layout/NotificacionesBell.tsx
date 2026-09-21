@@ -30,7 +30,6 @@ import {
   escribirSonidoActivado,
   leerSonidoActivado,
   reproducirSonidoNotificacion,
-  reproducirSonidoReunion,
   reproducirSonidoConversacion,
   prepararSonidos,
   probarSonido,
@@ -215,12 +214,6 @@ export default function NotificacionesBell() {
    * haya notificaciones sin leer, o sonaría cada vez que alguien abre la app.
    */
   const noLeidasPreviasRef = useRef<number | null>(null);
-  /**
-   * Ids de recordatorios de reunión por los que ya sonó la alerta. Como los
-   * avisos se calculan en vivo, el mismo recordatorio vuelve en cada poll: sin
-   * esto sonaría cada 60 segundos hasta que empiece la reunión.
-   */
-  const reunionesAvisadasRef = useRef<Set<string>>(new Set());
   /** Chats de cliente ya avisados, para no repetir el sonido por el mismo. */
   const chatsAvisadosRef = useRef<Set<string>>(new Set());
   /** Avisos del sistema ya mostrados, para no repetirlos en cada recarga. */
@@ -275,13 +268,6 @@ export default function NotificacionesBell() {
         // (que lo hace bajar) ni una recarga que trae lo mismo de antes.
         const previas = noLeidasPreviasRef.current;
         if (previas != null && j.data.no_leidas > previas) {
-          // Los recordatorios de reunión llevan su propio sonido, más
-          // insistente: tienen una hora encima y no pueden confundirse con el
-          // aviso de una observación de QA.
-          const idsReunion = new Set(
-            j.data.notificaciones.filter((n) => n.tipo === "agenda_recordatorio").map((n) => n.id)
-          );
-          const hayReunionNueva = [...idsReunion].some((id) => !reunionesAvisadasRef.current.has(id));
           // Un chat de cliente que cae en la cola tiene su propio sonido:
           // descendente y más grave. Quien está trabajando oye uno solo y
           // tiene que saber de qué es sin mirar la pantalla.
@@ -294,9 +280,7 @@ export default function NotificacionesBell() {
               .map((n) => n.id)
           );
           const hayChatNuevo = [...idsChat].some((id) => !chatsAvisadosRef.current.has(id));
-          if (hayReunionNueva) {
-            reproducirSonidoReunion();
-          } else if (hayChatNuevo) {
+          if (hayChatNuevo) {
             reproducirSonidoConversacion();
           } else {
             reproducirSonidoNotificacion();
@@ -321,13 +305,6 @@ export default function NotificacionesBell() {
             });
             if (mostrado) avisadosFueraRef.current.add(n.id);
           }
-          reunionesAvisadasRef.current = idsReunion;
-        } else {
-          // Se mantiene al día aunque no suene, para no volver a avisar por un
-          // recordatorio que ya sonó.
-          reunionesAvisadasRef.current = new Set(
-            j.data.notificaciones.filter((n) => n.tipo === "agenda_recordatorio").map((n) => n.id)
-          );
         }
         noLeidasPreviasRef.current = j.data.no_leidas;
       }

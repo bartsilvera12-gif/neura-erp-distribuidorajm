@@ -1,22 +1,21 @@
 import { getDeviceTypeFromRequest } from "@/shared/device/server";
-import { fetchDashboardMobileSummary } from "@/lib/dashboard/mobile-summary";
 import DashboardDesktop from "@/desktop/pages/DashboardDesktop";
-import DashboardMobile from "@/mobile/pages/DashboardMobile";
+import MenuOperativoMobile from "@/mobile/pages/MenuOperativoMobile";
 
 /**
- * Home / Dashboard.
+ * Home.
  *
- * Optimización: para mobile, pre-fetchamos los KPIs server-side y los pasamos como
- * `initialData` al cliente. SWR los muestra ANTES de hidratar — sin skeleton flash.
- * Desktop sigue intacto, monta su componente client como antes.
+ * En el celular la home no es el dashboard de KPIs sino el menú operativo: el
+ * ERP móvil lo usa el repartidor en la calle, donde lo que hace falta es
+ * facturar, cobrar y ver el camión, no leer indicadores. Los números están en
+ * Reportes, a un toque de la barra inferior.
+ *
+ * Desktop sigue con el dashboard de siempre.
  */
 export default async function Page() {
   const device = await getDeviceTypeFromRequest();
   if (device === "mobile") {
-    // Pre-warm: server fetch antes del primer paint. Si falla, el cliente se cae
-    // al fetch normal (SWR muestra skeleton). Sin bloquear el render por errores.
-    const initialData = await fetchDashboardMobileSummary(null).catch(() => null);
-    return <DashboardMobile initialData={initialData ?? undefined} />;
+    return <MenuOperativoMobile />;
   }
   return <DashboardDesktop />;
 }

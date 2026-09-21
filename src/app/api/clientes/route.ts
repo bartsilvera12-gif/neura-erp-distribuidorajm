@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { reintentarSinColumnasFaltantes } from "@/lib/supabase/columnas-faltantes";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
@@ -360,25 +361,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const rowWithPlan =
-      planComercial ? { ...insertBase, plan_comercial_id: planComercial } : insertBase;
+    const rowWithPlan: Record<string, unknown> =
+      planComercial ? { ...insertBase, plan_comercial_id: planComercial } : { ...insertBase };
 
-    let { data, error } = await supabase.from("clientes").insert([rowWithPlan]).select().single();
-
-    // Si falla con plan (columna sin migrar, caché PostgREST, FK, etc.), reintentar sin plan_comercial_id.
-    if (error && planComercial) {
-      const second = await supabase.from("clientes").insert([insertBase]).select().single();
-      if (!second.error) {
-        data = second.data;
-        error = null;
-      } else {
-        error = second.error;
-      }
+    // El alta se escribió para la tabla `clientes` de la agencia y pide columnas
+    // que otros schemas no tienen —`razon_social`, `tipo_servicio_cliente`, las
+    // de SIFEN—. Una sola de esas cortaba el INSERT entero y el cliente no se
+    // guardaba: mejor guardar el cliente sin ese dato que no guardarlo.
+    //
+    // Las obligatorias no se saltean: un cliente sin empresa ni nombre no es un
+    // cliente, y sin `empresa_id` se guardaría en el aire.
+    const OBLIGATORIAS = ["empresa_id", "nombre", "nombre_contacto"];
+    const { data, error, omitidas } = await reintentarSinColumnasFaltantes<
+      Record<string, unknown>,
+      { message: string; code?: string }
+    >(
+      Object.keys(rowWithPlan),
+      async (cols) => {
+        const fila = Object.fromEntries(cols.map((c) => [c, rowWithPlan[c]]));
+        const r = await supabase.from("clientes").insert([fila]).select().single();
+        return {
+          data: (r.data ?? null) as Record<string, unknown> | null,
+          error: r.error ? { message: r.error.message, code: r.error.code } : null,
+        };
+      },
+      OBLIGATORIAS
+    );
+    if (omitidas.length > 0) {
+      console.warn("[/api/clientes POST] columnas que este schema no tiene:", omitidas.join(", "));
     }
 
-    if (error) {
+    if (error || !data) {
+      if (!error) {
+        return NextResponse.json(errorResponse("No se pudo crear el cliente."), { status: 400 });
+      }
       // Candado duro en DB: índice único por documento normalizado (carrera que evade el chequeo app).
-      const errCode = (error as { code?: string }).code;
+      const errCode = error.code;
       if (errCode === "23505" || /ux_clientes_documento_norm/i.test(error.message)) {
         return NextResponse.json(
           {

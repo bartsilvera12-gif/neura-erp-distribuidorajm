@@ -19,8 +19,6 @@ import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import EdgeScrollArea from "@/components/ui/EdgeScrollArea";
 import { getClientes, clienteNombre } from "@/lib/clientes/storage";
-import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
-import { useMapNombreTipoServicioCatalogo } from "@/lib/clientes/use-map-nombre-tipo-servicio";
 import { toCalendarDateStr } from "@/lib/fechas/calendario";
 import { getFacturas } from "@/lib/gestion-clientes/storage";
 import { estadoFacturaParaUi } from "@/lib/gestion-clientes/estado-factura-ui";
@@ -52,11 +50,8 @@ function formatFechaIso(iso: string) {
   } catch { return ""; }
 }
 
-function textoTipoClienteGestion(c: Cliente, mapNombreTipo: Record<string, string>) {
-  const base = c.tipo_cliente === "empresa" ? "Empresa" : "Persona";
-  const slug = (c.tipo_servicio_cliente ?? "").trim();
-  if (!slug) return base;
-  return `${base} · ${etiquetaVisibleTipoServicio(slug, mapNombreTipo)}`;
+function textoTipoClienteGestion(c: Cliente) {
+  return c.tipo_cliente === "empresa" ? "Empresa" : "Persona";
 }
 
 /** Misma lógica que en Pagos: solo cobro si hay saldo y el estado de la factura lo permite. */
@@ -715,7 +710,6 @@ function GestionClientesPageInner() {
    * cliente y no cambia": cambiaba, y medio segundo después volvía solo.
    */
   const idAbierto = useRef<string | null>(null);
-  const mapNombreTipoCatalogo = useMapNombreTipoServicioCatalogo(clientes);
 
   // Al seleccionar un cliente, consultamos si tiene suscripción activa (endpoint de facturación ya
   // existente) para reflejarlo en "Condición" del encabezado. Best-effort: no bloquea la ficha.
@@ -935,11 +929,17 @@ function GestionClientesPageInner() {
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15"
+        // Sin cliente elegido el buscador despliega su lista por encima del
+        // borde de la tarjeta: con `overflow-hidden` se cortaba a la altura del
+        // panel y del tercer cliente en adelante no se veía nada. Recortar solo
+        // hace falta en la vista de detalle, que sí tiene contenido scrolleable.
+        className={`flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15 ${
+          selected === null ? "" : "overflow-hidden"
+        }`}
         style={{ minHeight: "min(560px, calc(100dvh - 10.5rem))" }}
       >
         {selected === null ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+          <div className="flex flex-1 flex-col items-center gap-5 px-4 pb-8 pt-16">
             <div className="space-y-2 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#4FAEB2]">
                 <IconoLupa className="h-5 w-5" />
@@ -1070,7 +1070,7 @@ function GestionClientesPageInner() {
                     { label: "Correo", value: selected.email ?? "—" },
                     { label: "Teléfono", value: selected.telefono ?? "—" },
                     { label: "Dirección", value: selected.direccion ?? "—" },
-                    { label: "Tipo de cliente", value: textoTipoClienteGestion(selected, mapNombreTipoCatalogo) },
+                    { label: "Tipo de cliente", value: textoTipoClienteGestion(selected) },
                     // Datos que el sistema usa para la factura legal (más útiles a la vista que
                     // ciudad/moneda): razón social fiscal y el RUC con el que se emite (fallback al RUC).
                     { label: "Razón social", value: selected.razon_social ?? "—" },
@@ -1105,12 +1105,6 @@ function GestionClientesPageInner() {
                     onClick={() => setModalFacturarVenta(true)}
                   />
                   <BotonOperativo label="Servicios asociados" icon="🔗" />
-                  <BotonOperativo
-                    label="Cambio de plan"
-                    icon="🔄"
-                    activo
-                    onClick={() => setModalCambioPlan(true)}
-                  />
                   <BotonOperativo label="Cambio fecha venc." icon="📅" />
                   <BotonOperativo
                     label="Historial cliente"

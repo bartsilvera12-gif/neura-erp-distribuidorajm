@@ -156,20 +156,51 @@ async function cargarCatalogoTipos(sb: Sb, empresaId: string): Promise<Record<st
   return map;
 }
 
+/** Nombre de la columna que Postgres dice que no existe, o `null`. */
+function columnaInexistente(mensaje: string): string | null {
+  const m = /column\s+(?:[\w."]+\.)?"?([\w]+)"?\s+does not exist/i.exec(mensaje);
+  return m ? m[1] : null;
+}
+
+/**
+ * Lee una tabla entera, salteando las columnas que este schema no tenga.
+ *
+ * Cobranzas se escribió para un ERP de servicios y pide columnas que no todos
+ * los clientes tienen: una distribuidora de alimentos no clasifica sus
+ * suscripciones por tipo de servicio. Antes, una columna de más tiraba la
+ * pantalla completa con un error de Postgres en crudo; ahora esa columna
+ * simplemente viene vacía y lo demás se muestra.
+ *
+ * Si la que falta es una columna sin la que no hay nada que mostrar, el error
+ * sube igual: mentir con una lista vacía sería peor.
+ */
 async function fetchAll(
   sb: Sb,
   table: string,
   columns: string,
   empresaId: string
 ): Promise<Record<string, unknown>[]> {
+  let cols = columns.split(",").map((c) => c.trim()).filter(Boolean);
   const out: Record<string, unknown>[] = [];
+
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await sb
       .from(table)
-      .select(columns)
+      .select(cols.join(", "))
       .eq("empresa_id", empresaId)
       .range(from, from + PAGE - 1);
-    if (error) throw new Error(`${table}: ${error.message}`);
+
+    if (error) {
+      const falta = columnaInexistente(error.message);
+      if (falta && cols.length > 1 && cols.includes(falta)) {
+        console.warn(`[cobranzas] ${table}: sin columna ${falta}, se ignora.`);
+        cols = cols.filter((c) => c !== falta);
+        from -= PAGE; // reintentar esta misma página con el select recortado
+        continue;
+      }
+      throw new Error(`${table}: ${error.message}`);
+    }
+
     const chunk = (data ?? []) as unknown as Record<string, unknown>[];
     out.push(...chunk);
     if (chunk.length < PAGE) break;
@@ -194,7 +225,15 @@ async function cargarSuscripcionInfo(sb: Sb, empresaId: string): Promise<Map<str
   for (let i = 0; i < planIds.length; i += 120) {
     const slice = planIds.slice(i, i + 120);
     if (slice.length === 0) break;
-    const { data } = await sb.from("planes").select("id, nombre, tipo_servicio").in("id", slice);
+    // Mismo criterio que `fetchAll`: si el schema no tiene `tipo_servicio` en
+    // planes, se sigue sin él en vez de caerse.
+    const conTipo = await sb.from("planes").select("id, nombre, tipo_servicio").in("id", slice);
+    let data: Record<string, unknown>[] | null = (conTipo.data ?? null) as Record<string, unknown>[] | null;
+    if (conTipo.error) {
+      if (!columnaInexistente(conTipo.error.message)) throw new Error(`planes: ${conTipo.error.message}`);
+      const sinTipo = await sb.from("planes").select("id, nombre").in("id", slice);
+      data = (sinTipo.data ?? null) as Record<string, unknown>[] | null;
+    }
     for (const p of (data ?? []) as Record<string, unknown>[]) {
       planNombre.set(String(p.id), String(p.nombre ?? ""));
       const t = p.tipo_servicio != null ? String(p.tipo_servicio).trim().toLowerCase() : "";

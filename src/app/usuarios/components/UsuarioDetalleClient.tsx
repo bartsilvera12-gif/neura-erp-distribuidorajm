@@ -15,6 +15,7 @@ import {
   type UsuarioFormValues,
 } from "@/components/usuarios/UsuarioForm";
 import { FancySelect, type FancySelectOption } from "@/app/dashboard/proyectos/components/FancySelect";
+import PermisosPorAccion from "@/components/usuarios/PermisosPorAccion";
 import type { AreaUsuario, TipoContrato } from "@/lib/usuarios/types";
 
 type ModuloOpt = { id: string; nombre: string; slug: string };
@@ -293,10 +294,6 @@ export default function UsuarioDetalleClient({
       };
       if (usuario.puede_editar_rol) {
         body.rol = rolFromNivelForm(form.nivel);
-        body.es_qa = form.es_qa;
-        body.es_project_manager = form.es_project_manager;
-        body.es_tecnico = form.es_tecnico;
-        body.notificar_entregas = form.notificar_entregas;
       }
       if (usuario.puede_editar_modulos && !usuario.es_admin_empresa) {
         body.modulo_ids = form.modulo_ids;
@@ -736,6 +733,13 @@ export default function UsuarioDetalleClient({
               )}
             </SectionCard>
           )}
+
+          {usuario.es_admin_empresa ? null : (
+            <SectionCard title="Permisos por acción" icon="🔐">
+              <PermisosPorAccion usuarioId={usuario.id} />
+            </SectionCard>
+          )}
+
         </div>
       )}
 

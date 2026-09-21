@@ -216,7 +216,7 @@ export async function createOrden(schemaRaw: string, empresaId: string, d: Orden
   try {
     await client.query("BEGIN");
     const { rows: num } = await client.query<{ numero: string }>(
-      `SELECT neura.next_numero_orden_empresa($1::uuid) AS numero`, [empresaId]
+      `SELECT ${quoteSchemaTable(schema, "next_numero_orden_empresa")}($1::uuid) AS numero`, [empresaId]
     );
     let orden: OrdenRow;
     try {

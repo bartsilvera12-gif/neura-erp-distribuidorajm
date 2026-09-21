@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import SelectorUnidad from "@/components/inventario/SelectorUnidad";
 import MontoInput from "@/components/ui/MontoInput";
 import { saveCompra, uploadCompraComprobante, getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
@@ -388,9 +389,11 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                       placeholder="Ej: OOTD-005" className={`${INPUT} uppercase ${errSku ? "border-red-300 bg-red-50" : ""}`} />
                     {errSku && <p className="mt-1 text-[11px] text-red-600">{errSku}</p>}</div>
                   <div><label className={SUBLABEL}>Unidad de medida</label>
-                    <select value={fProd.unidad_medida} onChange={(e) => setFProd((p) => ({ ...p, unidad_medida: e.target.value }))} className={INPUT}>
-                      {["Unidad", "Par", "Caja", "Kg", "Litro", "Metro"].map((u) => <option key={u} value={u}>{u}</option>)}
-                    </select></div>
+                    <SelectorUnidad
+                      value={fProd.unidad_medida}
+                      onChange={(unidad_medida) => setFProd((p) => ({ ...p, unidad_medida }))}
+                      className={INPUT}
+                    /></div>
                   <div><label className={SUBLABEL}>Stock mínimo</label>
                     <input type="number" min={0} value={fProd.stock_minimo}
                       onChange={(e) => setFProd((p) => ({ ...p, stock_minimo: e.target.value }))} placeholder="Ej: 5" className={INPUT} /></div>

@@ -176,6 +176,8 @@ type PoliticaApiData = {
 export default function ConfiguracionComisionesPage() {
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [puedeEditar, setPuedeEditar] = useState(false);
@@ -315,6 +317,36 @@ export default function ConfiguracionComisionesPage() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  /**
+   * Borra la política y deja el módulo sin reglas.
+   *
+   * No es lo mismo que desactivarla: desactivada, la configuración sigue
+   * cargada y se puede volver a prender. Borrada, no queda nada y hay que
+   * cargar todo de nuevo. Por eso pide confirmación.
+   */
+  async function handleBorrar() {
+    if (!puedeEditar) return;
+    setBorrando(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      const res = await fetchWithSupabaseSession("/api/comisiones/politica", { method: "DELETE" });
+      const json = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || json.success !== true) {
+        throw new Error(json.error ?? `Error ${res.status}`);
+      }
+      setConfirmarBorrado(false);
+      setHayPoliticaGuardada(false);
+      setEscalas([{ ...ESCALA_FILA_VACIA }]);
+      setEditExpanded(true);
+      await cargar();
+    } catch (e) {
+      setError(serializeUnknownError(e));
+    } finally {
+      setBorrando(false);
+    }
+  }
 
   async function handleGuardar() {
     if (!puedeEditar) return;
@@ -625,15 +657,25 @@ export default function ConfiguracionComisionesPage() {
                     />
                   </div>
                   <div className="flex justify-end pb-1 sm:col-span-1">
-                    {puedeEditar && escalas.length > 1 && (
-                      <button
-                        type="button"
-                        className="text-xs font-medium text-red-600 hover:underline"
-                        onClick={() => setEscalas((prev) => prev.filter((_, i) => i !== idx))}
-                      >
-                        Quitar
-                      </button>
-                    )}
+                    {puedeEditar &&
+                      (escalas.length > 1 ? (
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-red-600 hover:underline"
+                          onClick={() => setEscalas((prev) => prev.filter((_, i) => i !== idx))}
+                        >
+                          Quitar
+                        </button>
+                      ) : (
+                        // Sin ninguna escala no hay con qué calcular y nadie
+                        // cobraría comisión. Para eso está "Borrar política".
+                        <span
+                          className="text-[10px] leading-tight text-slate-400"
+                          title="Una política necesita al menos una escala. Para dejar el módulo sin reglas, usá “Borrar política y empezar de cero”."
+                        >
+                          única
+                        </span>
+                      ))}
                   </div>
                   <div className="sm:col-span-12">
                     <p className="text-xs text-slate-500">
@@ -667,11 +709,47 @@ export default function ConfiguracionComisionesPage() {
           </ConfigFormCard>
 
           {puedeEditar && (
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {hayPoliticaGuardada ? (
+                confirmarBorrado ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                    <span className="text-xs text-red-800">
+                      Se borra la política y sus escalas. El historial de liquidaciones se conserva.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleBorrar()}
+                      disabled={borrando}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {borrando ? "Borrando…" : "Sí, borrar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmarBorrado(false)}
+                      disabled={borrando}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 disabled:opacity-60"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmarBorrado(true)}
+                    className="text-sm font-medium text-red-600 hover:underline"
+                  >
+                    Borrar política y empezar de cero
+                  </button>
+                )
+              ) : (
+                <span />
+              )}
+
               <button
                 type="button"
                 onClick={() => void handleGuardar()}
-                disabled={guardando}
+                disabled={guardando || borrando}
                 className="rounded-lg bg-[#4FAEB2] px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-[#3F8E91] disabled:opacity-60"
               >
                 {guardando ? "Guardando…" : "Guardar política"}

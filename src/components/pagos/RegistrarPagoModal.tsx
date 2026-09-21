@@ -245,6 +245,12 @@ export function RegistrarPagoModal({
                       <option key={b.id} value={b.nombre}>{b.nombre}</option>
                     ))}
                   </select>
+                  {bancos.length === 0 && (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      No hay bancos cargados. Cargalos en{" "}
+                      <a href="/configuracion/bancos" className="underline">Configuración → Bancos</a>.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className={labelClass} htmlFor="rp-titular">Titular (quién envía)</label>

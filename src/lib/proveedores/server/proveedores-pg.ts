@@ -360,3 +360,59 @@ export async function replaceRelacionesProveedor(
   }
 }
 
+
+// ─── Borrado ──────────────────────────────────────────────────────────────
+
+export interface ReferenciaProveedor {
+  tabla: string;
+  filas: number;
+}
+
+/**
+ * Dónde está usado un proveedor antes de borrarlo.
+ *
+ * No hay una lista fija de tablas porque cada schema tiene las suyas: se
+ * pregunta al catálogo cuáles tienen una columna que apunte a proveedores y se
+ * cuenta en esas. Así el chequeo no se queda corto en un schema con tablas de
+ * más ni revienta en uno con tablas de menos.
+ *
+ * Borrar un proveedor con compras cargadas dejaría esas compras sin de quién
+ * son, y el libro de compras es justamente lo que se le muestra a la SET.
+ */
+export async function referenciasDeProveedor(
+  schemaRaw: string,
+  empresaId: string,
+  id: string
+): Promise<ReferenciaProveedor[]> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+
+  const { rows: columnas } = await pool().query<{ table_name: string; column_name: string }>(
+    `SELECT table_name, column_name
+       FROM information_schema.columns
+      WHERE table_schema = $1
+        AND column_name IN ('proveedor_id', 'proveedor_principal_id')
+        AND table_name <> 'proveedor_categoria_rel'`,
+    [schema]
+  );
+
+  const refs: ReferenciaProveedor[] = [];
+  for (const c of columnas) {
+    const t = quoteSchemaTable(schema, c.table_name);
+    // El nombre de la columna sale del catálogo del propio schema, no del
+    // request, así que no hay nada del usuario en el texto de la query.
+    const col = `"${c.column_name.replace(/"/g, '""')}"`;
+    try {
+      const { rows } = await pool().query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM ${t} WHERE ${col} = $1::uuid`,
+        [id]
+      );
+      const n = parseInt(rows[0]?.n ?? "0", 10);
+      if (n > 0) refs.push({ tabla: c.table_name, filas: n });
+    } catch {
+      // Una tabla que no se puede leer (permiso, tipo distinto de columna) no
+      // debe bloquear el chequeo de las demás.
+    }
+  }
+  void empresaId;
+  return refs;
+}

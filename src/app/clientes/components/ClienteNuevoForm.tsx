@@ -24,9 +24,7 @@ import MontoInput from "@/components/ui/MontoInput";
 import { getPlanes } from "@/lib/planes/storage";
 import type { Cliente, TipoCliente, OrigenCliente } from "@/lib/clientes/types";
 import { ClienteDatosSifenReceptorForm } from "@/components/clientes/ClienteDatosSifenReceptorForm";
-import type { ClienteTipoServicioRow } from "@/lib/clientes/tipo-servicio-catalogo";
 import { formatTelefonoPy } from "@/lib/clientes/format-telefono";
-import { filasTiposDesdeSistemaEstatico, fetchTiposFormCliente } from "@/lib/clientes/fetch-tipos-servicio-form";
 import type { Plan } from "@/lib/planes/types";
 
 export type ClienteNuevoFormProps = {
@@ -100,7 +98,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     vendedor_usuario_id: "",
     origen: "MANUAL" as OrigenCliente,
     prospecto_id: null as string | null,
-    tipo_servicio_cliente: "" as string,
     estado: "activo" as "activo" | "inactivo",
     sifen_receptor_manual: false,
     sifen_receptor_naturaleza: "" as string,
@@ -133,9 +130,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     { id: string; slug: string; nombre: string; requiere_detalle_otro: boolean }[]
   >([]);
   const [formTributario, setFormTributario] = useState<TributarioFormState>(() => emptyTributarioForm());
-  const [filasTipoServicio, setFilasTipoServicio] = useState<ClienteTipoServicioRow[]>(() =>
-    filasTiposDesdeSistemaEstatico(),
-  );
 
   useEffect(() => {
     getPlanes().then(setPlanes);
@@ -161,7 +155,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
   }, []);
 
   useEffect(() => {
-    void fetchTiposFormCliente().then(setFilasTipoServicio);
   }, []);
 
   useEffect(() => {
@@ -338,7 +331,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
 
     const creado = await apiCreateCliente({
       tipo_cliente: form.tipo_cliente,
-      tipo_servicio_cliente: form.tipo_servicio_cliente || undefined,
       empresa: form.tipo_cliente === "empresa" ? form.empresa.trim().toUpperCase() : undefined,
       razon_social: form.razon_social.trim().toUpperCase() || undefined,
       ruc_factura: form.ruc_factura.trim() || undefined,
@@ -555,23 +547,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               </div>
             )}
 
-            <div>
-              <label className={labelClass}>Tipo de servicio</label>
-              <select
-                name="tipo_servicio_cliente"
-                value={form.tipo_servicio_cliente}
-                onChange={(e) => setForm((prev) => ({ ...prev, tipo_servicio_cliente: e.target.value }))}
-                className={inputClass}
-              >
-                <option value="">— Ninguno —</option>
-                {filasTipoServicio.map((f) => (
-                  <option key={f.slug} value={f.slug}>
-                    {f.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Contacto directo: persona de contacto (solo empresa) + teléfono con formato +595 */}
             <div className="grid gap-4 sm:grid-cols-2">
               {form.tipo_cliente === "empresa" ? (
@@ -784,7 +759,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="30 DÍAS">30 días</option>
                   <option value="60 DÍAS">60 días</option>
                   <option value="90 DÍAS">90 días</option>
-                  <option value="MENSUAL">Mensual</option>
                 </select>
               </div>
               <div>
@@ -823,32 +797,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                 >
                   <option value="activo">Activo</option>
                   <option value="inactivo">Inactivo</option>
-                </select>
-              </div>
-            </div>
-
-            <div className={planBoxCls}>
-              <SectionTitle>Plan</SectionTitle>
-              <div>
-                <label className={labelClass}>Plan</label>
-                <select
-                  value={formSusc.plan_id}
-                  onChange={(e) => {
-                    const p = planes.find((x) => x.id === e.target.value);
-                    setFormSusc((prev) => ({
-                      ...prev,
-                      plan_id: e.target.value,
-                      precio: p ? String(p.precio) : prev.precio,
-                    }));
-                  }}
-                  className={inputClass}
-                >
-                  <option value="">— Seleccionar plan —</option>
-                  {planes.filter((p) => p.estado === "activo").map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre} — {p.moneda} {p.precio.toLocaleString("es-PY")}
-                    </option>
-                  ))}
                 </select>
               </div>
             </div>
@@ -1003,7 +951,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                     <p className="text-xs text-slate-500">
                       {m.documento ? `RUC/Cédula: ${m.documento} · ` : ""}
                       Estado: {m.activo ? "Activo" : "Inactivo"}
-                      {m.tipo_servicio ? ` · ${m.tipo_servicio}` : ""}
                       {` · coincide por ${m.match_type === "ambos" ? "RUC/Cédula y nombre" : m.match_type === "documento" ? "RUC/Cédula" : "nombre"}`}
                     </p>
                   </div>

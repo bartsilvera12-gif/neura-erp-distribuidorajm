@@ -20,9 +20,15 @@ export function useUsuarios() {
     async () => {
       const res = await fetchWithSupabaseSession("/api/empresas/usuarios", { cache: "no-store" });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      const j = (await res.json()) as { data?: UsuarioRow[] } | UsuarioRow[];
+      // El endpoint responde `{ usuarios: [...] }`. Leer solo `data` devolvía
+      // siempre una lista vacía, y las pantallas que dependen de este hook
+      // —los usuarios en el celular, el select de repartidor— salían en blanco
+      // sin ningún error a la vista.
+      const j = (await res.json()) as
+        | { usuarios?: UsuarioRow[]; data?: UsuarioRow[] }
+        | UsuarioRow[];
       if (Array.isArray(j)) return j;
-      return j.data ?? [];
+      return j.usuarios ?? j.data ?? [];
     },
     { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
   );

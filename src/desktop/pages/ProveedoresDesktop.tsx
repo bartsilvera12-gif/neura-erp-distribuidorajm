@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getProveedores } from "@/lib/proveedores/storage";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import type { Proveedor } from "@/lib/proveedores/types";
 
@@ -10,6 +11,28 @@ export default function ProveedoresPage() {
   const [lista, setLista] = useState<Proveedor[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
+  const [aBorrar, setABorrar] = useState<Proveedor | null>(null);
+  const [borrando, setBorrando] = useState(false);
+  const [errorBorrado, setErrorBorrado] = useState<string | null>(null);
+
+  async function borrar(p: Proveedor) {
+    setBorrando(true);
+    setErrorBorrado(null);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/proveedores/${p.id}`, { method: "DELETE" });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErrorBorrado(j.error ?? `No se pudo borrar (error ${r.status}).`);
+        return;
+      }
+      setLista((prev) => prev.filter((x) => x.id !== p.id));
+      setABorrar(null);
+    } catch {
+      setErrorBorrado("No se pudo borrar: revisá la conexión.");
+    } finally {
+      setBorrando(false);
+    }
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -173,12 +196,24 @@ export default function ProveedoresPage() {
                       </span>
                     </td>
                     <td className="py-3">
-                      <Link
-                        href={`/proveedores/${p.id}/editar`}
-                        className="text-[11px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
-                      >
-                        Editar
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/proveedores/${p.id}/editar`}
+                          className="text-[11px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
+                        >
+                          Editar
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setErrorBorrado(null);
+                            setABorrar(p);
+                          }}
+                          className="text-[11px] font-semibold text-rose-600 underline-offset-2 hover:underline"
+                        >
+                          Borrar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -187,6 +222,47 @@ export default function ProveedoresPage() {
           </table>
         </div>
       </section>
+
+      {aBorrar ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h2 className="text-base font-semibold text-slate-900">Borrar proveedor</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Se va a borrar <span className="font-semibold text-slate-900">{aBorrar.nombre}</span>.
+              Esto no se puede deshacer.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Si tiene compras o gastos cargados no se borra: en ese caso conviene marcarlo como
+              inactivo desde Editar, así deja de aparecer sin perder el historial.
+            </p>
+
+            {errorBorrado ? (
+              <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700">
+                {errorBorrado}
+              </p>
+            ) : null}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setABorrar(null)}
+                disabled={borrando}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void borrar(aBorrar)}
+                disabled={borrando}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {borrando ? "Borrando…" : "Borrar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

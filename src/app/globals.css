@@ -148,3 +148,34 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(300%); }
 }
+
+/*
+ * Impresión del comprobante de venta.
+ *
+ * El botón Imprimir llama a window.print() desde la pantalla de la venta, que
+ * tiene barra superior, barra inferior y los botones de compartir. Nada de eso
+ * va al papel: se imprime solo `.factura-imprimible`, ocupando la hoja.
+ */
+@media print {
+  body:has(.factura-imprimible) * {
+    visibility: hidden;
+  }
+
+  body:has(.factura-imprimible) .factura-imprimible,
+  body:has(.factura-imprimible) .factura-imprimible * {
+    visibility: visible;
+  }
+
+  body:has(.factura-imprimible) .factura-imprimible {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: 0;
+    padding: 0;
+  }
+
+  .no-imprimir {
+    display: none !important;
+  }
+}

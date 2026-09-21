@@ -50,7 +50,10 @@ export async function saveVenta(
         total: datos.total,
         tipo_venta: datos.tipo_venta,
         plazo_dias: datos.plazo_dias,
-        cliente_id: null,
+        metodo_pago: datos.metodo_pago ?? null,
+        caja_id: datos.caja_id ?? null,
+        reparto_id: datos.reparto_id ?? null,
+        cliente_id: datos.cliente_id ?? null,
         observaciones: null,
       }),
     });
@@ -72,5 +75,35 @@ export async function saveVenta(
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de red.";
     return { success: false, error: msg };
+  }
+}
+
+/**
+ * Anula una venta: deja sin efecto el cobro y devuelve la mercadería al camión.
+ *
+ * El número de la venta no se reutiliza. Anular no borra: la venta queda a la
+ * vista, marcada, porque un comprobante que desaparece es un comprobante que
+ * nadie puede explicar después.
+ */
+export async function anularVenta(
+  ventaId: string,
+  motivo?: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(
+      `/api/ventas/${encodeURIComponent(ventaId)}/anular`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: motivo ?? "" }),
+      }
+    );
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudo anular la venta." };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
 }

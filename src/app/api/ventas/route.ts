@@ -20,6 +20,7 @@ interface VentaRow {
   tipo_venta: string;
   plazo_dias: number | null;
   fecha: string;
+  estado: string | null;
 }
 
 interface VentaItemRow {
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Serializado (no Promise.all) para no agotar el pool session-mode (limite 15).
     const ventasQ = await queryWithRetry<VentaRow>(pool,
       `SELECT id, empresa_id, numero_control, moneda, tipo_cambio, subtotal, monto_iva,
-              total, tipo_venta, plazo_dias, fecha
+              total, tipo_venta, plazo_dias, fecha, estado
          FROM ${tV} WHERE empresa_id = $1::uuid
         ORDER BY fecha DESC LIMIT 500`,
       [empresaId]
@@ -107,6 +108,7 @@ export async function GET(request: NextRequest) {
         tipo_venta: r.tipo_venta === "CREDITO" ? "CREDITO" : "CONTADO",
         plazo_dias: r.plazo_dias ?? undefined,
         fecha: r.fecha,
+        estado: r.estado ?? null,
       };
     });
 

@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getConfig } from "@/lib/config/storage";
-import { getUsuarios } from "@/lib/usuarios/storage";
 import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
+import { isErpRolSupervisor, isErpRolUsuario } from "@/lib/usuarios/erp-rol-normalize";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 import type { ConfigGlobal } from "@/lib/config/types";
-import type { Usuario } from "@/lib/usuarios/types";
 import {
   esFacturaAnulada,
   esFacturaCorregidaNc,
@@ -33,8 +33,6 @@ import {
   toCalendarDateStr,
 } from "@/lib/fechas/calendario";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
-import { useMapNombreTipoServicioCatalogo } from "@/lib/clientes/use-map-nombre-tipo-servicio";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { getEtapas, getEtapaClasses, normalizeEtapaCodigo, type EtapaCrm } from "@/lib/crm/etapas";
 import {
@@ -364,6 +362,18 @@ function PipelineBar({ data, tone = "light" }: { data: PipelineBarRowZ[]; tone?:
   );
 }
 
+/**
+ * Número de una barra, legible.
+ *
+ * Las cantidades se acumulan sumando floats: 2,3 + 3,6 da 5,899999999999999 y
+ * eso era lo que salía impreso en el ranking, desbordando el panel. Se redondea
+ * a la milésima —que es el mínimo que se pesa— y se muestra con coma.
+ */
+function numeroBarra(valor: number): string {
+  const n = Math.round((Number(valor) || 0) * 1000) / 1000;
+  return n.toLocaleString("es-PY", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
 function HBarChart({
   data,
   color = "bg-blue-400",
@@ -384,8 +394,8 @@ function HBarChart({
               style={{ width: `${d.value > 0 ? Math.max((d.value / max) * 100, 3) : 0}%` }}
             />
           </div>
-          <span className={`w-8 shrink-0 text-right text-xs font-semibold tabular-nums ${z ? "" : "text-gray-700"}`} style={z ? { color: Z.text } : undefined}>
-            {d.value}
+          <span className={`w-14 shrink-0 text-right text-xs font-semibold tabular-nums ${z ? "" : "text-gray-700"}`} style={z ? { color: Z.text } : undefined}>
+            {numeroBarra(d.value)}
           </span>
         </div>
       ))}
@@ -714,12 +724,7 @@ function valorComercialClienteEnPeriodo(
   return { monto: 0, fuente: "sin_dato" };
 }
 
-function etiquetaPlanServicioCliente(
-  c: ClienteRaw,
-  mapNombreTipoServicio: Readonly<Record<string, string>>
-) {
-  const t = (c.tipo_servicio_cliente ?? "").trim();
-  if (t) return etiquetaVisibleTipoServicio(t, mapNombreTipoServicio);
+function etiquetaPlanServicioCliente(c: ClienteRaw) {
   const co = (c.condicion_pago ?? "").trim();
   if (co) return labelClienteDimension(co);
   return "—";
@@ -728,7 +733,6 @@ function etiquetaPlanServicioCliente(
 function DashComercial({
   prospectos,
   clientes,
-  mapNombreTipoServicio,
   tipificaciones: _tipificaciones,
   usuario,
   periodo,
@@ -739,9 +743,8 @@ function DashComercial({
 }: {
   prospectos: ProspectoRaw[];
   clientes: ClienteRaw[];
-  mapNombreTipoServicio: Readonly<Record<string, string>>;
   tipificaciones: TipificacionRaw[];
-  usuario: Usuario | null;
+  usuario: { nombre: string; nivel: string; area?: string } | null;
   periodo: Periodo;
   config: ConfigGlobal;
   facturas: FacturaRaw[];
@@ -789,7 +792,7 @@ function DashComercial({
     () =>
       prospectos.filter((p) => {
         if (isSupervisor && area === "ventas" && p.responsable)
-          return p.responsable.toUpperCase() === usuario?.nombre.toUpperCase();
+          return p.responsable.toUpperCase() === usuario?.nombre?.toUpperCase();
         return true;
       }),
     [prospectos, isSupervisor, area, usuario]
@@ -880,22 +883,6 @@ function DashComercial({
       .sort((a, b) => b.value - a.value);
   }, [clientesNuevosPeriodo, resolverVendedorCliente]);
 
-  /**
-   * Card "Clientes nuevos por tipo": altas del período por `tipo_servicio_cliente`,
-   * con etiquetas del catálogo (saas→SaaS, otro→Contable, web→Web, marketing→Marketing,
-   * branding→Branding) y null/"" → "Sin tipo". Reemplaza "Top planes vendidos".
-   */
-  const clientesNuevosPorTipo = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const c of clientesNuevosPeriodo) {
-      const raw = (c.tipo_servicio_cliente ?? "").trim();
-      const label = raw ? etiquetaVisibleTipoServicio(raw, mapNombreTipoServicio) : "Sin tipo";
-      map[label] = (map[label] ?? 0) + 1;
-    }
-    return Object.entries(map)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [clientesNuevosPeriodo, mapNombreTipoServicio]);
 
   const filasClientesPeriodo = useMemo(() => {
     return clientesNuevosPeriodo
@@ -913,14 +900,14 @@ function DashComercial({
           id: String(c.id),
           nombre: nombreClienteDisplay(c, "—"),
           fechaAlta: c.created_at,
-          planServicio: etiquetaPlanServicioCliente(c, mapNombreTipoServicio),
+          planServicio: etiquetaPlanServicioCliente(c),
           monto,
           fuente,
           vendedor: vend === "Sin asignar" ? "—" : vend,
         };
       })
       .sort((a, b) => new Date(b.fechaAlta).getTime() - new Date(a.fechaAlta).getTime());
-  }, [clientesNuevosPeriodo, facturas, ncPorFactura, suscripciones, desde, hasta, mapNombreTipoServicio, resolverVendedorCliente]);
+  }, [clientesNuevosPeriodo, facturas, ncPorFactura, suscripciones, desde, hasta, resolverVendedorCliente]);
 
   const totalValorClientesNuevos = filasClientesPeriodo.reduce((s, r) => s + r.monto, 0);
   const nClientesNuevos = filasClientesPeriodo.length;
@@ -1000,23 +987,6 @@ function DashComercial({
         </motion.div>
       </div>
 
-      <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
-        <div className="flex items-center gap-2">
-          {panelBar}
-          <h3 className={titleClass} style={titleStyle}>
-            {panelDot}
-            Clientes nuevos por tipo
-          </h3>
-        </div>
-        <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución de altas en el período seleccionado</p>
-        <div className="mt-5">
-          {clientesNuevosPorTipo.length === 0 ? (
-            <p className="text-center text-sm text-slate-500">Sin altas en el período</p>
-          ) : (
-            <HBarChart data={clientesNuevosPorTipo} color="bg-[#4FAEB2]" tone="zentra" />
-          )}
-        </div>
-      </motion.div>
 
       <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
         <div className="flex items-center gap-2">
@@ -1228,7 +1198,7 @@ function composicionFacturacionPorModalidad(facturasPeriodo: FacturaRaw[]) {
 }
 
 function DashFinanciero({
-  facturas, pagos, clientes, ventas, periodo, config, mapNombreTipoServicio,
+  facturas, pagos, clientes, ventas, periodo, config,
 }: {
   facturas:  FacturaRaw[];
   pagos:     PagoRaw[];
@@ -1236,7 +1206,6 @@ function DashFinanciero({
   ventas:    VentaRaw[];
   periodo:   Periodo;
   config:    ConfigGlobal;
-  mapNombreTipoServicio: Readonly<Record<string, string>>;
 }) {
   const { desde, hasta } = useMemo(() => getRango(periodo), [periodo]);
 
@@ -1352,21 +1321,15 @@ function DashFinanciero({
     [facturasPeriodo]
   );
 
-  /** Prioridad: tipo de servicio → condición de pago → origen */
+  /** Prioridad: condición de pago → origen */
   const { dimCliente, segmentosClientes } = useMemo(() => {
     const list = clientes;
-    const hasServicio = list.some((c) => (c.tipo_servicio_cliente ?? "").trim() !== "");
     const hasCondicion = list.some((c) => (c.condicion_pago ?? "").trim() !== "");
-    const dim: "tipo_servicio" | "condicion" | "origen" = hasServicio
-      ? "tipo_servicio"
-      : hasCondicion
-        ? "condicion"
-        : "origen";
+    const dim: "condicion" | "origen" = hasCondicion ? "condicion" : "origen";
     const map = new Map<string, number>();
     for (const c of list) {
       let raw = "";
-      if (dim === "tipo_servicio") raw = (c.tipo_servicio_cliente ?? "").trim();
-      else if (dim === "condicion") raw = (c.condicion_pago ?? "").trim();
+      if (dim === "condicion") raw = (c.condicion_pago ?? "").trim();
       else raw = (c.origen ?? "").trim();
       const key = raw || "__sin__";
       map.set(key, (map.get(key) ?? 0) + 1);
@@ -1376,97 +1339,18 @@ function DashFinanciero({
     return {
       dimCliente: dim,
       segmentosClientes: entries.map(([k, count], i) => ({
-        label:
-          k === "__sin__"
-            ? "Sin clasificar"
-            : dim === "tipo_servicio"
-              ? etiquetaVisibleTipoServicio(k, mapNombreTipoServicio)
-              : labelClienteDimension(k),
+        label: k === "__sin__" ? "Sin clasificar" : labelClienteDimension(k),
         value: count,
         color: PALETTE[i % PALETTE.length],
       })),
     };
-  }, [clientes, mapNombreTipoServicio]);
-
-  /**
-   * Deuda por `tipo_servicio_cliente` (catálogo): facturas de la coorte (emisión en rango) con saldo > 0
-   * saldo de factura (cartera viva), asignada al segmento del cliente; Sin clasificar si no hay.
-   */
-  const deudaPorTipoServicio = useMemo(() => {
-    const m = new Map<string, number>();
-    const byCliente = new Map<string, string>();
-    for (const c of clientes) {
-      const raw = (c.tipo_servicio_cliente ?? "").trim();
-      byCliente.set(String(c.id), raw ? raw.toLowerCase() : "__sin__");
-    }
-    for (const f of facturasPeriodo) {
-      if (esFacturaAnulada(f.estado)) continue;
-      const s = Number(f.saldo);
-      if (!Number.isFinite(s) || s <= 0) continue;
-      const slug = byCliente.get(String(f.cliente_id)) ?? "__sin__";
-      m.set(slug, (m.get(slug) ?? 0) + s);
-    }
-    const pal = ["#4FAEB2", "#5FBFC3", "#7DCFD2", "#22C55E", "#A78BFA", "#F59E0B", "#EC4899", "#38BDF8"];
-    const list = [...m.entries()]
-      .map(([k, v]) => ({
-        key: k,
-        value: v,
-        label: k === "__sin__" ? "Sin clasificar" : etiquetaVisibleTipoServicio(k, mapNombreTipoServicio),
-      }))
-      .sort((a, b) => b.value - a.value)
-      .map((row, i) => ({ ...row, color: pal[i % pal.length] }));
-    return {
-      list,
-      total: list.reduce((a, b) => a + b.value, 0),
-    };
-  }, [clientes, facturasPeriodo, mapNombreTipoServicio]);
+  }, [clientes]);
 
   const facturaById = useMemo(
     () => new Map(facturas.map((f) => [String(f.id), f] as const)),
     [facturas]
   );
 
-  /**
-   * Suma monto de `pagos` con `fecha_pago` en [desde,hasta] (mismo conjunto que “Cobrado por día”;
-   * excluye factura anulada) agrupada por el tipo de servicio del **cliente** (slug → catálogo).
-   */
-  const cobradoPorTipoServicio = useMemo(() => {
-    const m = new Map<string, number>();
-    const byCliente = new Map<string, string>();
-    for (const c of clientes) {
-      const raw = (c.tipo_servicio_cliente ?? "").trim();
-      byCliente.set(String(c.id), raw ? raw.toLowerCase() : "__sin__");
-    }
-    for (const p of pagosPeriodo) {
-      const factura = facturaById.get(String(p.factura_id));
-      if (!factura) continue;
-      const pagoMonto = Number(p.monto);
-      if (!Number.isFinite(pagoMonto) || pagoMonto <= 0) continue;
-      const slug = byCliente.get(String(factura.cliente_id)) ?? "__sin__";
-      m.set(slug, (m.get(slug) ?? 0) + pagoMonto);
-    }
-    const pal = ["#4FAEB2", "#5FBFC3", "#7DCFD2", "#22C55E", "#A78BFA", "#F59E0B", "#EC4899", "#38BDF8"];
-    const list = [...m.entries()]
-      .map(([k, v]) => ({
-        key: k,
-        value: v,
-        label: k === "__sin__" ? "Sin clasificar" : etiquetaVisibleTipoServicio(k, mapNombreTipoServicio),
-      }))
-      .sort((a, b) => b.value - a.value)
-      .map((row, i) => ({ ...row, color: pal[i % pal.length] }));
-    return {
-      list,
-      total: list.reduce((a, b) => a + b.value, 0),
-    };
-  }, [clientes, pagosPeriodo, facturaById, mapNombreTipoServicio]);
-
-  const deudaMaxTipo = deudaPorTipoServicio.list.length
-    ? Math.max(...deudaPorTipoServicio.list.map((r) => r.value), 0)
-    : 1;
-
-  const cobradoMaxTipo = cobradoPorTipoServicio.list.length
-    ? Math.max(...cobradoPorTipoServicio.list.map((r) => r.value), 0)
-    : 1;
 
   const finCard =
     "min-w-0 overflow-hidden rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-sm shadow-slate-200/50 transition-shadow hover:shadow-md sm:p-7";
@@ -1770,115 +1654,6 @@ function DashFinanciero({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-        <div className={finCard}>
-          <div className="flex items-center gap-2">
-            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
-              Deuda por tipo de cliente
-            </h3>
-          </div>
-          <p className="mt-1 pl-3 text-[11px] text-slate-500">
-            Σ <span className="font-medium text-slate-600">saldo</span> de facturas emitidas en el rango, por{" "}
-            <span className="font-medium text-slate-600">clientes.tipo_servicio_cliente</span> (nombre desde catálogo
-            CRM).
-          </p>
-          {deudaPorTipoServicio.list.length === 0 ? (
-            <p className="mt-6 text-sm text-slate-500">No hay deuda pendiente (saldo &gt; 0) en el período o sin segmentos con saldo.</p>
-          ) : (
-            <div className="mt-6 space-y-4">
-              {deudaPorTipoServicio.list.map((row) => (
-                <div key={row.key}>
-                  <div className="flex min-w-0 items-baseline justify-between gap-3 text-sm">
-                    <span className="min-w-0 break-words font-medium text-slate-700" title={row.label}>
-                      <span
-                        className="mr-2 inline-block h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: row.color }}
-                      />
-                      {row.label}
-                    </span>
-                    <span className="shrink-0 text-right text-sm font-bold tabular-nums text-slate-900">
-                      Gs. {formatGs(row.value)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full min-w-0 rounded-full"
-                      style={{
-                        width: `${deudaMaxTipo > 0 ? (row.value / deudaMaxTipo) * 100 : 0}%`,
-                        backgroundColor: row.color,
-                      }}
-                      title={row.label}
-                    />
-                  </div>
-                </div>
-              ))}
-              <div className="flex min-w-0 items-baseline justify-between gap-2 border-t border-slate-100 pt-4 text-sm">
-                <span className="font-semibold text-slate-600">Total deuda (vista)</span>
-                <span className="shrink-0 text-right text-base font-bold tabular-nums text-slate-900">
-                  Gs. {formatGs(deudaPorTipoServicio.total)}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className={finCard}>
-          <div className="flex items-center gap-2">
-            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
-              Cobrado por tipo de cliente
-            </h3>
-          </div>
-          <p className="mt-1 pl-3 text-[11px] text-slate-500">
-            Σ <span className="font-medium text-slate-600">monto de pagos</span> con fecha de pago en el rango (misma
-            lógica que <span className="font-medium text-slate-600">Cobrado por día</span> / factura no anulada),
-            asignado al <span className="font-medium text-slate-600">cliente</span> vía{" "}
-            <span className="font-medium text-slate-600">tipo_servicio_cliente</span> (nombre catálogo CRM). No
-            incluye contado sin fila de pago.
-          </p>
-          {cobradoPorTipoServicio.list.length === 0 ? (
-            <p className="mt-6 text-sm text-slate-500">No hay pagos en el período con factura vinculada a cliente.</p>
-          ) : (
-            <div className="mt-6 space-y-4">
-              {cobradoPorTipoServicio.list.map((row) => (
-                <div key={row.key}>
-                  <div className="flex min-w-0 items-baseline justify-between gap-3 text-sm">
-                    <span className="min-w-0 break-words font-medium text-slate-700" title={row.label}>
-                      <span
-                        className="mr-2 inline-block h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: row.color }}
-                      />
-                      {row.label}
-                    </span>
-                    <span className="shrink-0 text-right text-sm font-bold tabular-nums text-slate-900">
-                      Gs. {formatGs(row.value)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full min-w-0 rounded-full"
-                      style={{
-                        width: `${cobradoMaxTipo > 0 ? (row.value / cobradoMaxTipo) * 100 : 0}%`,
-                        backgroundColor: row.color,
-                      }}
-                      title={row.label}
-                    />
-                  </div>
-                </div>
-              ))}
-              <div className="flex min-w-0 items-baseline justify-between gap-2 border-t border-slate-100 pt-4 text-sm">
-                <span className="font-semibold text-slate-600">Total cobrado (vista)</span>
-                <span className="shrink-0 text-right text-base font-bold tabular-nums text-slate-900">
-                  Gs. {formatGs(cobradoPorTipoServicio.total)}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5 lg:gap-8">
         <motion.div whileHover={{ y: -2 }} className={`${finCard} lg:col-span-3`}>
           <div className="flex items-center gap-2">
@@ -1926,11 +1701,7 @@ function DashFinanciero({
           </div>
           <p className="mt-1 pl-3 text-[11px] text-slate-500">
             Por{" "}
-            {dimCliente === "tipo_servicio"
-              ? "tipo de servicio"
-              : dimCliente === "condicion"
-                ? "condición de pago"
-                : "origen"}
+            {dimCliente === "condicion" ? "condición de pago" : "origen"}
             .
           </p>
           <div className="mt-6">
@@ -2259,7 +2030,7 @@ function DashVentas({
       map[l.producto_nombre] = (map[l.producto_nombre] ?? 0) + l.cantidad;
     });
     return Object.entries(map)
-      .map(([label, value]) => ({ label, value }))
+      .map(([label, value]) => ({ label, value: Math.round(value * 1000) / 1000 }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
   }, [ventasFilt]);
@@ -2498,7 +2269,7 @@ function DashVentas({
                       <td className="px-3 py-3 text-xs tabular-nums text-slate-500">
                         Gs. {formatGs(Math.round(r.ticket))}
                       </td>
-                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">{r.unid}</td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">{numeroBarra(r.unid)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2521,7 +2292,18 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
   { id: "anio", label: "Año"       },
 ];
 
-const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
+/**
+ * Pestañas del Dashboard que aplican a esta empresa.
+ *
+ * "Comercial" queda afuera: es el tablero de leads y prospectos de la agencia
+ * —embudo, etapas, tasa de conversión— y una distribuidora de alimentos no
+ * tiene ese pipeline. El módulo CRM tampoco está entre los que se le dieron de
+ * alta, así que la pestaña mostraba cifras en cero de algo que no se usa.
+ */
+const TAB_VALID: TabDash[] = ["financiero", "inventario", "ventas"];
+
+/** Pestañas que no se muestran aunque el catálogo de vistas las habilite. */
+const TABS_OCULTAS = new Set<string>(["comercial"]);
 
 /*
  * Los cuatro tableros de proyectos —panel gerencial, Ejecutivo, PM y SLA— se
@@ -2540,16 +2322,15 @@ function getInitialTab(): TabDash {
   if (typeof window === "undefined") return "comercial";
   const params = new URLSearchParams(window.location.search);
   const t = params.get("tab");
-  return t && isDashboardTabSlug(t) ? t : "comercial";
+  return t && isDashboardTabSlug(t) && !TABS_OCULTAS.has(t) ? t : "ventas";
 }
 
 export default function DashboardPage() {
+  const { usuario: usuarioSesion } = useUsuarioActual();
   const [dashScope, setDashScope] = useState<DashScope>({ kind: "pending" });
   const [tab,      setTab]      = useState<TabDash>(getInitialTab);
   const [periodo,  setPeriodo]  = useState<Periodo>("mes");
   const [config,   setConfig]   = useState<ConfigGlobal | null>(null);
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [usuarioId, setUsuarioId] = useState<number | null>(null);
 
   const [prospectos,     setProspectos]     = useState<ProspectoRaw[]>([]);
   const [clientes,       setClientes]       = useState<ClienteRaw[]>([]);
@@ -2567,7 +2348,7 @@ export default function DashboardPage() {
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t && isDashboardTabSlug(t)) setTab(t);
+      if (t && isDashboardTabSlug(t) && !TABS_OCULTAS.has(t)) setTab(t);
     };
     syncFromUrl();
     window.addEventListener("popstate", syncFromUrl);
@@ -2610,7 +2391,13 @@ export default function DashboardPage() {
     if (dashScope.kind !== "scoped") return;
     const params = new URLSearchParams(window.location.search);
     const t = params.get("tab");
-    const next = t && isDashboardTabSlug(t) && dashScope.tabs.includes(t) ? t : dashScope.defaultTab;
+    // El catálogo de vistas puede traer "comercial"; acá no se muestra, así que
+    // tampoco se deja entrar por la URL ni quedar como pestaña por defecto.
+    const permitidas = dashScope.tabs.filter((x) => !TABS_OCULTAS.has(x));
+    const porDefecto = TABS_OCULTAS.has(dashScope.defaultTab)
+      ? (permitidas[0] ?? "ventas")
+      : dashScope.defaultTab;
+    const next = t && isDashboardTabSlug(t) && permitidas.includes(t) ? t : porDefecto;
     setTab(next);
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `?tab=${next}`);
@@ -2619,14 +2406,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setConfig(getConfig());
-    const us = getUsuarios();
-    setUsuarios(us);
-
-    // Cargar sesión activa o default al primer admin
-    const saved = localStorage.getItem("neura_dash_usuario");
-    const savedId = saved ? parseInt(saved, 10) : null;
-    const defaultUser = us.find(u => u.nivel === "administrador") ?? us[0] ?? null;
-    setUsuarioId(savedId ?? defaultUser?.id ?? null);
 
     // Datos de módulos desde Supabase
     getDashboardData()
@@ -2658,21 +2437,20 @@ export default function DashboardPage() {
       });
   }, []);
 
-  function handleUsuarioChange(id: number) {
-    setUsuarioId(id);
-    localStorage.setItem("neura_dash_usuario", String(id));
-  }
-
-  const usuarioActivo = usuarios.find(u => u.id === usuarioId) ?? null;
-  const mapNombreTipoServicio = useMapNombreTipoServicioCatalogo(clientes);
-  const nivel = usuarioActivo?.nivel ?? "administrador";
+  // El nivel sale del rol del usuario logueado. Antes salía de una lista de
+  // usuarios de demo (ADMIN SISTEMA, JUAN PÉREZ) que no existen en la empresa:
+  // el selector "Viendo como" dejaba elegir entre gente inventada.
+  const nivel: "administrador" | "supervisor" | "usuario" = isErpRolSupervisor(usuarioSesion?.rol)
+    ? "supervisor"
+    : isErpRolUsuario(usuarioSesion?.rol)
+      ? "usuario"
+      : "administrador";
 
   const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
-  const effectiveTabs: TabDash[] = baseTabs;
+  const effectiveTabs: TabDash[] = baseTabs.filter((t) => !TABS_OCULTAS.has(t));
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
   const TAB_META: Partial<Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }>> = {
-    comercial: { label: "Comercial", Icon: Icon.Comercial },
     financiero: { label: "Financiero", Icon: Icon.Financiero },
     inventario: { label: "Inventario", Icon: Icon.Inventario },
     ventas: { label: "Ventas", Icon: Icon.Ventas },
@@ -2698,15 +2476,6 @@ export default function DashboardPage() {
         <p className="text-sm text-gray-500 text-center max-w-sm">
           El dashboard solo está disponible para usuarios con nivel <strong>Supervisor</strong> o <strong>Administrador</strong>.
         </p>
-        <div className="flex items-center gap-2 text-sm text-gray-500 mt-2">
-          Cambiar a:
-          {usuarios.filter(u => u.nivel !== "usuario").map(u => (
-            <button key={u.id} onClick={() => handleUsuarioChange(u.id)}
-              className="px-3 py-1.5 rounded-lg bg-[#0EA5E9] hover:bg-[#0284C7] text-white text-xs font-medium transition-colors">
-              {u.nombre}
-            </button>
-          ))}
-        </div>
       </div>
     );
   }
@@ -2773,24 +2542,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          {usuarios.length > 0 && (
-            <div className="flex flex-col gap-1.5 sm:items-end">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                Viendo como
-              </span>
-              <select
-                value={usuarioId ?? ""}
-                onChange={(e) => handleUsuarioChange(parseInt(e.target.value, 10))}
-                className="rounded-xl border border-[#4FAEB2]/45 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-              >
-                {usuarios.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nombre} ({u.nivel})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
           <div className="flex flex-wrap gap-1 rounded-xl border border-[#4FAEB2]/45 bg-white p-1 shadow-sm">
             {PERIODO_OPTS.map((p) => {
               const active = periodo === p.id;
@@ -2849,9 +2600,8 @@ export default function DashboardPage() {
         <DashComercial
           prospectos={prospectos}
           clientes={clientes}
-          mapNombreTipoServicio={mapNombreTipoServicio}
           tipificaciones={tipificaciones}
-          usuario={usuarioActivo}
+          usuario={usuarioSesion?.nombre ? { nombre: usuarioSesion.nombre, nivel } : null}
           periodo={periodo}
           config={config}
           facturas={facturas}
@@ -2868,7 +2618,6 @@ export default function DashboardPage() {
           ventas={ventas}
           periodo={periodo}
           config={config}
-          mapNombreTipoServicio={mapNombreTipoServicio}
         />
       )}
 

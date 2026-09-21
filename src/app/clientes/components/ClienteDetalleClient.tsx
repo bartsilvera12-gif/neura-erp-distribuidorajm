@@ -41,11 +41,6 @@ import MontoInput from "@/components/ui/MontoInput";
 import { getPlanes } from "@/lib/planes/storage";
 import { hoyYmdLocal, vencimientoPeriodo } from "@/lib/fechas/calendario";
 import type { Cliente, NotaCliente } from "@/lib/clientes/types";
-import {
-  etiquetaVisibleTipoServicio,
-  type ClienteTipoServicioRow,
-} from "@/lib/clientes/tipo-servicio-catalogo";
-import { filasTiposDesdeSistemaEstatico, fetchTiposFormCliente } from "@/lib/clientes/fetch-tipos-servicio-form";
 import type { Factura } from "@/lib/gestion-clientes/types";
 import {
   clasesBadgeEstadoFacturaUi,
@@ -98,8 +93,6 @@ type ProyectoClienteRow = {
 const TABS: { id: TabId; label: string; showWhen?: (c: Cliente) => boolean }[] = [
   { id: "informacion",   label: "Información"      },
   { id: "estado_cuenta", label: "Estado de cuenta" },
-  { id: "suscripciones", label: "Suscripciones"    },
-  { id: "marketing",     label: "Marketing",        showWhen: (c) => c.tipo_servicio_cliente === "marketing" },
   { id: "proyectos",     label: "Proyectos"         },
   { id: "actividad",     label: "Actividad"         },
   { id: "notas",         label: "Notas"             },
@@ -158,7 +151,6 @@ const CAMPO_HISTORIAL: Record<string, string> = {
   nombre_contacto: "Contacto",
   ruc: "RUC",
   documento: "Documento",
-  tipo_servicio_cliente: "Tipo de servicio",
   tipo_cliente: "Tipo de cliente",
   estado: "Estado",
   condicion_pago: "Condición de pago",
@@ -347,7 +339,6 @@ export default function ClienteDetalleClient({
     vendedor_asignado:     "",
     vendedor_usuario_id:   "",
     project_manager_id:    "",
-    tipo_servicio_cliente: "" as string,
     estado:                "activo" as Cliente["estado"],
     sifen_receptor_manual: false,
     sifen_receptor_naturaleza: "" as string,
@@ -452,33 +443,6 @@ export default function ClienteDetalleClient({
    *  para tenants erp_* no expuestos) y el botón parecía "no hacer nada". Ahora exponemos el motivo. */
   const [errorFacturaContado, setErrorFacturaContado] = useState<string | null>(null);
 
-  const [filasTiposServicio, setFilasTiposServicio] = useState<ClienteTipoServicioRow[]>(() => filasTiposDesdeSistemaEstatico());
-  const labelTipoServicioMap = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const t of filasTiposServicio) m[t.slug] = t.nombre;
-    return m;
-  }, [filasTiposServicio]);
-  const opcionesTipoServicio = useMemo(() => {
-    const t = (form.tipo_servicio_cliente ?? "").trim();
-    const list = filasTiposServicio;
-    if (!t) return list;
-    if (list.some((f) => f.slug === t)) return list;
-    return [
-      ...list,
-      {
-        id: `ghost-${t}`,
-        empresa_id: "",
-        slug: t,
-        nombre: etiquetaVisibleTipoServicio(t, labelTipoServicioMap),
-        activo: false,
-        orden: 0,
-        es_sistema: false,
-        created_at: "",
-        updated_at: "",
-      } satisfies ClienteTipoServicioRow,
-    ];
-  }, [form.tipo_servicio_cliente, filasTiposServicio, labelTipoServicioMap]);
-
   const sifenPorFactura = useFacturaSifenEstados(facturas.map((f) => f.id));
   const suscripcionActiva = useMemo(
     () => suscripciones.find((s) => s.estado === "activa") ?? null,
@@ -489,12 +453,6 @@ export default function ClienteDetalleClient({
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
-
-  useEffect(() => {
-    if (!id) return;
-    const inc = (form.tipo_servicio_cliente || cliente?.tipo_servicio_cliente || "").trim() || null;
-    void fetchTiposFormCliente(inc).then(setFilasTiposServicio);
-  }, [id, form.tipo_servicio_cliente, cliente?.tipo_servicio_cliente]);
 
   const cargar = useCallback(async () => {
     setCargandoCliente(true);
@@ -541,7 +499,6 @@ export default function ClienteDetalleClient({
         vendedor_asignado:    c.vendedor_asignado   ?? "",
         vendedor_usuario_id:  c.vendedor_usuario_id ?? "",
         project_manager_id:   c.project_manager_id  ?? "",
-        tipo_servicio_cliente: c.tipo_servicio_cliente ?? "",
         estado:               c.estado,
         sifen_receptor_manual: Boolean(c.sifen_receptor_manual),
         sifen_receptor_naturaleza: c.sifen_receptor_naturaleza ?? "",
@@ -778,7 +735,6 @@ export default function ClienteDetalleClient({
       }
     }
 
-    const tipoTs = (form.tipo_servicio_cliente || "").trim().toLowerCase();
     const sifenManualPayload = form.sifen_receptor_manual
       ? ({
           sifen_receptor_manual: true,
@@ -827,17 +783,11 @@ export default function ClienteDetalleClient({
         vendedor_asignado:   form.vendedor_asignado.trim().toUpperCase() || undefined,
         vendedor_usuario_id: form.vendedor_usuario_id.trim() || null,
         project_manager_id:  form.project_manager_id.trim() || null,
-        tipo_servicio_cliente: tipoTs || null,
         estado:              form.estado,
         ...sifenManualPayload,
       });
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
-      if (/inexistente|inexistente en el cat|catálogo/i.test(m) || /check constraint/i.test(m) || m.includes("23514")) {
-        return setFormError(
-          "Ese «Tipo de servicio» no está en el catálogo CRM de tu empresa (o la base lo rechazó). Configuración → CRM → tipos/segmento: creá el tipo con el mismo identificador (slug), o elegí un tipo de la lista actualizada, y guardá de nuevo."
-        );
-      }
       return setFormError(m || "No se pudo guardar el cliente.");
     }
 
@@ -1303,13 +1253,6 @@ export default function ClienteDetalleClient({
           {(
             [
               { label: "Origen", value: cliente.origen },
-              {
-                label: "Tipo servicio",
-                value: etiquetaVisibleTipoServicio(
-                  cliente.tipo_servicio_cliente ?? null,
-                  labelTipoServicioMap
-                ),
-              },
               { label: "Condición", value: cliente.condicion_pago ?? "—" },
               {
                 label: "Plan activo",
@@ -1710,24 +1653,6 @@ export default function ClienteDetalleClient({
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelClass}>Tipo de servicio</label>
-                  <select
-                    name="tipo_servicio_cliente"
-                    value={form.tipo_servicio_cliente}
-                    onChange={handleChange}
-                    className={inputClass}
-                  >
-                    <option value="">— Ninguno —</option>
-                    {opcionesTipoServicio.map((f) => (
-                      <option key={f.slug} value={f.slug}>
-                        {f.nombre}
-                        {!f.activo && (form.tipo_servicio_cliente || "").trim() === f.slug ? " (inactivo)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* Fila principal: nombre + documento tributario (RUC empresa / CI persona) */}
                 {form.tipo_cliente === "empresa" ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1945,7 +1870,6 @@ export default function ClienteDetalleClient({
                       <option value="30 DÍAS">30 días</option>
                       <option value="60 DÍAS">60 días</option>
                       <option value="90 DÍAS">90 días</option>
-                      <option value="MENSUAL">Mensual</option>
                     </select>
                   </div>
                   <div>
@@ -2758,7 +2682,6 @@ export default function ClienteDetalleClient({
             <form onSubmit={async (e) => {
               e.preventDefault();
               // Guarda anti-duplicado: avisar si el cliente ya tiene una suscripción ACTIVA
-              // del mismo plan. El tipo de servicio ya no se carga acá: vive en el cliente.
               const planSel = formSusc.plan_id.trim();
               let permitirDuplicado = false;
               if (planSel) {
@@ -3100,6 +3023,12 @@ export default function ClienteDetalleClient({
                     <option key={b.id} value={b.nombre}>{b.nombre}</option>
                   ))}
                 </select>
+                {bancosActivos.length === 0 && (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    No hay bancos cargados. Cargalos en{" "}
+                    <a href="/configuracion/bancos" className="underline">Configuración → Bancos</a>.
+                  </p>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Titular (quién envía)</label>

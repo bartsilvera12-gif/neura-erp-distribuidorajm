@@ -20,8 +20,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Neura ERP",
-  description: "Sistema de gestión empresarial de Neura",
+  title: "Distribuidora JM",
+  description: "Sistema de gestión de Distribuidora JM",
   // Pedimos a los navegadores que NO traduzcan la app. El traductor automático de Chrome/Google
   // reescribe el DOM (envuelve textos en <font>), y eso rompe la reconciliación de React con
   // errores "Failed to execute 'removeChild' on 'Node'" (crash de páginas dinámicas como Comisiones).

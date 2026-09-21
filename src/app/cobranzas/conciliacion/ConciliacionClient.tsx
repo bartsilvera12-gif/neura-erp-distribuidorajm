@@ -76,21 +76,13 @@ export default function ConciliacionClient() {
     return arr;
   }, []);
   const [busqueda, setBusqueda] = useState("");
-  // Filtros extra: rango de fechas (transferencia) + tipo de servicio del cliente.
+  // Filtros extra: rango de fechas de la transferencia.
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
-  const [tipo, setTipo] = useState("");
-  const capitalizar = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  const tiposDisponibles = useMemo(() => {
-    const set = new Set<string>();
-    for (const c of cobros) { const t = (c.tipo_servicio_cliente ?? "").trim(); if (t) set.add(t); }
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [cobros]);
   const cobrosMostrados = useMemo(() => {
     let list = mes ? cobros.filter((c) => (c.fecha ?? "").slice(0, 7) === mes) : cobros;
     if (desde) list = list.filter((c) => (c.fecha ?? "").slice(0, 10) >= desde);
     if (hasta) list = list.filter((c) => (c.fecha ?? "").slice(0, 10) <= hasta);
-    if (tipo) list = list.filter((c) => (c.tipo_servicio_cliente ?? "").trim().toLowerCase() === tipo.toLowerCase());
     const q = busqueda.trim().toLowerCase();
     if (q) {
       list = list.filter((c) =>
@@ -99,7 +91,7 @@ export default function ConciliacionClient() {
       );
     }
     return list;
-  }, [cobros, mes, busqueda, desde, hasta, tipo]);
+  }, [cobros, mes, busqueda, desde, hasta]);
 
   async function analizarExtracto(f: File) {
     setAnalizando(true); setAnalisisError(null); setReporte(null); setError(null); setOk(null);
@@ -272,15 +264,6 @@ export default function ConciliacionClient() {
             <input type="date" value={hasta} onChange={(ev) => setHasta(ev.target.value)} aria-label="Hasta (fecha de transferencia)"
               className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40" />
           </label>
-          {tiposDisponibles.length > 0 && (
-            <select value={tipo} onChange={(ev) => setTipo(ev.target.value)} aria-label="Filtrar por tipo de servicio"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40">
-              <option value="">Todos los tipos</option>
-              {tiposDisponibles.map((t) => (
-                <option key={t} value={t}>{capitalizar(t)}</option>
-              ))}
-            </select>
-          )}
           <select
             value={mes}
             onChange={(ev) => setMes(ev.target.value)}
@@ -291,8 +274,8 @@ export default function ConciliacionClient() {
               <option key={m.value || "all"} value={m.value}>{m.label}</option>
             ))}
           </select>
-          {(desde || hasta || tipo) && (
-            <button onClick={() => { setDesde(""); setHasta(""); setTipo(""); }}
+          {(desde || hasta) && (
+            <button onClick={() => { setDesde(""); setHasta(""); }}
               className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700">Limpiar</button>
           )}
         </div>

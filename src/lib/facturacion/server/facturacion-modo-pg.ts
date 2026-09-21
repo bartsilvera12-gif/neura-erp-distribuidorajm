@@ -166,6 +166,13 @@ export async function getAutoimpresor(
 ): Promise<AutoimpresorRow> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = quoteSchemaTable(schema, "empresa_autoimpresor_config");
+  // No todos los schemas tienen la tabla. Que falte no es un error: significa
+  // que esa empresa todavía no configuró su timbrado, y el comprobante se
+  // imprime igual, sin los datos fiscales.
+  const existe = await pool().query<{ t: string | null }>(`SELECT to_regclass($1)::text AS t`, [
+    `${schema}.empresa_autoimpresor_config`,
+  ]);
+  if (!existe.rows[0]?.t) return defaultAutoimpresor(empresaId);
   const { rows } = await pool().query<AutoimpresorRow>(
     `SELECT ${AI_COLS} FROM ${t} WHERE empresa_id = $1::uuid LIMIT 1`,
     [empresaId]

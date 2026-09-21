@@ -11,6 +11,8 @@ import {
   replaceRelacionesProveedor,
   findProveedorByRuc,
   listCategoriasMin,
+  deleteProveedor,
+  referenciasDeProveedor,
   type ProveedorRow,
   type InsertProveedorInput,
 } from "@/lib/proveedores/server/proveedores-pg";
@@ -168,5 +170,58 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   } catch (err) {
     console.error("[/api/proveedores/[id] PATCH] outer", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo actualizar el proveedor."), { status: 500 });
+  }
+}
+
+/** Nombre legible de la tabla que bloquea el borrado. */
+const TABLA_EN_PALABRAS: Record<string, string> = {
+  compras: "compras",
+  compra_items: "ítems de compra",
+  gastos: "gastos",
+  productos: "productos",
+  ordenes_compra: "órdenes de compra",
+  recepciones: "recepciones",
+  movimientos_inventario: "movimientos de inventario",
+};
+
+export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    const tenant = await getTenantSupabaseFromAuth(request);
+    if (!tenant) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+    const schema = await fetchDataSchemaForEmpresaId(tenant.auth.empresa_id);
+    const empresaId = tenant.auth.empresa_id;
+    const { id } = await ctx.params;
+
+    const existing = await getProveedorById(schema, empresaId, id);
+    if (!existing) return NextResponse.json(errorResponse("Proveedor no encontrado."), { status: 404 });
+
+    // Un proveedor con compras o gastos cargados no se borra: esos documentos
+    // quedarían sin dueño y el libro de compras es lo que se le muestra a la
+    // SET. Para sacarlo de la lista está el estado inactivo.
+    const refs = await referenciasDeProveedor(schema, empresaId, id);
+    if (refs.length > 0) {
+      const detalle = refs
+        .map((r) => `${r.filas} ${TABLA_EN_PALABRAS[r.tabla] ?? r.tabla}`)
+        .join(", ");
+      return NextResponse.json(
+        {
+          success: false,
+          error: `No se puede borrar: el proveedor tiene ${detalle}. Marcalo como inactivo para que deje de aparecer.`,
+          code: "TIENE_MOVIMIENTOS",
+          referencias: refs,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Las categorías son una relación propia del proveedor: se van con él.
+    await replaceRelacionesProveedor(schema, empresaId, id, []);
+    const borrado = await deleteProveedor(schema, empresaId, id);
+    if (!borrado) return NextResponse.json(errorResponse("Proveedor no encontrado."), { status: 404 });
+
+    return NextResponse.json(successResponse({ borrado: true }));
+  } catch (err) {
+    console.error("[/api/proveedores/[id] DELETE]", err instanceof Error ? err.message : err);
+    return NextResponse.json(errorResponse("No se pudo borrar el proveedor."), { status: 500 });
   }
 }

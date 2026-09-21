@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import SelectorUnidad from "@/components/inventario/SelectorUnidad";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import { getProducto, productoExiste, updateProducto } from "@/lib/inventario/storage";
-import type { MetodoValuacion } from "@/lib/inventario/types";
 import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
+import CrearRapido from "@/components/inventario/CrearRapido";
 
 interface CatRow { id: string; nombre: string }
 interface UbiRow { id: string; nombre: string; tipo: string }
@@ -33,7 +34,6 @@ export default function EditarProductoPage() {
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
-    metodo_valuacion: "CPP" as MetodoValuacion,
   });
   const [imagenPath, setImagenPath] = useState<string | null>(null);
   const [imagenUrl, setImagenUrl] = useState<string | null>(null);
@@ -48,6 +48,24 @@ export default function EditarProductoPage() {
   const [categorias, setCategorias] = useState<CatRow[]>([]);
   const [ubicaciones, setUbicaciones] = useState<UbiRow[]>([]);
   const [proveedores, setProveedores] = useState<ProvRow[]>([]);
+
+
+  /** Vuelve a leer un catálogo después de crear algo desde el modal. */
+  async function recargarCatalogo(cual: "categorias" | "ubicaciones" | "proveedores") {
+    const url =
+      cual === "proveedores" ? "/api/proveedores" : `/api/inventario/${cual}`;
+    try {
+      const r = await fetch(url, { credentials: "include", cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || !j?.success) return;
+      if (cual === "categorias") setCategorias((j.data?.categorias ?? []) as CatRow[]);
+      if (cual === "ubicaciones") setUbicaciones((j.data?.ubicaciones ?? []) as UbiRow[]);
+      if (cual === "proveedores") setProveedores((j.data?.proveedores ?? []) as ProvRow[]);
+    } catch {
+      // Si falla la recarga, el creado aparece al volver a entrar: no vale
+      // interrumpir la carga del producto por eso.
+    }
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -118,7 +136,6 @@ export default function EditarProductoPage() {
         stock_actual: String(p.stock_actual),
         stock_minimo: String(p.stock_minimo),
         unidad_medida: p.unidad_medida,
-        metodo_valuacion: p.metodo_valuacion,
       });
       setCodigoOriginal(p.codigo_barras ?? null);
       setImagenPath(p.imagen_path ?? null);
@@ -233,7 +250,6 @@ export default function EditarProductoPage() {
         stock_actual: parseInt(form.stock_actual) || 0,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida.trim().toUpperCase(),
-        metodo_valuacion: form.metodo_valuacion,
         categoria_principal_id: categoriaId,
         ubicacion_principal_id: ubicacionId,
         proveedor_principal_id: proveedorId,
@@ -328,13 +344,14 @@ export default function EditarProductoPage() {
               />
             </div>
             <div>
-              <label className={labelClass}>Unidad de medida</label>
-              <input
-                type="text"
-                name="unidad_medida"
+              <label className={labelClass} htmlFor="unidad_medida">
+                Unidad de medida
+              </label>
+              <SelectorUnidad
+                id="unidad_medida"
                 value={form.unidad_medida}
-                onChange={handleChange}
-                className={`${inputClass} uppercase`}
+                onChange={(unidad_medida) => setForm((f) => ({ ...f, unidad_medida }))}
+                className={inputClass}
                 required
               />
             </div>
@@ -412,12 +429,13 @@ export default function EditarProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {categorias.length === 0 ? "Todavía no cargaste categorías." : `${categorias.length} disponibles`}
                   </span>
-                  <Link
-                    href="/inventario/categorias"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="categoria"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("categorias");
+                      setCategoriaId(id);
+                    }}
+                  />
                 </div>
               </div>
               <div className="md:col-span-4 min-w-0">
@@ -432,12 +450,13 @@ export default function EditarProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {proveedores.length === 0 ? "Todavía no cargaste proveedores." : `${proveedores.length} disponibles`}
                   </span>
-                  <Link
-                    href="/proveedores/nuevo"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="proveedor"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("proveedores");
+                      setProveedorId(id);
+                    }}
+                  />
                 </div>
               </div>
               <div className="md:col-span-4 min-w-0">
@@ -452,12 +471,13 @@ export default function EditarProductoPage() {
                   <span className="text-xs text-gray-400 truncate">
                     {ubicaciones.length === 0 ? "Todavía no cargaste ubicaciones." : `${ubicaciones.length} disponibles`}
                   </span>
-                  <Link
-                    href="/inventario/ubicaciones"
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 border border-sky-200 hover:bg-sky-50 px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    + Crear
-                  </Link>
+                  <CrearRapido
+                    tipo="ubicacion"
+                    onCreado={async (id) => {
+                      await recargarCatalogo("ubicaciones");
+                      setUbicacionId(id);
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -544,20 +564,6 @@ export default function EditarProductoPage() {
                 required
               />
             </div>
-          </div>
-
-          <div>
-            <label className={labelClass}>Método de valuación</label>
-            <select
-              name="metodo_valuacion"
-              value={form.metodo_valuacion}
-              onChange={handleChange}
-              className={inputClass}
-            >
-              <option value="CPP">CPP — Costo Promedio Ponderado</option>
-              <option value="FIFO">FIFO — Primero en entrar, primero en salir</option>
-              <option value="LIFO">LIFO — Último en entrar, primero en salir</option>
-            </select>
           </div>
 
           <div className="flex gap-4 pt-2">

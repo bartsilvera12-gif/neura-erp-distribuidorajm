@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
+import { ChevronDown, LogOut, Menu } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
-import GuardiasBoton from "@/components/layout/GuardiasBoton";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -106,22 +104,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
 
       <div className="flex items-center gap-2">
         {/* Asistente de ayuda (Neurita) — desactivado temporalmente. */}
-
-        {/* Ayuda en línea — acceso transversal, disponible en cualquier pantalla. */}
-        <Link
-          href="/ayuda"
-          title="Ayuda en línea"
-          aria-label="Ayuda en línea"
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
-        >
-          <HelpCircle className="h-5 w-5 shrink-0" />
-          <span className="hidden lg:inline">Ayuda en línea</span>
-        </Link>
-
-        {/* Guardias: visible para todo el equipo. Ver quién está de turno no
-            pide permisos; asignar sigue siendo de administradores (el enlace
-            "Asignar" del modal y el PUT de la API lo controlan). */}
-        <GuardiasBoton />
 
         {/* Notificaciones */}
         <NotificacionesBell />

@@ -76,10 +76,6 @@ export async function POST(req: Request) {
     const areasOk = ["ventas", "soporte", "finanzas", "operaciones", "administracion"];
     const area = areaRaw && areasOk.includes(areaRaw) ? areaRaw : null;
     const rol = String(body.rol ?? "usuario");
-    const es_qa = Boolean(body.es_qa);
-    const es_project_manager = Boolean(body.es_project_manager);
-    const es_tecnico = Boolean(body.es_tecnico);
-    const notificar_entregas = Boolean(body.notificar_entregas);
 
     if (!email || !password || password.length < 6) {
       return NextResponse.json({ error: "Email y contraseña (mín. 6 caracteres) son obligatorios." }, { status: 400 });
@@ -146,10 +142,10 @@ export async function POST(req: Request) {
       ips,
       area,
       rol,
-      es_qa,
-      es_project_manager,
-      es_tecnico,
-      notificar_entregas,
+      // Sin es_qa / es_project_manager / es_tecnico / notificar_entregas: son
+      // banderas del ERP de la agencia de software del que salió este código y
+      // el schema de la distribuidora no tiene esas columnas. Mandarlas hacía
+      // fallar el alta entera con "Could not find the column in the schema cache".
       auth_user_id: authUserId,
       estado: "activo" as const,
     };

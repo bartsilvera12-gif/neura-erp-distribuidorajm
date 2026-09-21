@@ -103,10 +103,6 @@ export default function UsuarioNuevoForm({
           ips: form.ips,
           area: form.area,
           rol: rolFromNivelForm(form.nivel),
-          es_qa: form.es_qa,
-          es_project_manager: form.es_project_manager,
-          es_tecnico: form.es_tecnico,
-          notificar_entregas: form.notificar_entregas,
         }),
       });
       const json = await res.json();
