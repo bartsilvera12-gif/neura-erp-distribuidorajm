@@ -7,9 +7,12 @@ import { estadoStyle, hhmm, ymd } from "../calendar-utils";
 export default function ListView({
   citas,
   onSelect,
+  buscando = false,
 }: {
   citas: AgendaCitaEnriquecida[];
   onSelect: (c: AgendaCitaEnriquecida) => void;
+  /** Hay texto en el buscador: los resultados no se limitan al mes. */
+  buscando?: boolean;
 }) {
   const grupos = useMemo(() => {
     const map = new Map<string, AgendaCitaEnriquecida[]>();
@@ -25,13 +28,18 @@ export default function ListView({
   if (grupos.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-400">
-        No hay citas en el rango seleccionado.
+        {buscando ? "No se encontraron citas con ese texto." : "No hay citas en el mes seleccionado."}
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
+      {buscando && (
+        <p className="text-xs text-slate-500">
+          Resultados de la búsqueda, de cualquier fecha (no solo del mes que estás mirando).
+        </p>
+      )}
       {grupos.map(([k, items]) => {
         const fecha = new Date(`${k}T00:00:00`);
         return (

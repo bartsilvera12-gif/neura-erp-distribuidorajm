@@ -70,9 +70,12 @@ export function rangeForView(view: AgendaView, anchor: Date): { start: Date; end
     const gridStart = startOfWeek(first);
     return { start: gridStart, end: addDays(gridStart, 42) };
   }
-  // lista: ventana amplia desde el inicio de la semana del ancla
-  const s = startOfWeek(anchor);
-  return { start: s, end: addDays(s, 30) };
+  // lista: el mes del ancla, igual que el título que se muestra arriba.
+  // Antes arrancaba en la semana del ancla, así que una cita del 17 no
+  // aparecía si hoy era 21, aunque el encabezado dijera "Septiembre".
+  const desde = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const hasta = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1);
+  return { start: desde, end: hasta };
 }
 
 /** Matriz 6x7 de la vista mes. */

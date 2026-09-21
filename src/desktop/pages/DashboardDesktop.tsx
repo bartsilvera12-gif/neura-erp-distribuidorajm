@@ -2269,7 +2269,7 @@ function DashVentas({
                       <td className="px-3 py-3 text-xs tabular-nums text-slate-500">
                         Gs. {formatGs(Math.round(r.ticket))}
                       </td>
-                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">{r.unid}</td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">{numeroBarra(r.unid)}</td>
                     </tr>
                   ))}
                 </tbody>

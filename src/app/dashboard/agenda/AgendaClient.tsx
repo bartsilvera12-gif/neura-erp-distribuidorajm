@@ -92,14 +92,25 @@ export default function AgendaClient() {
     }
   }, []);
 
+  // En el listado, escribir en el buscador amplía la ventana de búsqueda.
+  const buscando = view === "lista" && q.trim().length > 0;
+
   const loadCitas = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const { start, end } = rangeForView(view, anchor);
       const params = new URLSearchParams();
-      params.set("desde", start.toISOString());
-      params.set("hasta", end.toISOString());
+      if (buscando) {
+        // Buscar es buscar: en el listado la búsqueda no se limita al mes que
+        // se está mirando, porque si no "MEET" no aparece salvo que ya estés
+        // parado en el mes correcto.
+        params.set("desde", new Date(anchor.getFullYear() - 1, 0, 1).toISOString());
+        params.set("hasta", new Date(anchor.getFullYear() + 2, 0, 1).toISOString());
+      } else {
+        params.set("desde", start.toISOString());
+        params.set("hasta", end.toISOString());
+      }
       if (estado) params.set("estado", estado);
       if (responsableId) params.set("responsable_id", responsableId);
       if (q.trim()) params.set("q", q.trim());
@@ -116,7 +127,7 @@ export default function AgendaClient() {
     } finally {
       setLoading(false);
     }
-  }, [view, anchor, estado, responsableId, q]);
+  }, [view, anchor, estado, responsableId, q, buscando]);
 
   useEffect(() => {
     loadOptions();
@@ -135,7 +146,7 @@ export default function AgendaClient() {
   }
 
   function navegar(dir: -1 | 1) {
-    if (view === "mes") setAnchor((a) => addMonths(a, dir));
+    if (view === "mes" || view === "lista") setAnchor((a) => addMonths(a, dir));
     else if (view === "dia") setAnchor((a) => addDays(a, dir));
     else setAnchor((a) => addDays(a, dir * 7));
   }
@@ -317,7 +328,7 @@ export default function AgendaClient() {
 
       {/* Vista activa */}
       {view === "lista" ? (
-        <ListView citas={citas} onSelect={setDetalle} />
+        <ListView citas={citas} onSelect={setDetalle} buscando={buscando} />
       ) : view === "mes" ? (
         <MonthView
           anchor={anchor}
