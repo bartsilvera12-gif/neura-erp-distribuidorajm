@@ -462,12 +462,9 @@ export default function PagosPage() {
                     {["Número", "Cliente", "Tipo de cliente", "Vendedor", "Fecha", "Vencimiento", "Total", "Saldo", "Estado", "Acción"].map(
                       (h) => {
                         // Padding reducido entre "Estado" y "Acción" (alineado con las celdas).
-                        const pad =
-                          h === "Estado"
-                            ? "pl-3 pr-1 sm:pl-4 sm:pr-1.5"
-                            : h === "Acción"
-                              ? "pl-1 pr-3 last:pr-5 sm:pl-1.5 sm:pr-4"
-                              : "px-3 first:pl-5 last:pr-5 sm:px-4";
+                        // Antes Estado y Acción iban pegadas (pr-1 / pl-1) y el
+                        // botón parecía caer bajo Estado, dejando Acción vacía.
+                        const pad = "px-3 first:pl-5 last:pr-5 sm:px-4";
                         return (
                           <th
                             key={h}
@@ -518,24 +515,33 @@ export default function PagosPage() {
                       <td className="whitespace-nowrap px-3 py-3 text-sm font-semibold tabular-nums text-amber-600 sm:px-4">
                         Gs. {f.saldo.toLocaleString("es-PY")}
                       </td>
-                      <td className="whitespace-nowrap py-3 pl-3 pr-1 sm:pl-4 sm:pr-1.5">
+                      <td className="whitespace-nowrap px-3 py-3 sm:px-4">
                         <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
                           <span aria-hidden="true" className="h-1 w-1 rounded-full bg-amber-500" />
                           {f.estado}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap py-3 pl-1 pr-3 last:pr-5 sm:pl-1.5 sm:pr-4">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFacturaSeleccionada(f);
-                            setModalPago(true);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#4FAEB2] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
-                        >
-                          <IconCash className="h-3.5 w-3.5" />
-                          Cobrar
-                        </button>
+                      <td className="whitespace-nowrap px-3 py-3 last:pr-5 sm:px-4">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFacturaSeleccionada(f);
+                              setModalPago(true);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-[#4FAEB2] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
+                          >
+                            <IconCash className="h-3.5 w-3.5" />
+                            Cobrar
+                          </button>
+                          <Link
+                            href={`/facturas/${f.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                            title="Ver la factura"
+                          >
+                            Ver
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   ))}

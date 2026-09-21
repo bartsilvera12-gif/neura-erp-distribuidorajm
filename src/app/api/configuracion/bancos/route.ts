@@ -22,6 +22,22 @@ export function mensajeDuplicado(error: { message?: string; details?: string }):
     : "Ya existe una entidad con ese nombre";
 }
 
+/**
+ * Datos de la cuenta propia (a dónde transferir). Solo se guardan si la fila
+ * está marcada como cuenta de la empresa; si no, no tienen sentido.
+ */
+export function camposDeCuenta(body: Record<string, unknown>): Record<string, unknown> {
+  const propia = body.es_cuenta_propia === true;
+  const txt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return {
+    es_cuenta_propia: propia,
+    numero_cuenta: propia ? txt(body.numero_cuenta) : null,
+    titular_cuenta: propia ? txt(body.titular_cuenta) : null,
+    documento_titular: propia ? txt(body.documento_titular) : null,
+    alias_cuenta: propia ? txt(body.alias_cuenta) : null,
+  };
+}
+
 function esAdmin(rol: string | null): boolean {
   const r = String(rol ?? "").trim();
   return r === "super_admin" || esRolAdminEmpresaOGlobal(r);
@@ -36,7 +52,7 @@ export async function GET(request: Request) {
     const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
     const { data, error } = await supabase
       .from("bancos")
-      .select("id, codigo, nombre, tipo, activo, sort_order")
+      .select("id, codigo, nombre, tipo, activo, sort_order, es_cuenta_propia, numero_cuenta, titular_cuenta, documento_titular, alias_cuenta")
       .eq("empresa_id", auth.empresaId)
       .order("sort_order", { ascending: true })
       .order("nombre", { ascending: true });
@@ -62,6 +78,8 @@ export async function POST(request: Request) {
 
     const body = (await request.json().catch(() => ({}))) as {
       nombre?: unknown; codigo?: unknown; tipo?: unknown; sort_order?: unknown;
+      es_cuenta_propia?: unknown; numero_cuenta?: unknown; titular_cuenta?: unknown;
+      documento_titular?: unknown; alias_cuenta?: unknown;
     };
     const nombre = typeof body.nombre === "string" ? body.nombre.trim() : "";
     if (!nombre) return NextResponse.json(errorResponse("Indicá el nombre del banco"), { status: 400 });
@@ -77,9 +95,10 @@ export async function POST(request: Request) {
         nombre_norm: normNombre(nombre),
         codigo,
         tipo,
+        ...camposDeCuenta(body),
         sort_order: Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : 0,
       })
-      .select("id, codigo, nombre, tipo, activo, sort_order")
+      .select("id, codigo, nombre, tipo, activo, sort_order, es_cuenta_propia, numero_cuenta, titular_cuenta, documento_titular, alias_cuenta")
       .single();
 
     if (error) {
