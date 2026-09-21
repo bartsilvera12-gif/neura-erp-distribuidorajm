@@ -21,7 +21,10 @@ export default function ExportExcelButton({ url, label = "Exportar Excel", class
     try {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) {
-        alert(`No se pudo exportar (${res.status}).`);
+        // El cuerpo trae el motivo real. Con solo el código, un 500 no dice
+        // nada y hay que ir a los logs del servidor para saber qué pasó.
+        const motivo = (await res.text().catch(() => "")).trim();
+        alert(motivo ? `No se pudo exportar: ${motivo}` : `No se pudo exportar (${res.status}).`);
         return;
       }
       const blob = await res.blob();

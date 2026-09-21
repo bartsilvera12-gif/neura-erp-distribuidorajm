@@ -1,5 +1,7 @@
 "use client";
 
+import { etiquetaCamion } from "@/shared/caja/arqueo-ui";
+
 import Link from "next/link";
 import { useMemo } from "react";
 import {
@@ -75,7 +77,7 @@ export default function MenuOperativoMobile() {
       <header className="bg-[#0B3A3D] px-4 pb-5 pt-4 text-center text-white">
         {enCalle ? (
           <p className="text-base font-semibold">
-            Camión {enCalle.camion}
+            {etiquetaCamion(enCalle.camion)}
             {enCalle.repartidor ? (
               <span className="font-normal text-[#7DCFD2]"> · {enCalle.repartidor}</span>
             ) : null}

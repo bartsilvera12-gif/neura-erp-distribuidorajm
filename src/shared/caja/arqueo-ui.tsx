@@ -6,6 +6,18 @@ import { Banknote, CreditCard, HelpCircle, Landmark, Receipt, Wallet } from "luc
 
 export const TEAL = "#4FAEB2";
 
+/**
+ * "Camión 1 Furgón" y no "Camión Camión 1 Furgón".
+ *
+ * El alias lo escribe quien da de alta el camión y muchas veces ya empieza con
+ * la palabra: anteponerla de nuevo la duplicaba en pantalla.
+ */
+export function etiquetaCamion(alias: string | null | undefined): string {
+  const a = (alias ?? "").trim();
+  if (!a) return "Camión";
+  return /^cami[oó]n\b/i.test(a) ? a : `Camión ${a}`;
+}
+
 export const ICONOS_MEDIO: Record<string, React.ComponentType<{ className?: string }>> = {
   efectivo: Banknote,
   tarjeta: CreditCard,

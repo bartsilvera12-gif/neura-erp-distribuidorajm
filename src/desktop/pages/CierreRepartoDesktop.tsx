@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useCierreReparto } from "@/shared/hooks/useCierreReparto";
 import { useRepartos } from "@/shared/hooks/useRepartos";
-import { fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
+import { fechaLarga, hoyEnAsuncion, TEAL, etiquetaCamion } from "@/shared/caja/arqueo-ui";
 import { AvisoSinPagos, AvisoSinReparto } from "@/shared/caja/cierre-ui";
 import ResumenCierre from "@/shared/caja/ResumenCierre";
 import ControlMercaderia from "@/shared/caja/ControlMercaderia";
@@ -32,13 +32,20 @@ export default function CierreRepartoDesktop() {
   const reparto = repartos.find((r) => r.id === repartoId) ?? null;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-3xl p-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
+          <Link
+            href="/ventas/repartos"
+            className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver a Repartos
+          </Link>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Cierre de reparto</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {cierre ? fechaLarga(cierre.fecha) : "Cargando…"}
-            {reparto ? ` · Camión ${reparto.camion}` : ""}
+            {reparto ? ` · ${etiquetaCamion(reparto.camion)}` : ""}
             {reparto?.repartidor ? ` · ${reparto.repartidor}` : ""}
           </p>
         </div>
@@ -82,7 +89,7 @@ export default function CierreRepartoDesktop() {
                   : "border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
             >
-              Camión {r.camion}
+              {etiquetaCamion(r.camion)}
               {r.repartidor ? (
                 <span className="block text-[11px] font-normal text-slate-500">
                   {r.repartidor}
@@ -93,35 +100,36 @@ export default function CierreRepartoDesktop() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr] lg:items-start">
-        <div className="space-y-3">
-          {isLoading && !cierre ? (
-            <p className="py-10 text-center text-sm text-slate-400">Cargando…</p>
-          ) : cierre ? (
-            <>
-              <ResumenCierre cierre={cierre} />
-              {!cierre.cobranzas?.disponible ? <AvisoSinPagos /> : null}
-            </>
-          ) : null}
-        </div>
+      {/* Una sola columna, todo alineado a la izquierda y uno debajo del otro.
+          Con dos columnas, mientras el cierre cargaba —o si no llegaba— la de
+          la izquierda quedaba vacía y la tarjeta flotaba sola a la derecha. */}
+      <div className="space-y-4">
+        {isLoading && !cierre ? (
+          <p className="rounded-2xl border border-slate-200 bg-white py-10 text-center text-sm text-slate-400">
+            Cargando el cierre…
+          </p>
+        ) : cierre ? (
+          <>
+            <ResumenCierre cierre={cierre} />
+            {!cierre.cobranzas?.disponible ? <AvisoSinPagos /> : null}
+          </>
+        ) : null}
 
-        <div>
-          {!repartosDisponibles ? null : repartos.length === 0 ? (
-            <AvisoSinReparto />
-          ) : reparto ? (
-            <ControlMercaderia
-              reparto={reparto}
-              onCerrado={() => {
-                refrescarRepartos();
-                mutate();
-              }}
-              onActualizar={() => {
-                refrescarRepartos();
-                mutate();
-              }}
-            />
-          ) : null}
-        </div>
+        {!repartosDisponibles ? null : repartos.length === 0 ? (
+          <AvisoSinReparto />
+        ) : reparto ? (
+          <ControlMercaderia
+            reparto={reparto}
+            onCerrado={() => {
+              refrescarRepartos();
+              mutate();
+            }}
+            onActualizar={() => {
+              refrescarRepartos();
+              mutate();
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { etiquetaCamion } from "@/shared/caja/arqueo-ui";
+
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, Truck } from "lucide-react";
 import MovimientoMercaderia from "@/shared/caja/MovimientoMercaderia";
@@ -162,7 +164,7 @@ export default function ControlMercaderia({
             <Truck className="h-4 w-4" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Camión {reparto.camion}</p>
+            <p className="text-sm font-semibold text-slate-900">{etiquetaCamion(reparto.camion)}</p>
             <p className="text-xs text-slate-500">
               {reparto.repartidor ?? "Sin repartidor"} · {abierto ? "en la calle" : "cerrado"}
             </p>

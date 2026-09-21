@@ -34,6 +34,6 @@ export async function GET(request: NextRequest) {
     return new Response(new Uint8Array(buf), { status: 200, headers: xlsxResponseHeaders(`libro-diario-${nowStamp()}`) });
   } catch (e) {
     console.error("[/api/reportes/libro-diario/export]", e instanceof Error ? e.message : e);
-    return new Response("No se pudo generar el Excel", { status: 500 });
+    return new Response(e instanceof Error ? e.message : "No se pudo generar el Excel", { status: 500 });
   }
 }

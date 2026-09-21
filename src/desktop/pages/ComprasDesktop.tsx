@@ -52,19 +52,32 @@ export default function ComprasPage() {
   const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
   const [detalle, setDetalle] = useState<Compra | null>(null);
   const [modalNueva, setModalNueva] = useState(false);
+  /** Null mientras carga; string si el servidor no pudo devolver la lista. */
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
 
   function recargar() {
-    getCompras().then((data) => {
-      setTodas([...data].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
-    });
+    setCargando(true);
+    getCompras()
+      .then(({ compras, error }) => {
+        setErrorCarga(error);
+        setTodas([...compras].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
+      })
+      .finally(() => setCargando(false));
   }
 
   useEffect(() => {
     let cancel = false;
-    getCompras().then((data) => {
-      if (cancel) return;
-      setTodas([...data].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
-    });
+    setCargando(true);
+    getCompras()
+      .then(({ compras, error }) => {
+        if (cancel) return;
+        setErrorCarga(error);
+        setTodas([...compras].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
+      })
+      .finally(() => {
+        if (!cancel) setCargando(false);
+      });
     getCuentasContablesOpciones().then((c) => {
       if (!cancel) setCuentas(c);
     });
@@ -186,9 +199,23 @@ export default function ComprasPage() {
               {filtradas.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="py-12 text-center text-gray-400">
-                    {todas.length === 0
-                      ? "No hay compras registradas"
-                      : "Ninguna compra coincide con los filtros"}
+                    {cargando
+                      ? "Cargando compras…"
+                      : errorCarga
+                        ? null
+                        : todas.length === 0
+                          ? "No hay compras registradas"
+                          : "Ninguna compra coincide con los filtros"}
+                    {!cargando && errorCarga ? (
+                      <span className="mx-auto block max-w-xl rounded-lg bg-red-50 p-3 text-left text-sm text-red-700">
+                        <span className="block font-semibold">No se pudo cargar la lista de compras.</span>
+                        <span className="mt-1 block text-xs">{errorCarga}</span>
+                        <span className="mt-1 block text-xs text-red-600">
+                          Las compras registradas están guardadas: lo que falló es la consulta que
+                          arma esta tabla.
+                        </span>
+                      </span>
+                    ) : null}
                   </td>
                 </tr>
               ) : (

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useCierreReparto } from "@/shared/hooks/useCierreReparto";
 import { useRepartos } from "@/shared/hooks/useRepartos";
-import { fechaCorta, hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
+import { fechaCorta, hoyEnAsuncion, etiquetaCamion } from "@/shared/caja/arqueo-ui";
 import { AvisoSinPagos, AvisoSinReparto } from "@/shared/caja/cierre-ui";
 import ResumenCierre from "@/shared/caja/ResumenCierre";
 import ControlMercaderia from "@/shared/caja/ControlMercaderia";
@@ -89,7 +89,7 @@ export default function CierreRepartoMobile() {
                   r.id === repartoId ? "bg-[#4FAEB2] text-white" : "bg-white/10 text-white/80"
                 }`}
               >
-                Camión {r.camion}
+                {etiquetaCamion(r.camion)}
               </button>
             ))}
           </div>

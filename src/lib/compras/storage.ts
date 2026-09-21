@@ -97,19 +97,29 @@ export async function updateCompraCuentaContable(
   }
 }
 
-export async function getCompras(): Promise<Compra[]> {
+/**
+ * Compras de la empresa.
+ *
+ * Devuelve el error en vez de tragárselo: cuando la consulta fallaba, esto
+ * devolvía `[]` y la pantalla mostraba "No hay compras registradas", que es lo
+ * mismo que dice cuando de verdad no hay ninguna. Se reportó como que las
+ * compras registradas no aparecían, y en realidad la lista nunca llegaba.
+ */
+export async function getCompras(): Promise<{ compras: Compra[]; error: string | null }> {
   try {
     const r = await fetch("/api/compras", { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
-      console.error("[compras] getCompras:", (j as { error?: string })?.error ?? r.status);
-      return [];
+      const error = (j as { error?: string })?.error ?? `Error ${r.status}`;
+      console.error("[compras] getCompras:", error);
+      return { compras: [], error };
     }
     const list = ((j.data as { compras?: CompraApiRow[] }).compras ?? []) as CompraApiRow[];
-    return list.map(mapRow);
+    return { compras: list.map(mapRow), error: null };
   } catch (e) {
-    console.error("[compras] getCompras:", e);
-    return [];
+    const error = e instanceof Error ? e.message : "No se pudo conectar con el servidor.";
+    console.error("[compras] getCompras:", error);
+    return { compras: [], error };
   }
 }
 

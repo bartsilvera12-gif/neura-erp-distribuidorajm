@@ -1,5 +1,7 @@
 "use client";
 
+import { etiquetaCamion } from "@/shared/caja/arqueo-ui";
+
 import { AlertTriangle, Truck } from "lucide-react";
 import type { CajaVenta } from "@/shared/caja/useCajaVenta";
 
@@ -74,7 +76,7 @@ export default function SelectorReparto({ caja }: { caja: CajaVenta }) {
                       : "border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  Camión {r.camion}
+                  {etiquetaCamion(r.camion)}
                   <span className="block text-[11px] font-normal text-slate-500">
                     {r.repartidor ? `${r.repartidor} · ` : ""}
                     {fechaCorta(r.fecha)}

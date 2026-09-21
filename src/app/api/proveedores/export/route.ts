@@ -74,7 +74,9 @@ export async function GET(request: NextRequest) {
       headers: xlsxResponseHeaders(`proveedores-${nowStamp()}`),
     });
   } catch (err) {
-    console.error("[/api/proveedores/export]", err instanceof Error ? err.message : err);
-    return new Response("No se pudo generar el Excel", { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/api/proveedores/export]", msg);
+    // El motivo viaja al cliente: sin esto un 500 obliga a mirar los logs.
+    return new Response(msg || "No se pudo generar el Excel", { status: 500 });
   }
 }
