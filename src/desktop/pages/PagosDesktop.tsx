@@ -11,6 +11,8 @@ import type { Cliente } from "@/lib/clientes/types";
 import type { Factura } from "@/lib/gestion-clientes/types";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { TZ_PY } from "@/lib/format/hora-py";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 
 // ── Estilos base ──────────────────────────────────────────────────────────────
 
@@ -116,6 +118,13 @@ export default function PagosPage() {
   const [cobrados, setCobrados] = useState<PagoCobrado[]>([]);
   const [cargandoCobrados, setCargandoCobrados] = useState(false);
   const [modalPago, setModalPago] = useState(false);
+  // Anulación administrativa: solo admin, y el servidor igual revalida.
+  const { usuario } = useUsuarioActual();
+  const puedeAnular = esRolAdminEmpresaOGlobal(usuario?.rol ?? null) || usuario?.rol === "super_admin";
+  const [porAnular, setPorAnular] = useState<Factura | null>(null);
+  const [motivoAnulacion, setMotivoAnulacion] = useState("");
+  const [anulando, setAnulando] = useState(false);
+  const [errorAnular, setErrorAnular] = useState<string | null>(null);
   const [facturaSeleccionada, setFacturaSeleccionada] = useState<Factura | null>(null);
   const [filtroDesde, setFiltroDesde] = useState("");
   const [filtroHasta, setFiltroHasta] = useState("");
@@ -541,6 +550,20 @@ export default function PagosPage() {
                           >
                             Ver
                           </Link>
+                          {puedeAnular ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPorAnular(f);
+                                setMotivoAnulacion("");
+                                setErrorAnular(null);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-100"
+                              title="Anular la factura (no la borra)"
+                            >
+                              Anular
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -763,6 +786,85 @@ export default function PagosPage() {
           if (tab === "cobrados") fetchCobrados();
         }}
       />
+
+      {porAnular ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-semibold text-slate-800">
+              Anular la factura {porAnular.numero_factura}
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              La factura <strong>no se borra</strong>: queda registrada con estado «Anulado» y saldo cero, con
+              constancia de quién la anuló y por qué. Es lo que corresponde a un documento fiscal.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              No se puede anular si ya tiene pagos imputados o si su documento electrónico fue aprobado por la
+              SET: en esos casos va reversión del pago o nota de crédito.
+            </p>
+
+            <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Motivo (queda asentado)
+            </label>
+            <textarea
+              value={motivoAnulacion}
+              onChange={(e) => setMotivoAnulacion(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="Ej: cargada dos veces por error"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+            />
+            <p className="mt-1 text-[11px] text-slate-400">Mínimo 5 caracteres.</p>
+
+            {errorAnular ? (
+              <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {errorAnular}
+              </p>
+            ) : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPorAnular(null)}
+                disabled={anulando}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={anulando || motivoAnulacion.trim().length < 5}
+                onClick={async () => {
+                  setAnulando(true);
+                  setErrorAnular(null);
+                  try {
+                    const r = await fetchWithSupabaseSession(`/api/facturas/${porAnular.id}/anular`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ motivo: motivoAnulacion.trim() }),
+                    });
+                    const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+                    if (!r.ok || !j?.success) {
+                      // El servidor explica por qué no se puede (pagos, SET, NC).
+                      setErrorAnular(j?.error ?? `Error ${r.status}`);
+                      return;
+                    }
+                    setPorAnular(null);
+                    getFacturas().then(setFacturas);
+                    if (tab === "cobrados") fetchCobrados();
+                  } catch (e) {
+                    setErrorAnular(e instanceof Error ? e.message : "Error de red.");
+                  } finally {
+                    setAnulando(false);
+                  }
+                }}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+              >
+                {anulando ? "Anulando…" : "Anular factura"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
