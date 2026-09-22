@@ -630,7 +630,7 @@ function Columna({
 
   return (
     <div
-      className={`flex w-64 min-w-64 flex-col rounded-2xl border bg-white/60 backdrop-blur-sm transition-all duration-150 ${
+      className={`flex h-full w-64 min-w-64 flex-col overflow-hidden rounded-2xl border bg-white/60 backdrop-blur-sm transition-all duration-150 ${
         isDragOver
           ? `border-[#4FAEB2] ring-2 ring-[#4FAEB2]/30 bg-[#4FAEB2]/[0.04]`
           : `${tone.columnHeaderBorder}`
@@ -663,7 +663,7 @@ function Columna({
         ) : null}
       </div>
 
-      <div className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto p-2 max-h-[calc(100vh-260px)]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {prospectos.length === 0 ? (
           <div
             className={`flex h-16 items-center justify-center rounded-xl border-2 border-dashed text-[11px] transition-colors ${
@@ -1050,7 +1050,7 @@ function KanbanScroller({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative -mx-1 min-h-0 flex-1 px-1 pb-2">
-      <div ref={ref} onMouseMove={onMove} onMouseLeave={() => setDir(0)} className="h-full overflow-x-auto">
+      <div ref={ref} onMouseMove={onMove} onMouseLeave={() => setDir(0)} className="h-full overflow-x-auto overflow-y-hidden">
         {children}
       </div>
       <div className={`pointer-events-none absolute inset-y-0 left-0 flex w-16 items-center justify-start pl-1 transition-opacity duration-150 ${hint === -1 ? "opacity-100" : "opacity-0"}`}>
@@ -1341,7 +1341,7 @@ export default function CrmPage() {
       {/* Pipeline: Kanban (cards) o Lista (tabla) según la vista elegida */}
       {vista === "kanban" ? (
         <KanbanScroller>
-          <div className="flex h-full min-w-max items-start gap-3">
+          <div className="flex h-full min-w-max items-stretch gap-3 pb-2">
             {etapas.map((etapa) => (
               <Columna
                 key={etapa.id}
