@@ -370,9 +370,15 @@ export default function AyudaArticuloEditor({
           <label className={F_LABEL}>Orden en el listado</label>
           <input
             type="number"
+            inputMode="numeric"
+            min={0}
+            step={1}
             className={F_INPUT}
-            value={form.orden}
-            onChange={(e) => set("orden", Number(e.target.value) || 0)}
+            value={form.orden === 0 ? "" : form.orden}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/^0+(?=\d)/, "");
+              set("orden", raw === "" ? 0 : Math.max(0, Number(raw) || 0));
+            }}
           />
           <p className="mt-1.5 text-xs text-slate-400">Menor número = aparece más arriba.</p>
         </div>
