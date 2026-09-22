@@ -35,6 +35,7 @@ import { getMarketingTasks, createMarketingTask, updateTaskStatus } from "@/lib/
 import { getUsuariosActivosEmpresa, type UsuarioEmpresa } from "@/lib/usuarios/empresa";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
+import { ACCEPT_COMPROBANTE, prepararComprobante } from "@/lib/comprobantes/preparar-imagen";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import MontoInput from "@/components/ui/MontoInput";
@@ -2946,7 +2947,12 @@ export default function ClienteDetalleClient({
       {/* Modal Registrar pago */}
       {modalPago && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setModalPago(false)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+          {/* max-h + scroll: en un celular el formulario es más alto que la
+              pantalla y los botones quedaban fuera, sin forma de llegar. */}
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 max-h-[85dvh] overflow-y-auto overscroll-contain"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-bold text-gray-800 mb-1">Registrar cobro</h3>
             <p className="text-xs text-slate-500 mb-3">Cobro por transferencia. Queda <b>pendiente de aprobación</b> en Conciliación bancaria.</p>
             {facturaPago && <p className="text-sm text-slate-600 mb-4">Factura {facturaPago.numero_factura} — Saldo: Gs. {facturaPago.saldo.toLocaleString("es-PY")}</p>}
@@ -3042,10 +3048,19 @@ export default function ClienteDetalleClient({
                 <label className={labelClass}>Comprobante <span className="text-slate-400">(obligatorio — JPG, PNG, WebP o PDF)</span></label>
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  onChange={(e) => setPagoFile(e.target.files?.[0] ?? null)}
+                  accept={ACCEPT_COMPROBANTE}
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    // El iPhone entrega HEIC: se normaliza a JPEG acá.
+                    setPagoFile(f ? await prepararComprobante(f) : null);
+                  }}
                   className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
                 />
+                {pagoFile ? (
+                  <p className="mt-1.5 text-xs text-emerald-700">
+                    ✓ {pagoFile.name} · {(pagoFile.size / 1024).toFixed(0)} KB
+                  </p>
+                ) : null}
               </div>
               {errorPago && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{errorPago}</p>}
               <div className="flex gap-3 pt-2">

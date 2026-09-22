@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { hoyYmdLocal } from "@/lib/fechas/calendario";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { revisarComprobante } from "@/lib/cobranzas/conciliacion-comprobante-storage";
+import { ACCEPT_COMPROBANTE, prepararComprobante } from "@/lib/comprobantes/preparar-imagen";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
@@ -35,7 +36,7 @@ type FacturaCliente = {
 
 type Fila = { fac: FacturaCliente; checked: boolean; montoStr: string; idem: string };
 
-const COMPROBANTE_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf";
+
 
 const uuid = () =>
   globalThis.crypto?.randomUUID?.() ??
@@ -167,7 +168,9 @@ export function RegistrarPagoModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="presentation">
       <div
-        className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"
+        // En un celular el formulario es más alto que la pantalla: sin esto
+        // los botones quedan fuera y no hay forma de llegar.
+        className="max-h-[85dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -315,9 +318,12 @@ export function RegistrarPagoModal({
                 <input
                   id="rp-file"
                   type="file"
-                  accept={COMPROBANTE_ACCEPT}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] ?? null;
+                  accept={ACCEPT_COMPROBANTE}
+                  onChange={async (e) => {
+                    const crudo = e.target.files?.[0] ?? null;
+                    // El iPhone entrega HEIC y fotos de varios MB: se normaliza
+                    // a JPEG y se achica antes de revisar nada.
+                    const f = crudo ? await prepararComprobante(crudo) : null;
                     setFile(f);
                     setFileProblema(f ? revisarComprobante(f) : null);
                   }}
