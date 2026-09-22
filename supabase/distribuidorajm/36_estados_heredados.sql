@@ -80,38 +80,39 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ── Verificación: los estados que el código escribe, uno por uno ───────────
--- Se prueban contra el CHECK real de la tabla. Nada queda guardado.
-DO $$
-DECLARE
-  v_estado text;
-  v_malos  text[] := ARRAY[]::text[];
-BEGIN
-  FOREACH v_estado IN ARRAY ARRAY['borrador','aprobada','parcialmente_recibida','recibida','cerrada','cancelada']
-  LOOP
-    BEGIN
-      INSERT INTO distribuidorajmerp.ordenes_compra (empresa_id, estado)
-        VALUES ('00000000-0000-0000-0000-000000000000', v_estado);
-    EXCEPTION WHEN check_violation THEN
-      v_malos := v_malos || v_estado;
-    END;
-  END LOOP;
-  -- No dejamos basura: se borra todo lo de la empresa de prueba.
-  DELETE FROM distribuidorajmerp.ordenes_compra
-   WHERE empresa_id = '00000000-0000-0000-0000-000000000000';
-
-  IF array_length(v_malos, 1) IS NULL THEN
-    RAISE NOTICE 'ok: los 6 estados de una orden pasan el CHECK.';
-  ELSE
-    RAISE EXCEPTION 'siguen rechazados: %', array_to_string(v_malos, ', ');
-  END IF;
-END;
-$$;
-
-SELECT conname AS restriccion, pg_get_constraintdef(c.oid) AS definicion
-  FROM pg_constraint c
-  JOIN pg_class t ON t.oid = c.conrelid
-  JOIN pg_namespace n ON n.oid = t.relnamespace
- WHERE n.nspname = 'distribuidorajmerp' AND c.contype = 'c'
-   AND t.relname IN ('ordenes_compra','recepciones')
- ORDER BY t.relname, conname;
+-- ── Verificación ───────────────────────────────────────────────────────────
+-- Se lee la definición real del CHECK en la tabla y se comprueba que cada
+-- estado del código esté adentro. Antes esto insertaba una orden de prueba,
+-- lo que obligaba a completar todas las columnas obligatorias de la tabla:
+-- verificar no tiene por qué escribir nada.
+WITH esperado(tabla, restriccion, valor) AS (
+  VALUES
+    ('ordenes_compra','ordenes_compra_estado_valido','borrador'),
+    ('ordenes_compra','ordenes_compra_estado_valido','aprobada'),
+    ('ordenes_compra','ordenes_compra_estado_valido','parcialmente_recibida'),
+    ('ordenes_compra','ordenes_compra_estado_valido','recibida'),
+    ('ordenes_compra','ordenes_compra_estado_valido','cerrada'),
+    ('ordenes_compra','ordenes_compra_estado_valido','cancelada'),
+    ('recepciones','recepciones_estado_valido','confirmada'),
+    ('recepciones','recepciones_estado_valido','anulada'),
+    ('recepciones','recepciones_facturacion_valida','pendiente'),
+    ('recepciones','recepciones_facturacion_valida','parcial'),
+    ('recepciones','recepciones_facturacion_valida','facturada')
+), definicion AS (
+  SELECT t.relname AS tabla, c.conname AS restriccion,
+         pg_get_constraintdef(c.oid) AS def
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+   WHERE n.nspname = 'distribuidorajmerp' AND c.contype = 'c'
+)
+SELECT e.tabla, e.valor AS estado,
+       CASE
+         WHEN d.def IS NULL THEN '✗ falta la restricción'
+         WHEN position(quote_literal(e.valor) in d.def) > 0 THEN 'ok'
+         ELSE '✗ el CHECK no lo acepta'
+       END AS resultado
+  FROM esperado e
+  LEFT JOIN definicion d ON d.tabla = e.tabla AND d.restriccion = e.restriccion
+ ORDER BY (CASE WHEN d.def IS NOT NULL AND position(quote_literal(e.valor) in d.def) > 0
+                THEN 1 ELSE 0 END), e.tabla, e.valor;
