@@ -36,6 +36,26 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Variables NEXT_PUBLIC_*: Next las inyecta LITERALMENTE en el bundle del cliente
+# durante `next build` (reemplazo textual de `process.env.NEXT_PUBLIC_X`). Por eso
+# tienen que estar presentes ANTES del build, no en runtime. Coolify las pasa como
+# --build-arg; cada ARG las recibe y el ENV las expone al proceso de build.
+# (Solo NEXT_PUBLIC_*: las server-side se leen en runtime y NO van acá.)
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_ASSISTANT_ENABLED
+ENV NEXT_PUBLIC_ASSISTANT_ENABLED=$NEXT_PUBLIC_ASSISTANT_ENABLED
+ARG NEXT_PUBLIC_CHAT_LIST_DEBUG
+ENV NEXT_PUBLIC_CHAT_LIST_DEBUG=$NEXT_PUBLIC_CHAT_LIST_DEBUG
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPER_ADMIN_EMAILS
+ENV NEXT_PUBLIC_SUPER_ADMIN_EMAILS=$NEXT_PUBLIC_SUPER_ADMIN_EMAILS
+ARG NEXT_PUBLIC_WHATSAPP_LINK_PHONE_NUMBER
+ENV NEXT_PUBLIC_WHATSAPP_LINK_PHONE_NUMBER=$NEXT_PUBLIC_WHATSAPP_LINK_PHONE_NUMBER
+
 # Cache mount en .next/cache: acá vive el caché incremental del compilador de Next.
 # Persiste en el builder entre deploys, así Next recompila solo lo que cambió en
 # vez de las ~984 páginas desde cero. Es la optimización de mayor impacto.
