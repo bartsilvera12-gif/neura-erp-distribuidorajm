@@ -338,3 +338,104 @@ export async function listStockPorUbicacion(
   );
   return rows;
 }
+
+/** Un borrado que no se puede hacer, con el motivo listo para mostrar. */
+export class CatalogoEnUsoError extends Error {
+  readonly status = 409;
+  constructor(message: string) {
+    super(message);
+    this.name = "CatalogoEnUsoError";
+  }
+}
+
+/**
+ * Borra una categoría de productos.
+ *
+ * Se niega si está en uso: borrarla dejaría productos apuntando a una
+ * categoría que no existe, o sub-categorías huérfanas. En esos casos conviene
+ * desactivarla, que la saca de los desplegables sin romper nada.
+ */
+export async function deleteCategoriaProducto(
+  schemaRaw: string, empresaId: string, id: string
+): Promise<boolean> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const t = quoteSchemaTable(schema, "categorias_productos");
+  const tRel = quoteSchemaTable(schema, "producto_categorias");
+
+  const { rows: hijas } = await pool().query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM ${t} WHERE parent_id = $1::uuid AND empresa_id = $2::uuid`,
+    [id, empresaId]
+  );
+  if (Number(hijas[0]?.n ?? 0) > 0) {
+    throw new CatalogoEnUsoError(
+      `No se puede borrar: tiene ${hijas[0].n} sub-categoría(s). Borralas o cambiales la categoría padre primero.`
+    );
+  }
+
+  const { rows: usos } = await pool().query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM ${tRel} WHERE categoria_id = $1::uuid AND empresa_id = $2::uuid`,
+    [id, empresaId]
+  );
+  if (Number(usos[0]?.n ?? 0) > 0) {
+    throw new CatalogoEnUsoError(
+      `No se puede borrar: ${usos[0].n} producto(s) usan esta categoría. Desactivala si no querés que siga apareciendo.`
+    );
+  }
+
+  const { rowCount } = await pool().query(
+    `DELETE FROM ${t} WHERE id = $1::uuid AND empresa_id = $2::uuid`, [id, empresaId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/**
+ * Borra una ubicación de inventario.
+ *
+ * Se niega si tiene stock, si es la ubicación de un camión o si hay
+ * movimientos registrados contra ella: en cualquiera de esos casos el
+ * historial quedaría apuntando a la nada.
+ */
+export async function deleteUbicacion(
+  schemaRaw: string, empresaId: string, id: string
+): Promise<boolean> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const t = quoteSchemaTable(schema, "inventario_ubicaciones");
+  const tStock = quoteSchemaTable(schema, "inventario_stock_ubicacion");
+  const tMov = quoteSchemaTable(schema, "movimientos_inventario");
+
+  const { rows: hijas } = await pool().query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM ${t} WHERE parent_id = $1::uuid AND empresa_id = $2::uuid`,
+    [id, empresaId]
+  );
+  if (Number(hijas[0]?.n ?? 0) > 0) {
+    throw new CatalogoEnUsoError(
+      `No se puede borrar: tiene ${hijas[0].n} ubicación(es) dentro. Movelas o borralas primero.`
+    );
+  }
+
+  const { rows: stock } = await pool().query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM ${tStock}
+      WHERE ubicacion_id = $1::uuid AND empresa_id = $2::uuid AND COALESCE(stock_actual,0) <> 0`,
+    [id, empresaId]
+  );
+  if (Number(stock[0]?.n ?? 0) > 0) {
+    throw new CatalogoEnUsoError(
+      `No se puede borrar: hay ${stock[0].n} producto(s) con stock en esta ubicación. Movelo o ajustalo a cero primero.`
+    );
+  }
+
+  const { rows: movs } = await pool().query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM ${tMov} WHERE ubicacion_id = $1::uuid AND empresa_id = $2::uuid`,
+    [id, empresaId]
+  );
+  if (Number(movs[0]?.n ?? 0) > 0) {
+    throw new CatalogoEnUsoError(
+      `No se puede borrar: tiene ${movs[0].n} movimiento(s) de inventario en el historial. Desactivala en vez de borrarla.`
+    );
+  }
+
+  const { rowCount } = await pool().query(
+    `DELETE FROM ${t} WHERE id = $1::uuid AND empresa_id = $2::uuid`, [id, empresaId]
+  );
+  return (rowCount ?? 0) > 0;
+}
