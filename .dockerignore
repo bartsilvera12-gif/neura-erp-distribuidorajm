@@ -3,6 +3,10 @@ node_modules
 .next
 out
 
+# El propio Dockerfile y este archivo no aportan al contexto de build
+Dockerfile
+.dockerignore
+
 # Git y metadatos
 .git
 .gitignore
