@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { conMotivo } from "@/lib/api/motivo-error";
 import { listRecepciones, confirmarRecepcion, RecepcionError, type RecepcionItemInput } from "@/lib/recepciones/server/recepciones-pg";
 import { UUID_RE, str } from "@/lib/ordenes/parse-items";
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(successResponse({ recepciones }));
   } catch (err) {
     console.error("[/api/recepciones GET]", err instanceof Error ? err.message : err);
-    return NextResponse.json(errorResponse("No se pudieron cargar las recepciones."), { status: 500 });
+    return NextResponse.json(errorResponse(conMotivo("No se pudieron cargar las recepciones.", err)), { status: 500 });
   }
 }
 
@@ -70,6 +71,6 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     if (e instanceof RecepcionError) return NextResponse.json(errorResponse(e.message), { status: e.status });
     console.error("[/api/recepciones POST]", e instanceof Error ? e.message : e);
-    return NextResponse.json(errorResponse("No se pudo registrar la recepción."), { status: 500 });
+    return NextResponse.json(errorResponse(conMotivo("No se pudo registrar la recepción.", e)), { status: 500 });
   }
 }

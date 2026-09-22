@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { conMotivo } from "@/lib/api/motivo-error";
 import { getRecepcion } from "@/lib/recepciones/server/recepciones-pg";
 
 export const runtime = "nodejs";
@@ -20,6 +21,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json(successResponse(data));
   } catch (err) {
     console.error("[/api/recepciones/[id] GET]", err instanceof Error ? err.message : err);
-    return NextResponse.json(errorResponse("No se pudo cargar la recepción."), { status: 500 });
+    return NextResponse.json(errorResponse(conMotivo("No se pudo cargar la recepción.", err)), { status: 500 });
   }
 }
