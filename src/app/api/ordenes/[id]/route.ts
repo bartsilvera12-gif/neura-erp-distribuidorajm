@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { conMotivo } from "@/lib/api/motivo-error";
 import { getOrden, updateOrden, OrdenError } from "@/lib/ordenes/server/ordenes-pg";
 import { parseOrdenItems, UUID_RE, str } from "@/lib/ordenes/parse-items";
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json(successResponse(data));
   } catch (err) {
     console.error("[/api/ordenes/[id] GET]", err instanceof Error ? err.message : err);
-    return NextResponse.json(errorResponse("No se pudo cargar la orden."), { status: 500 });
+    return NextResponse.json(errorResponse(conMotivo("No se pudo cargar la orden.", err)), { status: 500 });
   }
 }
 
@@ -50,6 +51,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   } catch (e) {
     if (e instanceof OrdenError) return NextResponse.json(errorResponse(e.message), { status: e.status });
     console.error("[/api/ordenes/[id] PUT]", e instanceof Error ? e.message : e);
-    return NextResponse.json(errorResponse("No se pudo actualizar la orden."), { status: 500 });
+    return NextResponse.json(errorResponse(conMotivo("No se pudo actualizar la orden.", e)), { status: 500 });
   }
 }
