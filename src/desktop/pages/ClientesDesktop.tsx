@@ -341,14 +341,19 @@ export default function ClientesPage() {
     void getClientes({ incluirPlanActivo: true }).then((data) => {
       setClientes(data);
       setCargando(false);
-    });
+    }).catch((e) => console.error("[clientes]", e));
   };
 
   useEffect(() => {
-    getClientes({ incluirPlanActivo: true }).then((data) => {
-      setClientes(data);
-      setCargando(false);
-    });
+    getClientes({ incluirPlanActivo: true })
+      .then((data) => {
+        setClientes(data);
+        setCargando(false);
+      })
+      .catch((e) => {
+        console.error("[clientes]", e);
+        setCargando(false);
+      });
   }, []);
 
   useEffect(() => {

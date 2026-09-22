@@ -746,7 +746,7 @@ function GestionClientesPageInner() {
   });
 
   useEffect(() => {
-    getClientes().then(setClientes);
+    getClientes().then(setClientes).catch((e) => console.error("[clientes]", e));
   }, []);
 
   /** Al elegir cliente: misma API que la ficha (`/api/facturas?cliente_id=`) y filtros de período en blanco para no ocultar filas. */
@@ -1342,7 +1342,7 @@ function GestionClientesPageInner() {
           onExito={async () => {
             if (selected) {
               getFacturas(selected.id).then(setFacturas);
-              getClientes().then(setClientes);
+              getClientes().then(setClientes).catch((e) => console.error("[clientes]", e));
             }
           }}
         />
