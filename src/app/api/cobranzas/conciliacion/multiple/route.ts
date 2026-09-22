@@ -7,11 +7,23 @@ import { notificarCobroPendiente } from "@/lib/cobranzas/cobro-pendiente-notific
 import {
   ALLOWED_COMPROBANTE_MIME, MAX_COMPROBANTE_BYTES, COBROS_COMPROBANTES_BUCKET,
   buildCobroComprobantePath, ensureCobrosComprobantesBucket, signCobroComprobante,
+  revisarComprobante,
 } from "@/lib/cobranzas/conciliacion-comprobante-storage";
 
 export const runtime = "nodejs";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** El motivo real de un error, en vez de un mensaje genérico. */
+function motivoDelError(e: unknown): string {
+  const o = (e ?? {}) as { message?: unknown; detail?: unknown; hint?: unknown; code?: unknown };
+  const partes = [o.message, o.detail, o.hint].filter((x) => typeof x === "string" && x) as string[];
+  const codigo = typeof o.code === "string" && o.code ? ` [${o.code}]` : "";
+  const texto = partes.join(" · ");
+  if (texto) return texto + codigo;
+  const crudo = typeof e === "string" ? e : String(e ?? "");
+  return crudo && crudo !== "[object Object]" ? crudo + codigo : "";
+}
 const s = (v: unknown) => (v == null ? "" : String(v).trim());
 
 /**
@@ -48,6 +60,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("Seleccioná al menos una factura con monto."), { status: 400 });
     }
 
+    // El comprobante se revisa ANTES de tocar la base: si no sirve, no se
+    // registra nada y el mensaje dice qué pasa con ESE archivo. Antes el cobro
+    // se guardaba igual y el comprobante se perdía en silencio.
+    const archivo = form.get("file");
+    if (archivo instanceof File && archivo.size > 0) {
+      const problema = revisarComprobante(archivo);
+      if (problema) return NextResponse.json(errorResponse(problema), { status: 400 });
+    }
+
     const cobros = await registrarTransferenciaMultiple(schema, auth.empresaId, {
       banco_origen: s(form.get("banco_origen")),
       titular: s(form.get("titular")),
@@ -62,20 +83,23 @@ export async function POST(request: NextRequest) {
     let warning: string | undefined;
     const file = form.get("file");
     if (file instanceof File && file.size > 0 && cobros.length > 0) {
-      if (!ALLOWED_COMPROBANTE_MIME.has(file.type)) {
-        warning = "Cobros registrados, pero el comprobante tiene un formato no permitido (usá JPG, PNG, WebP o PDF).";
-      } else if (file.size > MAX_COMPROBANTE_BYTES) {
-        warning = `Cobros registrados, pero el comprobante supera ${(MAX_COMPROBANTE_BYTES / 1024 / 1024).toFixed(0)} MB.`;
-      } else {
+      // Nunca dejar que un problema del comprobante parezca que el cobro no se
+      // registró: a esta altura ya está guardado. Si algo falla acá, se avisa
+      // diciendo exactamente eso, con el motivo.
+      try {
         const supabase = await createServiceRoleClientForEmpresa(auth.empresaId);
         await ensureCobrosComprobantesBucket(supabase);
         const path = buildCobroComprobantePath(auth.empresaId, cobros[0].id, file.type);
         const buf = Buffer.from(await file.arrayBuffer());
         const up = await supabase.storage.from(COBROS_COMPROBANTES_BUCKET).upload(path, buf, { contentType: file.type, upsert: true });
-        if (!up.error) {
+        if (up.error) {
+          warning = `El cobro quedó registrado, pero no se pudo guardar el comprobante: ${up.error.message}. Adjuntalo desde Conciliación bancaria.`;
+        } else {
           for (const c of cobros) await updateComprobantePath(schema, auth.empresaId, c.id, path, file.type);
           comprobanteUrl = await signCobroComprobante(supabase, path, 3600);
         }
+      } catch (e) {
+        warning = `El cobro quedó registrado, pero no se pudo guardar el comprobante: ${motivoDelError(e)}. Adjuntalo desde Conciliación bancaria.`;
       }
     }
 
@@ -90,6 +114,10 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     if (e instanceof ConciliacionError) return NextResponse.json(errorResponse(e.message), { status: e.status });
     console.error("[/api/cobranzas/conciliacion/multiple POST]", e instanceof Error ? e.message : e);
-    return NextResponse.json(errorResponse("No se pudo registrar el cobro."), { status: 500 });
+    const motivo = motivoDelError(e);
+    return NextResponse.json(
+      errorResponse(motivo ? `No se pudo registrar el cobro: ${motivo}` : "No se pudo registrar el cobro."),
+      { status: 500 }
+    );
   }
 }

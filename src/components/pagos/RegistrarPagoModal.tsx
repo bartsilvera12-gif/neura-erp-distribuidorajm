@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { hoyYmdLocal } from "@/lib/fechas/calendario";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
+import { revisarComprobante } from "@/lib/cobranzas/conciliacion-comprobante-storage";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
@@ -35,7 +36,6 @@ type FacturaCliente = {
 type Fila = { fac: FacturaCliente; checked: boolean; montoStr: string; idem: string };
 
 const COMPROBANTE_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf";
-const COMPROBANTE_MAX_MB = 8;
 
 const uuid = () =>
   globalThis.crypto?.randomUUID?.() ??
@@ -60,12 +60,16 @@ export function RegistrarPagoModal({
   const [titular, setTitular] = useState("");
   const [numeroOperacion, setNumeroOperacion] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  // Qué tiene de malo el archivo elegido, si tiene algo.
+  const [fileProblema, setFileProblema] = useState<string | null>(null);
+  // El cobro salió, pero algo menor no: se muestra en ámbar, no en verde.
+  const [doneEsAviso, setDoneEsAviso] = useState(false);
   const [filas, setFilas] = useState<Fila[]>([]);
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
-  const { bancos } = useBancosActivos(open && !!factura);
+  const { bancos, cuentasPropias } = useBancosActivos(open && !!factura);
 
   const cargarFacturas = useCallback(async (clienteId: string) => {
     setCargando(true);
@@ -96,6 +100,7 @@ export function RegistrarPagoModal({
     setTitular("");
     setNumeroOperacion("");
     setFile(null);
+    setFileProblema(null);
     setErrorMsg(null);
     setDoneMsg(null);
     void cargarFacturas(factura.cliente_id);
@@ -123,7 +128,9 @@ export function RegistrarPagoModal({
     if (!titular.trim()) return setErrorMsg("Indicá el titular (quién envía).");
     if (!numeroOperacion.trim()) return setErrorMsg("Indicá el número de comprobante / operación.");
     if (!file) return setErrorMsg("Adjuntá el comprobante de la transferencia.");
-    if (file.size > COMPROBANTE_MAX_MB * 1024 * 1024) return setErrorMsg(`El comprobante supera ${COMPROBANTE_MAX_MB} MB.`);
+    // Mismo criterio que el servidor, para enterarse acá y no después de esperar.
+    const problema = revisarComprobante(file);
+    if (problema) return setErrorMsg(problema);
 
     setGuardando(true);
     setErrorMsg(null);
@@ -146,6 +153,7 @@ export function RegistrarPagoModal({
         return;
       }
       await Promise.resolve(onExito());
+      setDoneEsAviso(Boolean(j.data?.warning));
       setDoneMsg(
         j.data?.warning ||
           `${seleccionadas.length} ${seleccionadas.length === 1 ? "factura enviada" : "facturas enviadas"} a aprobación en Conciliación bancaria. El saldo se actualiza cuando un administrador lo apruebe.`
@@ -172,7 +180,15 @@ export function RegistrarPagoModal({
 
         {doneMsg ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">✅ {doneMsg}</div>
+            <div
+              className={`rounded-lg border px-3 py-3 text-sm ${
+                doneEsAviso
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              {doneEsAviso ? "⚠️" : "✅"} {doneMsg}
+            </div>
             <button type="button" onClick={onClose} className="rounded-lg bg-[#3F8E91] px-4 py-2 text-sm font-medium text-white hover:bg-[#357a7d]">
               Listo
             </button>
@@ -232,6 +248,30 @@ export function RegistrarPagoModal({
                 </div>
               </div>
 
+              {cuentasPropias.length > 0 ? (
+                <div className="rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/5 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#3F8E91]">
+                    Transferir a {cuentasPropias.length === 1 ? "esta cuenta" : "una de estas cuentas"}
+                  </p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {cuentasPropias.map((c) => (
+                      <li key={c.id} className="text-sm text-slate-700">
+                        <span className="font-semibold">{c.nombre}</span>
+                        {c.numero_cuenta ? <> · Cta. <span className="font-mono">{c.numero_cuenta}</span></> : null}
+                        {c.titular_cuenta ? <div className="text-xs text-slate-500">{c.titular_cuenta}</div> : null}
+                        {c.documento_titular ? <div className="text-xs text-slate-500">RUC/CI: {c.documento_titular}</div> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  No hay ninguna cuenta de la empresa cargada, así que no se puede indicar a dónde transferir.
+                  Cargala en <a href="/configuracion/bancos" className="underline">Configuración → Bancos</a>,
+                  marcando «Es una cuenta de la empresa».
+                </p>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass} htmlFor="rp-fecha">Fecha de la transferencia</label>
@@ -276,9 +316,22 @@ export function RegistrarPagoModal({
                   id="rp-file"
                   type="file"
                   accept={COMPROBANTE_ACCEPT}
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setFile(f);
+                    setFileProblema(f ? revisarComprobante(f) : null);
+                  }}
                   className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
                 />
+                {fileProblema ? (
+                  <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                    {fileProblema}
+                  </p>
+                ) : file ? (
+                  <p className="mt-1.5 text-xs text-emerald-700">
+                    ✓ {file.name} · {(file.size / 1024).toFixed(0)} KB
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex gap-3 pt-1">

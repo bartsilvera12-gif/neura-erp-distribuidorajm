@@ -3,7 +3,7 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
-import { TIPOS, mensajeDuplicado } from "../route";
+import { TIPOS, mensajeDuplicado, camposDeCuenta } from "../route";
 
 export const runtime = "nodejs";
 
@@ -32,6 +32,11 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
       tipo?: unknown;
       activo?: unknown;
       sort_order?: unknown;
+      es_cuenta_propia?: unknown;
+      numero_cuenta?: unknown;
+      titular_cuenta?: unknown;
+      documento_titular?: unknown;
+      alias_cuenta?: unknown;
     };
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (typeof body.nombre === "string") {
@@ -45,6 +50,9 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
       patch.codigo = codigo === "" ? null : codigo;
     }
     if (typeof body.tipo === "string" && TIPOS.includes(body.tipo)) patch.tipo = body.tipo;
+    if (typeof body.es_cuenta_propia === "boolean") {
+      Object.assign(patch, camposDeCuenta(body as Record<string, unknown>));
+    }
     if (typeof body.activo === "boolean") patch.activo = body.activo;
     if (body.sort_order != null && Number.isFinite(Number(body.sort_order))) patch.sort_order = Number(body.sort_order);
 
@@ -54,7 +62,7 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
       .update(patch)
       .eq("id", id)
       .eq("empresa_id", auth.empresaId)
-      .select("id, codigo, nombre, tipo, activo, sort_order")
+      .select("id, codigo, nombre, tipo, activo, sort_order, es_cuenta_propia, numero_cuenta, titular_cuenta, documento_titular, alias_cuenta")
       .single();
 
     if (error) {

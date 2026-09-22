@@ -19,6 +19,11 @@ type Banco = {
   tipo: string;
   activo: boolean;
   sort_order: number;
+  es_cuenta_propia: boolean;
+  numero_cuenta: string | null;
+  titular_cuenta: string | null;
+  documento_titular: string | null;
+  alias_cuenta: string | null;
 };
 type Resp = { success?: boolean; error?: string; data?: { bancos: Banco[]; meta: { can_edit: boolean } } };
 
@@ -86,6 +91,11 @@ export default function ConfiguracionBancosPage() {
   const [nCodigo, setNCodigo] = useState("");
   const [nNombre, setNNombre] = useState("");
   const [nTipo, setNTipo] = useState("banco");
+  // Cuenta propia: a dónde le pedimos al cliente que transfiera.
+  const [nPropia, setNPropia] = useState(false);
+  const [nNumero, setNNumero] = useState("");
+  const [nTitular, setNTitular] = useState("");
+  const [nDoc, setNDoc] = useState("");
 
   // Edición en la fila
   const [editId, setEditId] = useState<string | null>(null);
@@ -128,7 +138,13 @@ export default function ConfiguracionBancosPage() {
       const r = await apiFetch("/api/configuracion/bancos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre, codigo: nCodigo.trim(), tipo: nTipo }),
+        body: JSON.stringify({
+          nombre, codigo: nCodigo.trim(), tipo: nTipo,
+          es_cuenta_propia: nPropia,
+          numero_cuenta: nNumero.trim(),
+          titular_cuenta: nTitular.trim(),
+          documento_titular: nDoc.trim(),
+        }),
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!r.ok || !j.success) {
@@ -138,6 +154,10 @@ export default function ConfiguracionBancosPage() {
       setNCodigo("");
       setNNombre("");
       setNTipo("banco");
+      setNPropia(false);
+      setNNumero("");
+      setNTitular("");
+      setNDoc("");
       await cargar();
     } finally {
       setGuardando(false);
@@ -230,6 +250,39 @@ export default function ConfiguracionBancosPage() {
               </select>
             </div>
           </div>
+          <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[#3F8E91]"
+              checked={nPropia}
+              onChange={(e) => setNPropia(e.target.checked)}
+            />
+            <span className="text-sm text-slate-700">
+              Es una cuenta <strong>de la empresa</strong>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Marcala si es una cuenta donde cobramos. Sus datos se le muestran al cobrador en el modal de cobro,
+                para que sepa a dónde pedir la transferencia.
+              </span>
+            </span>
+          </label>
+
+          {nPropia ? (
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className={F_LABEL} htmlFor="b-numero">N° de cuenta</label>
+                <input id="b-numero" className={F_INPUT} value={nNumero} onChange={(e) => setNNumero(e.target.value)} placeholder="Ej: 80012345" />
+              </div>
+              <div>
+                <label className={F_LABEL} htmlFor="b-titular">Titular</label>
+                <input id="b-titular" className={F_INPUT} value={nTitular} onChange={(e) => setNTitular(e.target.value.toUpperCase())} placeholder="Ej: DISTRIBUIDORA JM SA" />
+              </div>
+              <div>
+                <label className={F_LABEL} htmlFor="b-doc">RUC / cédula</label>
+                <input id="b-doc" className={F_INPUT} value={nDoc} onChange={(e) => setNDoc(e.target.value)} placeholder="Ej: 80012345-6" />
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-4">
             <button type="button" className={BTN_PRIMARY} onClick={() => void crear()} disabled={guardando || !nNombre.trim()}>
               {guardando ? "Creando…" : "Crear entidad"}
@@ -310,7 +363,20 @@ export default function ConfiguracionBancosPage() {
                       <tr key={b.id} className="transition-colors hover:bg-slate-50/60">
                         <td className="px-3 py-3 font-mono text-xs text-slate-500">{b.codigo ?? "—"}</td>
                         <td className={`px-3 py-3 ${b.activo ? "text-slate-800" : "text-slate-400"}`}>{b.nombre}</td>
-                        <td className="px-3 py-3 text-xs text-slate-600">{etiquetaTipo(b.tipo)}</td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          {etiquetaTipo(b.tipo)}
+                          {b.es_cuenta_propia ? (
+                            <span className="ml-1.5 inline-flex items-center rounded-full border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-0.5 text-[10px] font-semibold text-[#3F8E91]">
+                              Cuenta propia
+                            </span>
+                          ) : null}
+                          {b.es_cuenta_propia && b.numero_cuenta ? (
+                            <span className="mt-0.5 block font-mono text-[11px] text-slate-500">
+                              {b.numero_cuenta}
+                              {b.titular_cuenta ? ` · ${b.titular_cuenta}` : ""}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="px-3 py-3">
                           {canEdit ? (
                             <Interruptor activo={b.activo} onToggle={() => void patch(b.id, { activo: !b.activo })} />

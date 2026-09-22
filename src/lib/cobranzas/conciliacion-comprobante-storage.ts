@@ -12,6 +12,42 @@ export const ALLOWED_COMPROBANTE_EXT: Record<string, string> = {
 };
 export const MAX_COMPROBANTE_BYTES = 8 * 1024 * 1024; // 8 MB
 
+/**
+ * Revisa el comprobante antes de guardar nada y devuelve el problema en
+ * castellano, o null si sirve.
+ *
+ * Es a propósito específico: "no se pudo procesar" no le dice a nadie qué
+ * hacer. Acá el cobrador se entera de que mandó un archivo de 12 MB, o un
+ * .heic del iPhone, o un archivo vacío, y puede arreglarlo solo.
+ *
+ * Lo que NO hace es adivinar si la foto es realmente un comprobante: eso lo
+ * decide quien aprueba en Conciliación bancaria, que ve la imagen.
+ */
+export function revisarComprobante(file: { name?: string; type?: string; size?: number }): string | null {
+  const nombre = String(file?.name ?? "archivo");
+  const tipo = String(file?.type ?? "");
+  const size = Number(file?.size ?? 0);
+
+  if (size === 0) {
+    return `«${nombre}» está vacío (0 bytes). Volvé a descargarlo o sacá la foto de nuevo.`;
+  }
+  if (!ALLOWED_COMPROBANTE_MIME.has(tipo)) {
+    const ext = nombre.includes(".") ? nombre.split(".").pop()!.toUpperCase() : "";
+    const que = ext ? `un archivo ${ext}` : "ese tipo de archivo";
+    return `«${nombre}» es ${que} y no se puede adjuntar. Usá JPG, PNG, WebP o PDF — si es una foto del iPhone, compartila como JPG.`;
+  }
+  if (size > MAX_COMPROBANTE_BYTES) {
+    const mb = (size / 1024 / 1024).toFixed(1);
+    const max = (MAX_COMPROBANTE_BYTES / 1024 / 1024).toFixed(0);
+    return `«${nombre}» pesa ${mb} MB y el máximo es ${max} MB. Mandá la imagen con menos calidad o sacá una captura de pantalla.`;
+  }
+  // Un JPG/PNG de menos de 1 KB no es una foto: es un archivo cortado.
+  if (tipo !== "application/pdf" && size < 1024) {
+    return `«${nombre}» pesa ${size} bytes: está incompleto y no se ve nada. Volvé a adjuntarlo.`;
+  }
+  return null;
+}
+
 let bucketEnsured = false;
 
 export async function ensureCobrosComprobantesBucket(supabase: AppSupabaseClient): Promise<void> {
