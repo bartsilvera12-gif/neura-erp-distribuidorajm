@@ -138,9 +138,12 @@ function formatDateTime(iso: string): string {
   });
 }
 
+// Excel en locale es-*/pt-* usa `;` como separador; con `,` mete todo en A1.
+const CSV_SEP = ";";
+
 function escapeCsvCell(value: string): string {
   const s = String(value).replace(/"/g, '""');
-  if (/[",\n\r]/.test(s)) return `"${s}"`;
+  if (/[";,\n\r]/.test(s)) return `"${s}"`;
   return s;
 }
 
@@ -161,7 +164,8 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
     "Comentario de cierre",
     "Último mensaje / resumen",
   ];
-  const lines = [headers.join(",")];
+  // `sep=;` es una directiva que Excel/LibreOffice respetan sin importar el locale.
+  const lines = [`sep=${CSV_SEP}`, headers.join(CSV_SEP)];
   for (const r of rows) {
     const canalTipo = r.channel_type;
     const canalNombre = r.channel_nombre ?? "";
@@ -181,7 +185,7 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
         escapeCsvCell(r.substate_label),
         escapeCsvCell(r.comment ?? ""),
         escapeCsvCell(r.last_preview ?? ""),
-      ].join(",")
+      ].join(CSV_SEP)
     );
   }
   return lines.join("\r\n");
