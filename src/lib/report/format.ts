@@ -12,10 +12,13 @@ export const gs = (n: number): string => "Gs " + Math.round(n || 0).toLocaleStri
 /** Monto compacto: `Gs 1.2MM` / `Gs 3M` / `Gs 450K`. */
 export const gsShort = (n: number): string => {
   const v = Math.abs(n || 0);
-  if (v >= 1e9) return "Gs " + (n / 1e9).toFixed(1) + "MM";
-  if (v >= 1e6) return "Gs " + (n / 1e6).toFixed(1) + "M";
-  if (v >= 1e3) return "Gs " + (n / 1e3).toFixed(0) + "K";
-  return "Gs " + Math.round(n || 0);
+  // Abreviaturas en castellano: "200 mil", "1,5 M". El "200K" de antes nadie
+  // lo lee como guaraníes, y fue lo primero que preguntaron al ver el gráfico.
+  const esPy = (x: number, dec: number) =>
+    x.toLocaleString("es-PY", { minimumFractionDigits: 0, maximumFractionDigits: dec });
+  if (v >= 1e6) return `Gs ${esPy(n / 1e6, 1)} M`;
+  if (v >= 1e4) return `Gs ${esPy(n / 1e3, 0)} mil`;
+  return `Gs ${esPy(Math.round(n || 0), 0)}`;
 };
 
 /** Variación con signo: `+12.3%` / `-4.0%` / `—` (null = no calculable). */
