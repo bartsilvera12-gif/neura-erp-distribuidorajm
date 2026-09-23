@@ -38,6 +38,11 @@ const nextConfig: NextConfig = {
       { source: "/configuracion/ayuda/:path*", destination: "/configuracion", permanent: false },
       { source: "/ayuda", destination: "/dashboard", permanent: false },
       { source: "/ayuda/:path*", destination: "/dashboard", permanent: false },
+      // Campañas Meta: mide avisos de Facebook/Instagram contra conversaciones
+      // de WhatsApp. Es del ERP de la agencia y no aplica a una distribuidora.
+      // Ocultar la tarjeta no alcanza: la URL escrita a mano seguiría llegando.
+      { source: "/reportes/campanas-meta", destination: "/reportes", permanent: false },
+      { source: "/reportes/campanas-meta/:path*", destination: "/reportes", permanent: false },
     ];
   },
 };

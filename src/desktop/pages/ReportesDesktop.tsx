@@ -76,14 +76,9 @@ const REPORTES: ReporteCard[] = [
     icon: Scale,
     href: "/cobranzas/conciliacion",
   },
-  {
-    title: "Campañas Meta",
-    subtitle: "Marketing",
-    description:
-      "Efectividad de campañas Meta/Facebook/Instagram según mensajes de WhatsApp, leads y tipificaciones de cierre.",
-    icon: Megaphone,
-    href: "/reportes/campanas-meta",
-  },
+  // Campañas Meta es del ERP de la agencia: mide avisos de Facebook/Instagram
+  // contra conversaciones de WhatsApp. Una distribuidora no lo usa. El código
+  // queda; para volver a mostrarlo, devolver esta tarjeta.
 ];
 
 export default function ReportesPage() {

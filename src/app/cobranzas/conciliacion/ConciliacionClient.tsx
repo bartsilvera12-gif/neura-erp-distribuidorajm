@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
@@ -207,6 +208,15 @@ export default function ConciliacionClient() {
 
   return (
     <div className="w-full min-w-0 space-y-5">
+      {/* Se entra desde Reportes y no habia forma de volver salvo el botón del
+          navegador. */}
+      <Link
+        href="/reportes"
+        className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-600"
+      >
+        ← Volver a Reportes
+      </Link>
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
