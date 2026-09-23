@@ -41,6 +41,10 @@ const nextConfig: NextConfig = {
       // Campañas Meta: mide avisos de Facebook/Instagram contra conversaciones
       // de WhatsApp. Es del ERP de la agencia y no aplica a una distribuidora.
       // Ocultar la tarjeta no alcanza: la URL escrita a mano seguiría llegando.
+      // Esta pantalla era un cartel de "en preparación" y duplicaba el nombre
+      // de la Conciliación bancaria de Cobranzas, que sí funciona. Se manda a
+      // la de verdad en vez de dejar a alguien mirando un cartel.
+      { source: "/reportes/conciliacion", destination: "/cobranzas/conciliacion", permanent: false },
       { source: "/reportes/campanas-meta", destination: "/reportes", permanent: false },
       { source: "/reportes/campanas-meta/:path*", destination: "/reportes", permanent: false },
     ];
