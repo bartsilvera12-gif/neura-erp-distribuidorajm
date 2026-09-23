@@ -75,7 +75,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
   const [usuariosEmpresaError, setUsuariosEmpresaError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
-    tipo_cliente: "empresa" as TipoCliente,
+    tipo_cliente: "persona" as TipoCliente,
     empresa: "",
     razon_social: "",
     ruc_factura: "",
@@ -195,7 +195,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
       setCrmBanner(`Prospecto ${prospecto.numero_control} — ${prospecto.empresa}`);
       setForm((prev) => ({
         ...prev,
-        tipo_cliente: "empresa",
+        tipo_cliente: "persona",
         empresa: prospecto.empresa,
         nombre_contacto: prospecto.contacto,
         telefono: prospecto.telefono ?? "",
@@ -452,43 +452,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
         <section className={sectionWrap}>
           <SectionTitle>Identificación</SectionTitle>
           <div className="space-y-4">
-            <div>
-              <label className={labelClass}>Tipo de cliente</label>
-              <div className="flex rounded-xl border border-slate-200 overflow-hidden w-fit shadow-sm">
-                {(["empresa", "persona"] as TipoCliente[]).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() =>
-                      setForm((prev) => ({
-                        ...prev,
-                        tipo_cliente: t,
-                        razon_social: razonSocialTouched
-                          ? prev.razon_social
-                          : t === "empresa"
-                            ? prev.empresa
-                            : prev.nombre_contacto,
-                        ruc_factura: rucFacturaTouched
-                          ? prev.ruc_factura
-                          : t === "empresa"
-                            ? prev.ruc
-                            : /^\d{4,}-\d$/.test((prev.documento || "").replace(/\s/g, ""))
-                              ? prev.documento
-                              : "",
-                      }))
-                    }
-                    className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
-                      form.tipo_cliente === t
-                        ? "bg-[#4FAEB2] text-white shadow-sm shadow-[#4FAEB2]/25"
-                        : "bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {t === "empresa" ? "Empresa" : "Persona"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Fila principal: nombre del cliente + su documento tributario (RUC empresa / CI persona) */}
             {form.tipo_cliente === "empresa" ? (
               <div className="grid gap-4 sm:grid-cols-2">

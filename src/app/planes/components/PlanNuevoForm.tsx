@@ -1,16 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { savePlan } from "@/lib/planes/storage";
-import {
-  fetchTiposFormCliente,
-  filasTiposDesdeSistemaEstatico,
-} from "@/lib/clientes/fetch-tipos-servicio-form";
-import type { ClienteTipoServicioRow } from "@/lib/clientes/tipo-servicio-catalogo";
 
 const fLabelClass = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
 const fInputClass =
@@ -66,13 +61,6 @@ export default function PlanNuevoForm({
 
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [filasTipoServicio, setFilasTipoServicio] = useState<ClienteTipoServicioRow[]>(() =>
-    filasTiposDesdeSistemaEstatico()
-  );
-
-  useEffect(() => {
-    void fetchTiposFormCliente().then(setFilasTipoServicio);
-  }, []);
 
   const closeOrBack = () => {
     if (onClose) onClose();
@@ -106,11 +94,6 @@ export default function PlanNuevoForm({
       setError("El precio debe ser mayor a 0.");
       return;
     }
-    if (!form.tipo_servicio) {
-      setError("El tipo de servicio es obligatorio.");
-      return;
-    }
-
     setGuardando(true);
     try {
       const guardado = await savePlan({
@@ -194,32 +177,17 @@ export default function PlanNuevoForm({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={fLabelClass}>Tipo de servicio *</label>
-                <FancySelect
-                  ariaLabel="Tipo de servicio"
-                  placeholder="— Elegí un tipo —"
-                  value={form.tipo_servicio}
-                  onChange={(v) => setField("tipo_servicio", v)}
-                  options={filasTipoServicio.map((f) => ({ value: f.slug, label: f.nombre }))}
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Define en qué equipo cae el servicio (Cobranzas) y cómo se clasifica el ingreso.
-                </p>
-              </div>
-              <div>
-                <label className={fLabelClass}>Estado</label>
-                <FancySelect
-                  ariaLabel="Estado"
-                  value={form.estado}
-                  onChange={(v) => setField("estado", v as "activo" | "inactivo")}
-                  options={[
-                    { value: "activo", label: "Activo" },
-                    { value: "inactivo", label: "Inactivo" },
-                  ]}
-                />
-              </div>
+            <div>
+              <label className={fLabelClass}>Estado</label>
+              <FancySelect
+                ariaLabel="Estado"
+                value={form.estado}
+                onChange={(v) => setField("estado", v as "activo" | "inactivo")}
+                options={[
+                  { value: "activo", label: "Activo" },
+                  { value: "inactivo", label: "Inactivo" },
+                ]}
+              />
             </div>
           </div>
         </SectionCard>
@@ -267,54 +235,6 @@ export default function PlanNuevoForm({
           </div>
         </SectionCard>
 
-        <SectionCard title="Límites del plan" icon="📦">
-          <p className="mb-4 text-xs text-slate-500">
-            Dejar en blanco para indicar que el límite es <strong>ilimitado</strong>.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className={fLabelClass}>Límite de usuarios</label>
-              <input
-                type="number"
-                name="limite_usuarios"
-                value={form.limite_usuarios}
-                onChange={handleChange}
-                min={1}
-                step="1"
-                placeholder="Ilimitado"
-                className={fInputClass}
-              />
-            </div>
-
-            <div>
-              <label className={fLabelClass}>Límite de clientes</label>
-              <input
-                type="number"
-                name="limite_clientes"
-                value={form.limite_clientes}
-                onChange={handleChange}
-                min={1}
-                step="1"
-                placeholder="Ilimitado"
-                className={fInputClass}
-              />
-            </div>
-
-            <div>
-              <label className={fLabelClass}>Límite de facturas</label>
-              <input
-                type="number"
-                name="limite_facturas"
-                value={form.limite_facturas}
-                onChange={handleChange}
-                min={1}
-                step="1"
-                placeholder="Ilimitado"
-                className={fInputClass}
-              />
-            </div>
-          </div>
-        </SectionCard>
 
         <div className="flex items-center justify-end gap-3">
           <button
