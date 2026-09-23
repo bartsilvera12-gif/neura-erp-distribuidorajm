@@ -51,6 +51,7 @@ import { supabase } from "@/lib/supabase";
 import type { ModuloEmpresa } from "@/lib/empresas/actions";
 import { getFavoritos, toggleFavorito } from "@/lib/favorites";
 import { canAccessSidebarSlug } from "@/lib/modulos/route-slug-map";
+import { estaOcultoEnMenu } from "@/lib/modulos/menu-oculto";
 import { useBoot } from "@/components/BootContext";
 
 type MenuItem = {
@@ -645,6 +646,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     const access = (slug: string) => canAccessSidebarSlug(slug, slugs, esSuperAdmin);
     return MENU_STRUCTURE.filter(
       (item) =>
+        !estaOcultoEnMenu(item.key) &&
         favoritos.includes(item.key) &&
         access(item.slug) &&
         menuItemMatchesQuery(item, menuSearchQuery)
@@ -656,6 +658,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     const access = (slug: string) => canAccessSidebarSlug(slug, slugs, esSuperAdmin);
     return MENU_STRUCTURE.filter(
       (item) =>
+        !estaOcultoEnMenu(item.key) &&
         !favoritos.includes(item.key) &&
         access(item.slug) &&
         menuItemMatchesQuery(item, menuSearchQuery)

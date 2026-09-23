@@ -5,13 +5,16 @@ import { usePathname } from "next/navigation";
 import { Home, ReceiptText, Settings } from "lucide-react";
 import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
 import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
+import { rutaOcultaEnNav } from "@/lib/modulos/menu-oculto";
 
 /**
  * Navegación inferior de la UI mobile.
  *
- * Tres secciones: Inicio (el menú de tiles), Órdenes de venta y Configuración.
- * Todo lo demás se alcanza desde los tiles de Inicio, que es como se usa en la
- * calle: pocas opciones grandes.
+ * Inicio (el menú de tiles) y Órdenes de venta. Todo lo demás se alcanza desde
+ * los tiles de Inicio, que es como se usa en la calle: pocas opciones grandes.
+ *
+ * Configuración sigue declarada pero hoy está oculta (ver `menu-oculto.ts`):
+ * su ruta funciona igual escribiéndola, no está cerrada por permisos.
  *
  * Órdenes de venta está acá y no Reportes porque es lo que se abre varias veces
  * por jornada: ver lo que se vendió y anular la venta que salió mal. Los
@@ -56,7 +59,9 @@ export default function BottomNav() {
     return pathname === item.href;
   };
 
-  const visibles = NAV_ITEMS.filter((item) => puedeVer(item.href) === true);
+  const visibles = NAV_ITEMS.filter(
+    (item) => !rutaOcultaEnNav(item.href) && puedeVer(item.href) === true
+  );
 
   if (teclado) return null;
 
