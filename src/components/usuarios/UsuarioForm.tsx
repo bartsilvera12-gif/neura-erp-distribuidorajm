@@ -128,7 +128,12 @@ const TIPO_CONTRATO_OPTIONS: FancySelectOption[] = [
   { value: "prestador_servicio", label: "Prestador de servicio" },
 ];
 
-const NIVEL_OPTIONS: FancySelectOption[] = [
+/**
+ * Cada nivel ofrecido acá tiene que ser un rol que la API acepte: el `value`
+ * es `NivelUsuario`, y `ROLES_ERP` se deriva de ese mismo tipo, así que
+ * agregar un nivel sin darlo de alta del otro lado no compila.
+ */
+const NIVEL_OPTIONS: (FancySelectOption & { value: NivelUsuario })[] = [
   { value: "usuario", label: "Usuario", description: "Acceso operativo estándar." },
   {
     value: "vendedor_movil",

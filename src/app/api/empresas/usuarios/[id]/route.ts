@@ -2,6 +2,7 @@ import { supabaseServiceRoleClientOptions } from "@/lib/supabase/schema";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { getServiceAuthUsuario } from "@/lib/auth/get-service-auth-usuario";
+import { canonicalErpRol } from "@/lib/usuarios/erp-rol-normalize";
 import {
   esRolAdminEmpresa,
   filterModuloIdsForEmpresa,
@@ -16,7 +17,6 @@ import {
   sanitizePostgrestErrorForLog,
 } from "@/lib/chat/postgrest-schema-error";
 
-const ERP_ROLES = ["usuario", "supervisor", "administrador"] as const;
 
 const OMNICANAL_PATCH_UNAVAILABLE_MSG =
   "La configuración omnicanal no se pudo guardar porque el schema tenant no está disponible por PostgREST.";
@@ -364,13 +364,15 @@ export async function PATCH(
       return NextResponse.json({ error: "Sin permiso para cambiar el nivel de acceso" }, { status: 403 });
     }
 
-    const rolNormalizado =
-      rolBody !== undefined ? String(rolBody).trim().toLowerCase() : undefined;
-    if (
-      rolNormalizado !== undefined &&
-      !(ERP_ROLES as readonly string[]).includes(rolNormalizado)
-    ) {
-      return NextResponse.json({ error: "Rol inválido" }, { status: 400 });
+    // La lista de roles válidos sale de un solo lugar, el mismo que usa el
+    // formulario: mantener acá una copia a mano fue lo que dejó afuera a
+    // Vendedor Móvil y rompía guardar cualquier cambio de esos usuarios.
+    const rolNormalizado = rolBody !== undefined ? canonicalErpRol(rolBody) : undefined;
+    if (rolBody !== undefined && rolNormalizado === null) {
+      return NextResponse.json(
+        { error: `Rol inválido: "${String(rolBody).trim()}"` },
+        { status: 400 }
+      );
     }
 
     const finalRol =
