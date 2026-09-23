@@ -599,11 +599,14 @@ function ProgressBar({
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className={`text-xs font-semibold ${isZ ? "" : "text-gray-700"}`} style={isZ ? { color: Z.text } : undefined}>
+      {/* Con el zoom del navegador arriba de 100% hay menos ancho real, y en
+          una sola fila el rótulo y el monto se montaban uno sobre otro. Ahora
+          el monto baja de línea cuando no entra, y no se parte por la mitad. */}
+      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className={`min-w-0 text-xs font-semibold ${isZ ? "" : "text-gray-700"}`} style={isZ ? { color: Z.text } : undefined}>
           {label}
         </span>
-        <span className={`text-xs tabular-nums ${isZ ? "" : "text-gray-500"}`} style={isZ ? { color: Z.muted } : undefined}>
+        <span className={`whitespace-nowrap text-xs tabular-nums ${isZ ? "" : "text-gray-500"}`} style={isZ ? { color: Z.muted } : undefined}>
           {fmt(v)} <span style={{ color: isZ ? "rgba(15,23,42,0.2)" : "#d1d5db" }}>/</span> {metaLabel}
         </span>
       </div>
@@ -1683,7 +1686,7 @@ function DashFinanciero({
             </h3>
           </div>
           <p className="mt-1 pl-3 text-[11px] text-slate-500">Avance del mes calendario vs. objetivos configurados</p>
-          <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-2">
             <ProgressBar
               variant="light"
               label="Facturación mensual"
