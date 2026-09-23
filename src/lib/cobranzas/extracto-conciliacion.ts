@@ -1,21 +1,20 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
 import * as XLSX from "xlsx";
 
 /**
- * Conciliación bancaria asistida por IA.
+ * Conciliación bancaria.
  *
- * 1) `extraerTransaccionesDeExtracto`: manda el PDF del extracto a Claude (lee texto + visual,
- *    sirve para PDFs digitales y escaneados) y devuelve las transacciones estructuradas.
+ * 1) `extraerTransacciones`: lee el extracto y devuelve las transacciones.
+ *    · Excel/CSV → se reconocen las columnas (Debe/Haber o Monto + Fecha + Comprobante).
+ *    · PDF       → se extrae el texto y se interpreta cada renglón.
+ *    Todo local: sin clave de API, sin costo por uso, y el extracto bancario no
+ *    sale del servidor. Un PDF escaneado no tiene texto y no se puede leer; en
+ *    ese caso el mensaje pide el Excel o CSV, que los bancos también ofrecen.
  * 2) `conciliar`: cruza los créditos (ingresos) del extracto contra las transferencias APROBADAS
  *    del mes, y clasifica cada caso (conciliado / aprobado-sin-respaldo / ingreso-no-registrado /
  *    monto-difiere). No modifica nada: solo informa.
- *
- * Requiere `ANTHROPIC_API_KEY` en el entorno (ya seteada en prod). Nunca lanza hacia el cliente
- * sin mensaje controlado: el endpoint traduce los errores.
  */
 
-const DEFAULT_MODEL = "claude-haiku-4-5";
 
 export type ExtractoTx = {
   fecha: string | null; // YYYY-MM-DD
@@ -61,38 +60,6 @@ export type ConciliacionResult = {
   };
 };
 
-const PROMPT_EXTRACCION = `Sos un extractor de datos de extractos bancarios de Paraguay. Te paso el PDF de un extracto de cuenta.
-
-Devolvé SOLO un JSON válido (sin texto extra, sin markdown) con esta forma exacta:
-{
-  "moneda": "GS" | "USD" | null,
-  "banco": string | null,
-  "transacciones": [
-    { "fecha": "YYYY-MM-DD", "monto": number, "tipo": "credito" | "debito", "referencia": string | null, "descripcion": string | null }
-  ]
-}
-
-Reglas:
-- Una entrada por cada movimiento de la tabla de transacciones. NO incluyas saldos, totales, encabezados ni resúmenes.
-- "monto": número positivo SIN separador de miles ni símbolo (ej: 1500000, no "1.500.000 Gs"). Punto decimal si aplica.
-- "tipo": "credito" para ingresos/créditos/depósitos/transferencias recibidas; "debito" para egresos/débitos/pagos/extracciones.
-- "referencia": el número de operación / comprobante / documento del movimiento si aparece; si no, null.
-- "fecha": normalizá a YYYY-MM-DD. Si no podés determinar el año, usá el del período del extracto.
-- Si un monto no se puede leer con certeza, omití esa fila.
-Devolvé ÚNICAMENTE el JSON.`;
-
-function extractJson(text: string): unknown {
-  const t = text.trim();
-  // ```json ... ``` o ``` ... ```
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fence ? fence[1] : t;
-  // primer { ... último }
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  const json = start >= 0 && end > start ? candidate.slice(start, end + 1) : candidate;
-  return JSON.parse(json);
-}
-
 function toNum(v: unknown): number {
   if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
   let s = String(v ?? "").trim();
@@ -118,89 +85,6 @@ function toNum(v: unknown): number {
 }
 
 /** Reintenta ante errores transitorios de la API (529 overloaded, 429, 503) con backoff. */
-async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-      const status = (e as { status?: number })?.status;
-      const msg = String((e as { message?: string })?.message ?? "");
-      const transitorio = status === 529 || status === 429 || status === 503 || /overloaded/i.test(msg);
-      if (!transitorio || i === tries - 1) throw e;
-      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
-    }
-  }
-  throw lastErr;
-}
-
-export async function extraerTransaccionesDeExtracto(
-  pdfBytes: Buffer,
-  opts?: { model?: string }
-): Promise<{ moneda: string | null; banco: string | null; transacciones: ExtractoTx[] }> {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    throw new Error("Falta ANTHROPIC_API_KEY en el servidor");
-  }
-  const anthropic = new Anthropic();
-  const model = opts?.model || process.env.CONCILIACION_MODEL?.trim() || DEFAULT_MODEL;
-
-  // La API puede devolver 529 (overloaded) o 429/503 transitorios; reintentar con backoff.
-  const msg = await withRetry(() =>
-    anthropic.messages.create({
-      model,
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: pdfBytes.toString("base64") },
-            },
-            { type: "text", text: PROMPT_EXTRACCION },
-          ],
-        },
-      ],
-    })
-  );
-
-  const textPart = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  if (!textPart) throw new Error("El modelo no devolvió texto");
-
-  let parsed: unknown;
-  try {
-    parsed = extractJson(textPart.text);
-  } catch {
-    throw new Error("No se pudo interpretar la respuesta del modelo (JSON inválido)");
-  }
-  const obj = (parsed ?? {}) as Record<string, unknown>;
-  const rawTx = Array.isArray(obj.transacciones) ? obj.transacciones : [];
-  const transacciones: ExtractoTx[] = rawTx
-    .map((r) => {
-      const t = (r ?? {}) as Record<string, unknown>;
-      const monto = toNum(t.monto);
-      const tipo = String(t.tipo ?? "").toLowerCase() === "debito" ? "debito" : "credito";
-      const fecha = typeof t.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.fecha) ? t.fecha : null;
-      return {
-        fecha,
-        monto,
-        tipo: tipo as "credito" | "debito",
-        referencia: t.referencia != null ? String(t.referencia).trim() || null : null,
-        descripcion: t.descripcion != null ? String(t.descripcion).trim().slice(0, 200) || null : null,
-      };
-    })
-    .filter((t) => Number.isFinite(t.monto) && t.monto > 0);
-
-  return {
-    moneda: typeof obj.moneda === "string" ? obj.moneda : null,
-    banco: typeof obj.banco === "string" ? obj.banco : null,
-    transacciones,
-  };
-}
-
-// ---- Lectura de Excel/CSV (directa, sin IA cuando se reconocen las columnas) ----
-
 function normHead(s: unknown): string {
   return String(s ?? "")
     .normalize("NFD")
@@ -325,69 +209,25 @@ export function parseExtractoExcel(bytes: Buffer): { moneda: string | null; banc
   return { moneda: null, banco: null, transacciones };
 }
 
-/** Fallback: manda el contenido (texto/CSV del Excel) a la IA para estructurarlo. */
-async function extraerTransaccionesDeTexto(
-  texto: string,
-  opts?: { model?: string }
-): Promise<{ moneda: string | null; banco: string | null; transacciones: ExtractoTx[] }> {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("Falta ANTHROPIC_API_KEY en el servidor");
-  const anthropic = new Anthropic();
-  const model = opts?.model || process.env.CONCILIACION_MODEL?.trim() || DEFAULT_MODEL;
-  const msg = await withRetry(() =>
-    anthropic.messages.create({
-      model,
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: `${PROMPT_EXTRACCION}\n\n--- CONTENIDO DEL EXTRACTO ---\n${texto.slice(0, 120000)}` }],
-        },
-      ],
-    })
-  );
-  const textPart = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  if (!textPart) throw new Error("El modelo no devolvió texto");
-  const obj = (extractJson(textPart.text) ?? {}) as Record<string, unknown>;
-  const rawTx = Array.isArray(obj.transacciones) ? obj.transacciones : [];
-  const transacciones: ExtractoTx[] = rawTx
-    .map((r) => {
-      const t = (r ?? {}) as Record<string, unknown>;
-      return {
-        fecha: typeof t.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.fecha) ? t.fecha : null,
-        monto: toNum(t.monto),
-        tipo: String(t.tipo ?? "").toLowerCase() === "debito" ? ("debito" as const) : ("credito" as const),
-        referencia: t.referencia != null ? String(t.referencia).trim() || null : null,
-        descripcion: t.descripcion != null ? String(t.descripcion).trim().slice(0, 200) || null : null,
-      };
-    })
-    .filter((t) => Number.isFinite(t.monto) && t.monto > 0);
-  return {
-    moneda: typeof obj.moneda === "string" ? obj.moneda : null,
-    banco: typeof obj.banco === "string" ? obj.banco : null,
-    transacciones,
-  };
-}
-
 /**
- * Punto de entrada: dispatch por tipo de archivo.
- *  - PDF → Claude lee el PDF (texto + visual).
- *  - Excel/CSV → parseo directo por columnas (gratis y exacto); si no se reconoce, fallback IA.
+ * Punto de entrada: dispatch por tipo de archivo. Todo se resuelve en el
+ * servidor, sin servicios externos.
  */
 export async function extraerTransacciones(
   bytes: Buffer,
   filename: string
-): Promise<{ moneda: string | null; banco: string | null; transacciones: ExtractoTx[]; via: "pdf-ia" | "excel-directo" | "excel-ia" }> {
+): Promise<{ moneda: string | null; banco: string | null; transacciones: ExtractoTx[]; via: "pdf-texto" | "excel-directo" }> {
   const lower = (filename || "").toLowerCase();
   if (lower.endsWith(".pdf")) {
-    return { ...(await extraerTransaccionesDeExtracto(bytes)), via: "pdf-ia" };
+    return { ...(await extraerTransaccionesDePdf(bytes)), via: "pdf-texto" };
   }
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".csv")) {
     const directo = parseExtractoExcel(bytes);
     if (directo) return { ...directo, via: "excel-directo" };
-    // No se reconocieron columnas → mandar el contenido como texto a la IA.
-    const aoa = leerFilas(bytes);
-    const texto = aoa.map((row) => row.map((c) => String(c ?? "")).join("\t")).join("\n");
-    return { ...(await extraerTransaccionesDeTexto(texto)), via: "excel-ia" };
+    throw new Error(
+      "No se reconocieron las columnas del archivo. El extracto necesita una columna de fecha, " +
+      "una de importe (Monto, o Debe y Haber) y preferentemente el nº de comprobante."
+    );
   }
   throw new Error("Formato no soportado (subí un PDF o un Excel)");
 }
@@ -511,4 +351,125 @@ export function conciliar(
       monto_sin_registrar: sum(sinRegistrar.map((c) => c.monto)),
     },
   };
+}
+
+// ── Extracto en PDF, sin IA ────────────────────────────────────────────────
+
+/**
+ * Saca las transacciones de un extracto en PDF leyendo su texto.
+ *
+ * Antes esto se le mandaba a Claude. Ahora se hace acá: se extrae el texto del
+ * PDF y se interpreta cada renglón. Sin clave de API, sin costo por uso y sin
+ * que el extracto bancario salga del servidor.
+ *
+ * El límite es real y hay que decirlo: un PDF ESCANEADO (una foto del papel)
+ * no tiene texto, así que de ahí no se puede sacar nada. En ese caso el
+ * endpoint pide el Excel o el CSV que los bancos también ofrecen.
+ *
+ * Formato de un renglón típico de extracto paraguayo:
+ *   01/09/2026  TRANSF. RECIBIDA JAZMIN Q  16788999   1.500.000        2.300.000
+ *   fecha       descripción                referencia  importe          saldo
+ */
+export async function extraerTransaccionesDePdf(
+  pdfBytes: Buffer
+): Promise<{ moneda: string | null; banco: string | null; transacciones: ExtractoTx[] }> {
+  const { extractText, getDocumentProxy } = await import("unpdf");
+  const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
+  const { text } = await extractText(doc, { mergePages: true });
+  const plano = Array.isArray(text) ? text.join("\n") : String(text ?? "");
+
+  if (plano.replace(/\s/g, "").length < 40) {
+    throw new Error(
+      "El PDF no tiene texto: parece escaneado o es una foto. Descargá el extracto en Excel o CSV desde el home banking y subí ese archivo."
+    );
+  }
+
+  const transacciones = parseRenglonesDeExtracto(plano);
+  if (transacciones.length === 0) {
+    throw new Error(
+      "No se reconoció ningún movimiento en el PDF. Si el banco ofrece el extracto en Excel o CSV, ese formato es más confiable."
+    );
+  }
+  return { moneda: detectarMoneda(plano), banco: detectarBanco(plano), transacciones };
+}
+
+/** PYG no usa decimales; USD sí. Se detecta para interpretar bien los importes. */
+function detectarMoneda(texto: string): string | null {
+  if (/\b(USD|DOLAR|DÓLAR|U\$S)\b/i.test(texto)) return "USD";
+  if (/\b(PYG|GUARAN|GS\.?)\b/i.test(texto)) return "PYG";
+  return null;
+}
+
+function detectarBanco(texto: string): string | null {
+  const bancos = ["ITAU", "ITAÚ", "CONTINENTAL", "UENO", "BASA", "GNB", "SUDAMERIS", "FAMILIAR", "ATLAS", "RIO", "REGIONAL"];
+  const arriba = texto.slice(0, 2000).toUpperCase();
+  return bancos.find((b) => arriba.includes(b)) ?? null;
+}
+
+/** Renglones que traen un importe pero no son un movimiento de la cuenta. */
+const NO_ES_MOVIMIENTO =
+  /\b(SALDO (ANTERIOR|INICIAL|FINAL|ACTUAL|DISPONIBLE|AL)|TOTALES?|SUBTOTAL|ARRASTRE|TRANSPORTE)\b/i;
+
+/** Un importe paraguayo: 1.500.000 o 1.500.000,50 o 1500000. */
+const IMPORTE = /-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|-?\d+,\d{1,2}|-?\d{4,}/g;
+
+/**
+ * Interpreta los renglones del texto del extracto.
+ *
+ * La heurística es a propósito conservadora: solo toma el renglón como
+ * movimiento si empieza con una fecha y tiene al menos un importe. Es
+ * preferible no reconocer un renglón raro a inventar un movimiento que no
+ * existe, porque después se cruza contra cobros reales.
+ */
+export function parseRenglonesDeExtracto(texto: string): ExtractoTx[] {
+  const out: ExtractoTx[] = [];
+  for (const crudo of texto.split(/\r?\n/)) {
+    const linea = crudo.replace(/\s+/g, " ").trim();
+    if (!linea) continue;
+
+    const mFecha = linea.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b/);
+    if (!mFecha) continue;
+    const anio = mFecha[3].length === 2 ? `20${mFecha[3]}` : mFecha[3];
+    const fecha = `${anio}-${mFecha[2].padStart(2, "0")}-${mFecha[1].padStart(2, "0")}`;
+
+    const resto = linea.slice(mFecha[0].length);
+
+    // Los renglones de saldo y totales NO son movimientos. Sin esto, un
+    // "SALDO ANTERIOR 800.000" entra como un ingreso que nadie hizo y después
+    // aparece en la conciliación como cobro sin registrar.
+    if (NO_ES_MOVIMIENTO.test(resto)) continue;
+
+    const importes = resto.match(IMPORTE) ?? [];
+    if (importes.length === 0) continue;
+
+    // El último número suele ser el saldo acumulado; el movimiento es el anterior.
+    // Con un solo número, ese es el movimiento.
+    const montoTxt = (importes.length >= 2 ? importes[importes.length - 2] : importes[0]) ?? "";
+    const monto = Math.abs(toNum(montoTxt));
+    if (!Number.isFinite(monto) || monto <= 0) continue;
+
+    // Débito vs crédito: por el signo, o por las palabras del renglón.
+    const negativo = montoTxt.trim().startsWith("-");
+    const esDebito =
+      negativo ||
+      /\b(DEBITO|DÉBITO|PAGO|EXTRACCION|EXTRACCIÓN|RETIRO|COMISION|COMISIÓN|IVA|TRANSF\.? ENVIADA|DEBITADO)\b/i.test(resto);
+
+    // La referencia: el número largo suelto más probable (nº de operación).
+    const ref = (resto.match(/\b\d{6,}\b/g) ?? []).find((n) => !montoTxt.includes(n)) ?? null;
+
+    const descripcion = resto
+      .replace(IMPORTE, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+
+    out.push({
+      fecha,
+      monto,
+      tipo: esDebito ? "debito" : "credito",
+      referencia: ref,
+      descripcion: descripcion || null,
+    });
+  }
+  return out;
 }

@@ -49,7 +49,7 @@ export default function ConciliacionClient() {
   const [ok, setOk] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
 
-  // Conciliación asistida por IA: subir el PDF del extracto y cruzar contra las aprobadas del mes.
+  // Conciliación: subir el extracto y cruzarlo contra las aprobadas del mes.
   const fileRef = useRef<HTMLInputElement>(null);
   const [analizando, setAnalizando] = useState(false);
   const [reporte, setReporte] = useState<Reporte | null>(null);
@@ -231,7 +231,7 @@ export default function ConciliacionClient() {
       {analizando && (
         <div className="flex items-center gap-3 rounded-lg border border-[#4FAEB2]/30 bg-[#4FAEB2]/5 p-3 text-sm text-[#3F8E91]">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
-          Analizando el extracto con IA y cruzando contra las transferencias aprobadas{mes ? ` de ${mes}` : ""}…
+          Leyendo el extracto y cruzando contra las transferencias aprobadas{mes ? ` de ${mes}` : ""}…
         </div>
       )}
 
@@ -443,7 +443,7 @@ export default function ConciliacionClient() {
                 <h3 className="text-lg font-semibold text-slate-900">Conciliación del extracto</h3>
                 <p className="truncate text-xs text-slate-500">
                   {reporte.archivo}{reporte.banco_detectado ? ` · ${reporte.banco_detectado}` : ""}{reporte.mes ? ` · ${reporte.mes}` : ""}
-                  {reporte.via === "excel-directo" ? " · Excel (lectura directa)" : reporte.via === "excel-ia" ? " · Excel (IA)" : reporte.via === "pdf-ia" ? " · PDF (IA)" : ""}
+                  {reporte.via === "excel-directo" ? " · Excel" : reporte.via === "pdf-texto" ? " · PDF" : ""}
                 </p>
               </div>
               <button onClick={() => setReporte(null)} className="shrink-0 text-lg text-slate-400 hover:text-slate-600">✕</button>
@@ -530,7 +530,7 @@ export default function ConciliacionClient() {
               {reporte.conciliados.length > 0 && (
                 <p className="text-xs text-emerald-700">✅ {reporte.conciliados.length} transferencia(s) conciliada(s) por {fmt(reporte.resumen.monto_conciliado)}.</p>
               )}
-              <p className="text-[11px] text-slate-400">El extracto se procesó con IA (Claude) y no modifica nada: es una verificación. Revisá los casos marcados.</p>
+              <p className="text-[11px] text-slate-400">El extracto se leyó en el servidor y no modifica nada: es una verificación. Revisá los casos marcados.</p>
             </div>
           </div>
         </div>
