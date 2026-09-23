@@ -147,7 +147,7 @@ export default function PagosPage() {
 
   useEffect(() => {
     getFacturas().then(setFacturas);
-    getClientes().then(setClientes);
+    getClientes().then(setClientes).catch((e) => console.error("[clientes]", e));
   }, []);
 
 

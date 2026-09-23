@@ -181,7 +181,7 @@ function PasoCliente({
   sub: null | "lista" | "nuevo";
   setSub: (v: null | "lista" | "nuevo") => void;
 }) {
-  const { clientes, isLoading, mutate } = useClientes();
+  const { clientes, isLoading, error: errorClientes, mutate } = useClientes();
   const [query, setQuery] = useState("");
 
   const filtrados = useMemo(() => {
@@ -231,9 +231,22 @@ function PasoCliente({
 
         {isLoading ? (
           <p className="mt-6 text-center text-sm text-slate-400">Cargando clientes…</p>
+        ) : errorClientes ? (
+          // La lista no se pudo cargar: decirlo, en vez de que parezca que no hay clientes.
+          <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3">
+            <p className="text-sm font-medium text-rose-700">No se pudo cargar la lista de clientes.</p>
+            <p className="mt-1 text-xs text-rose-600">{errorClientes.message}</p>
+            <button
+              type="button"
+              onClick={() => mutate()}
+              className="mt-2 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700"
+            >
+              Reintentar
+            </button>
+          </div>
         ) : filtrados.length === 0 ? (
           <p className="mt-6 text-center text-sm text-slate-400">
-            Ningún cliente coincide con “{query}”.
+            {query ? `Ningún cliente coincide con “${query}”.` : "Todavía no hay clientes cargados."}
           </p>
         ) : (
           <ul className="mt-3 space-y-2">

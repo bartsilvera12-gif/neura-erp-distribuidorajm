@@ -415,7 +415,7 @@ function OpcionesMoneda({ caja }: { caja: CajaVenta }) {
 // ── Cliente ──────────────────────────────────────────────────────────────────
 
 function SelectorCliente({ caja }: { caja: CajaVenta }) {
-  const { clientes, mutate } = useClientes();
+  const { clientes, error: errorClientes, mutate } = useClientes();
   const [abierto, setAbierto] = useState(false);
   const [registrando, setRegistrando] = useState(false);
   const [query, setQuery] = useState("");
@@ -474,9 +474,22 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          {filtrados.length === 0 ? (
+          {errorClientes ? (
+            // La lista no se pudo cargar: decirlo, en vez de que parezca vacía.
+            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2">
+              <p className="text-xs font-medium text-rose-700">No se pudo cargar la lista de clientes.</p>
+              <p className="mt-0.5 text-[11px] text-rose-600">{errorClientes.message}</p>
+              <button
+                type="button"
+                onClick={() => mutate()}
+                className="mt-1.5 rounded-md border border-rose-300 px-2 py-1 text-[11px] font-medium text-rose-700"
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : filtrados.length === 0 ? (
             <p className="mt-3 text-center text-xs text-slate-400">
-              Ningún cliente coincide con “{query}”.
+              {query ? `Ningún cliente coincide con “${query}”.` : "Todavía no hay clientes cargados."}
             </p>
           ) : null}
           <ul className="mt-2 max-h-56 overflow-y-auto">

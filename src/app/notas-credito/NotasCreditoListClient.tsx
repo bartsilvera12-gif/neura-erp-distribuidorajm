@@ -110,7 +110,7 @@ export default function NotasCreditoListClient() {
           nombre: nombreClienteDisplay(x, "—"),
         })),
       ),
-    );
+    ).catch((e) => console.error("[clientes]", e));
   }, []);
 
   const queryString = useMemo(() => {

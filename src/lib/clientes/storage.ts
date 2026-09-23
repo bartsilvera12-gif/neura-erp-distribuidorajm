@@ -188,10 +188,14 @@ export async function getClientes(opts?: { incluirEliminados?: boolean; incluirP
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.error("[clientes] getClientes API:", res.status, text);
-      return [];
+      // Un fallo NO puede parecer "no hay clientes": el buscador diría
+      // "ningún cliente coincide" y nadie se enteraría del error real.
+      throw new Error(motivoDeRespuesta(text) || `Error ${res.status} al cargar los clientes.`);
     }
-    const json = (await res.json()) as { success: boolean; data?: unknown };
-    if (!json.success || !Array.isArray(json.data)) return [];
+    const json = (await res.json()) as { success: boolean; error?: string; data?: unknown };
+    if (!json.success || !Array.isArray(json.data)) {
+      throw new Error(json.error ?? "La lista de clientes vino en un formato inesperado.");
+    }
 
     return (json.data as (SupabaseRow & { plan_activo?: string })[]).map((row) => {
       const c = rowToCliente(row);
@@ -200,8 +204,20 @@ export async function getClientes(opts?: { incluirEliminados?: boolean; incluirP
     });
   } catch (e) {
     console.error("[clientes] getClientes:", e);
-    return [];
+    throw e instanceof Error ? e : new Error("No se pudieron cargar los clientes.");
   }
+}
+
+/** El mensaje de error que trae una respuesta, sea JSON o texto plano. */
+function motivoDeRespuesta(texto: string): string {
+  if (!texto) return "";
+  try {
+    const j = JSON.parse(texto) as { error?: unknown };
+    if (typeof j.error === "string" && j.error) return j.error;
+  } catch {
+    /* no era JSON */
+  }
+  return texto.slice(0, 300);
 }
 
 /** Obtiene un cliente por ID vía API tenant. Por defecto excluye eliminados. */
