@@ -225,20 +225,24 @@ function formatGsFull(n: number): string {
   return Math.round(num).toLocaleString("es-PY");
 }
 
-/** Formato abreviado (mantengo para charts/ejes donde el espacio es limitado). */
+/**
+ * Formato abreviado para ejes y barras, donde no entra el número completo.
+ *
+ * Las abreviaturas van en castellano, no en inglés: "200 mil" y "1,5 M", no
+ * "200K" ni "1.5M". Nadie acá lee un monto en guaraníes como "200K", y de
+ * hecho eso fue lo primero que preguntaron al ver el gráfico.
+ */
 function formatGsM(n: number): string {
   const num = Number(n);
   if (!Number.isFinite(num) || num < 0) return "0";
-  if (num >= 1_000_000_000) {
-    const b = num / 1_000_000_000;
-    return b % 1 === 0 ? `${b}B` : `${b.toFixed(1)}B`;
-  }
-  if (num >= 1_000_000) {
-    const m = num / 1_000_000;
-    return m % 1 === 0 ? `${m}M` : `${m.toFixed(1)}M`;
-  }
-  if (num >= 1_000) return `${Math.round(num / 1_000)}K`;
-  return num.toLocaleString("es-PY");
+  // Con separador de miles y coma decimal, como se escribe acá.
+  const esPy = (x: number, dec: number) =>
+    x.toLocaleString("es-PY", { minimumFractionDigits: 0, maximumFractionDigits: dec });
+  // Mil millones en adelante se siguen leyendo en millones ("1.200 M"): "MMM"
+  // no lo usa nadie.
+  if (num >= 1_000_000) return `${esPy(num / 1_000_000, 1)} M`;
+  if (num >= 10_000) return `${esPy(num / 1_000, 0)} mil`;
+  return Math.round(num).toLocaleString("es-PY");
 }
 
 function formatFecha(s: string): string {
@@ -518,24 +522,30 @@ function DonutChart({
         {segments.map((seg, i) => {
           const pct = total > 0 ? (seg.value / total) * 100 : 0;
           return (
-            <div key={i} className="flex items-center gap-2.5">
-              <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: seg.color }} />
+            // Con `truncate` en una columna angosta la etiqueta quedaba en una
+            // sola letra ("S…", "B…", "C…") y no se entendía qué era cada
+            // color. Ahora, si no entra en una línea, el valor baja a la
+            // siguiente en vez de comerse el nombre.
+            <div key={i} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <div
+                className="mt-1 h-2.5 w-2.5 shrink-0 self-start rounded-full"
+                style={{ backgroundColor: seg.color }}
+              />
               <span
-                className={`min-w-0 flex-1 truncate text-xs ${isZ ? "" : "text-gray-600"}`}
+                className={`min-w-0 text-xs ${isZ ? "" : "text-gray-600"}`}
                 style={isZ ? { color: Z.text } : undefined}
-                title={seg.label}
               >
                 {seg.label}
               </span>
               {legendDetail ? (
                 <span
-                  className="shrink-0 text-xs font-semibold tabular-nums"
+                  className="ml-auto shrink-0 text-xs font-semibold tabular-nums"
                   style={{ color: isZ ? Z.muted : "#1f2937" }}
                 >
                   {formatValue(seg.value)} · {pct.toFixed(1)}%
                 </span>
               ) : (
-                <span className={`shrink-0 text-xs font-bold tabular-nums ${isZ ? "" : "text-gray-800"}`} style={isZ ? { color: Z.muted } : undefined}>
+                <span className={`ml-auto shrink-0 text-xs font-bold tabular-nums ${isZ ? "" : "text-gray-800"}`} style={isZ ? { color: Z.muted } : undefined}>
                   {formatValue(seg.value)}
                 </span>
               )}
@@ -648,10 +658,14 @@ function KpiCard({
         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : "border-rose-200 bg-rose-50 text-rose-700";
 
+  // `min-h-[10rem]` y columna: el mismo alto que las tarjetas de Financiero,
+  // así las tres pestañas del dashboard se ven parejas.
+  const cardBase =
+    "relative flex h-full min-h-[10rem] flex-col overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5 sm:p-6";
   const cardCls =
     accent === "featured"
-      ? "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 p-5 shadow-[0_4px_18px_rgba(79,174,178,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(79,174,178,0.14)] sm:p-6"
-      : "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-6";
+      ? `${cardBase} border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 shadow-[0_4px_18px_rgba(79,174,178,0.08)] hover:shadow-[0_8px_28px_rgba(79,174,178,0.14)]`
+      : `${cardBase} border border-[#4FAEB2]/45 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:shadow-md`;
 
   return (
     <motion.div whileHover={{ y: -2 }} className={cardCls}>
@@ -686,6 +700,7 @@ function KpiCard({
       <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
         {label}
       </p>
+      <div className="flex-1" aria-hidden="true" />
       <p className={`mt-1 text-3xl font-semibold tabular-nums leading-tight tracking-tight ${variant === "zentra" ? color : color}`}>
         {value}
       </p>
@@ -1154,7 +1169,11 @@ function FinMontoGs({
   if (kpi) {
     return (
       <p
-        className={`min-w-0 w-full text-left font-bold leading-none tabular-nums whitespace-nowrap [font-size:clamp(0.65rem,5.5cqi+0.15rem,1.45rem)] ${className}`}
+        // El tope llega a 1.875rem = text-3xl, el mismo que usan las tarjetas
+        // de Inventario y Ventas, para que las tres pestañas se vean iguales.
+        // Sigue siendo un clamp porque un monto en guaraníes es largo y no
+        // puede desbordar la tarjeta.
+        className={`min-w-0 w-full text-left font-bold leading-none tabular-nums whitespace-nowrap [font-size:clamp(0.7rem,6cqi+0.15rem,1.875rem)] ${className}`}
         title={texto}
       >
         {texto}

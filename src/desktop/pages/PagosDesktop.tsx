@@ -673,7 +673,9 @@ export default function PagosPage() {
                       (h) => (
                         <th
                           key={h}
-                          className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500 first:pl-5 last:pr-5 sm:px-4"
+                          className={`px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500 first:pl-5 last:pr-5 sm:px-4 ${
+                            h === "Fecha y hora" ? "text-center" : "text-left"
+                          }`}
                         >
                           {h}
                         </th>
@@ -728,7 +730,9 @@ export default function PagosPage() {
                       >
                         {p.usuario_nombre}
                       </td>
-                      <td className="min-w-[6rem] px-3 py-3 text-sm text-slate-500 last:pr-5 sm:px-4 [overflow-wrap:anywhere] break-words">
+                      {/* Sin break-words: "22/09/2026 15:31" se partía en dos
+                          líneas y la columna quedaba desprolija. */}
+                      <td className="whitespace-nowrap px-3 py-3 text-center text-sm tabular-nums text-slate-500 last:pr-5 sm:px-4">
                         {formatFechaHora(p.fecha_registro)}
                       </td>
                     </tr>

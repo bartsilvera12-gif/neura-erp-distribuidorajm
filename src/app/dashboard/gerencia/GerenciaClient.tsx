@@ -244,7 +244,7 @@ export default function GerenciaClient() {
                       tick={{ fontSize: 11, fill: "#94a3b8" }}
                       tickLine={false}
                       axisLine={false}
-                      width={64}
+                      width={80}
                     />
                     <Tooltip
                       formatter={(v: number) => [gs(v), "Vendido"]}

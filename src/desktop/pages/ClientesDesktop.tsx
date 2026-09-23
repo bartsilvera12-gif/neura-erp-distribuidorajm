@@ -95,6 +95,7 @@ type ClienteColumnKey =
   | "codigo"
   | "empresa_nombre"
   | "contacto"
+  | "ciudad"
   | "telefono"
   | "plan_activo"
   | "origen"
@@ -119,6 +120,7 @@ const DEFAULT_VISIBLE_COLUMN_KEYS: ClienteColumnKey[] = [
   "codigo",
   "empresa_nombre",
   "contacto",
+  "ciudad",
   "telefono",
   "plan_activo",
   "origen",
@@ -228,7 +230,19 @@ function buildClienteColumns(): ClienteColumnDef[] {
       visibleDefault: true,
       headerClassName: th,
       className: `${td} text-sm text-slate-700 whitespace-nowrap`,
-      render: (c) => (c.tipo_cliente === "empresa" ? c.nombre_contacto : (c.ciudad ?? "—")),
+      // Solo la persona de contacto de una empresa. Antes, para un cliente
+      // persona, acá se mostraba la CIUDAD: dos datos distintos bajo el mismo
+      // título, y por eso "Asunción" aparecía en la columna Contacto. Un
+      // cliente persona no tiene un contacto aparte: es él mismo.
+      render: (c) => (c.tipo_cliente === "empresa" ? (c.nombre_contacto ?? "—") : "—"),
+    },
+    {
+      key: "ciudad",
+      label: "Ciudad",
+      visibleDefault: true,
+      headerClassName: th,
+      className: `${td} text-sm text-slate-700 whitespace-nowrap`,
+      render: (c) => c.ciudad ?? "—",
     },
     {
       key: "telefono",
