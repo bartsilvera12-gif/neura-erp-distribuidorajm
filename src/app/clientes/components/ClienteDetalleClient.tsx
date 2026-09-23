@@ -94,8 +94,9 @@ type ProyectoClienteRow = {
 const TABS: { id: TabId; label: string; showWhen?: (c: Cliente) => boolean }[] = [
   { id: "informacion",   label: "Información"      },
   { id: "estado_cuenta", label: "Estado de cuenta" },
-  { id: "proyectos",     label: "Proyectos"         },
-  { id: "actividad",     label: "Actividad"         },
+  // Proyectos y Actividad son del ERP de la agencia (obras y seguimiento CRM):
+  // una distribuidora no los usa y en el celular solo estorbaban. El código de
+  // esas pestañas sigue acá; para volver a mostrarlas, devolver estas líneas.
   { id: "notas",         label: "Notas"             },
 ];
 
@@ -1073,7 +1074,9 @@ export default function ClienteDetalleClient({
   const nombre = clienteNombre(cliente);
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    // px-4 en el celular: el shell mobile no pone margen lateral y la ficha
+    // quedaba pegada a los dos bordes.
+    <div className="space-y-6 max-w-7xl px-4 pt-3 sm:px-0 sm:pt-0">
 
       {/* ── Breadcrumb ────────────────────────────────────────────────────── */}
       <button
@@ -1085,9 +1088,11 @@ export default function ClienteDetalleClient({
 
       {/* ── Panel resumen ─────────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-[#4FAEB2]/45 bg-white shadow-sm">
-        <div className="bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 px-6 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-4">
+        <div className="bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 px-4 py-4 sm:px-6 sm:py-5">
+          {/* En el celular va apilado: en una fila, el nombre largo chocaba
+              contra el botón de la derecha y quedaba cortado. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               {/* Avatar */}
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#4FAEB2]/30 bg-[#4FAEB2]/12 text-lg font-semibold tracking-tight text-[#3F8E91] shadow-sm">
                 {nombre.slice(0, 2).toUpperCase()}
@@ -1250,7 +1255,7 @@ export default function ClienteDetalleClient({
         </div>
 
         {/* Estadísticas rápidas */}
-        <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100 bg-slate-50/40 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-px border-t border-slate-100 bg-slate-100 sm:grid-cols-4 lg:grid-cols-7">
           {(
             [
               { label: "Origen", value: cliente.origen },
@@ -1281,7 +1286,7 @@ export default function ClienteDetalleClient({
               { label: "Creado por", value: cliente.created_by_nombre?.trim() || "—" },
             ] as { label: string; value: ReactNode }[]
           ).map((item) => (
-            <div key={item.label} className="px-5 py-3.5">
+            <div key={item.label} className="bg-slate-50/60 px-3 py-2.5 sm:px-5 sm:py-3.5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                 {item.label}
               </p>

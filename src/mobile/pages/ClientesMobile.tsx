@@ -64,7 +64,7 @@ export default function ClientesMobile() {
           </div>
           <Link
             href="/clientes/nuevo"
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0EA5E9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#0284C7]"
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#3F8E91]"
           >
             <Plus className="h-4 w-4" />
             Nuevo
@@ -80,7 +80,7 @@ export default function ClientesMobile() {
           placeholder="Empresa, nombre, RUC o email"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0EA5E9]/40 focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30"
+          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#4FAEB2]/40 focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30"
         />
       </div>
 
@@ -92,8 +92,10 @@ export default function ClientesMobile() {
       </div>
 
       {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          No se pudieron cargar los clientes. Refrescá para reintentar.
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-700">No se pudieron cargar los clientes.</p>
+          {/* El motivo del servidor, para no tener que mirar la consola. */}
+          <p className="mt-1 text-xs text-red-600">{error.message}</p>
         </div>
       ) : null}
 
@@ -128,7 +130,7 @@ function ClienteCard({ cliente }: { cliente: Cliente }) {
         href={`/clientes/${cliente.id}`}
         className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-transform active:scale-[0.99]"
       >
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0EA5E9]/10 text-base font-bold text-[#0EA5E9]">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#4FAEB2]/10 text-base font-bold text-[#3F8E91]">
           {inicial}
         </div>
         <div className="min-w-0 flex-1">
@@ -184,7 +186,7 @@ function FilterChip({ active, onClick, label }: { active: boolean; onClick: () =
       onClick={onClick}
       className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
         active
-          ? "bg-[#0EA5E9] text-white"
+          ? "bg-[#4FAEB2] text-white"
           : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
       }`}
     >
