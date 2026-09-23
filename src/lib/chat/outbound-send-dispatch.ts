@@ -454,6 +454,42 @@ export async function sendTextViaBaileysBridge(
   }
 }
 
+/** Envío de documento (PDF, imagen) por el puente Baileys. El archivo va como
+ * base64 dentro del JSON. Mismo protocolo que sendText pero al endpoint
+ * /send-media del puente. */
+export async function sendMediaViaBaileysBridge(
+  bridgeUrl: string,
+  toDigits: string,
+  file: { buffer: Buffer; filename: string; mimetype: string },
+  caption?: string
+): Promise<SendWhatsAppTextResult> {
+  const secret = (process.env.BAILEYS_BRIDGE_SECRET || "").trim();
+  try {
+    const res = await fetch(`${bridgeUrl}/send-media`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bridge-secret": secret },
+      body: JSON.stringify({
+        to: toDigits,
+        filename: file.filename,
+        mimetype: file.mimetype,
+        base64: file.buffer.toString("base64"),
+        caption: caption ?? "",
+      }),
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      id?: string | null;
+      error?: string;
+    };
+    if (!res.ok || !raw.ok) {
+      return { ok: false, error: raw.error || `El puente WhatsApp respondió ${res.status}.`, raw };
+    }
+    return { ok: true, waMessageId: raw.id ?? null, raw };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo contactar al puente WhatsApp." };
+  }
+}
+
 export async function sendOutboundTextMessage(
   ctx: ChannelOutboundTextContext,
   text: string,
