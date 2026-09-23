@@ -42,6 +42,7 @@ import {
   CalendarDays,
   BarChart3,
   HandCoins,
+  Landmark,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -149,6 +150,24 @@ const MENU_STRUCTURE: MenuItem[] = [
   { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },
   { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
   { key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: HandCoins },
+  /**
+   * Bancos vive en `/configuracion/bancos`, pero Configuración está oculta del
+   * menú y ésta es la pantalla donde se carga la cuenta propia a la que el
+   * cliente transfiere: sin eso el modal de cobro no tiene a dónde apuntar.
+   * Por eso se ofrece acá, al lado de Cobranzas.
+   *
+   * El slug sigue siendo "configuracion" y no "cobranzas" a propósito: la ruta
+   * está protegida por ese módulo (ver `route-slug-map`), así que mostrarla con
+   * el permiso de Cobranzas sería ofrecer una puerta cerrada a quien no lo
+   * tiene. Se ve exactamente para quien puede abrirla.
+   */
+  {
+    key: "bancos",
+    slug: "configuracion",
+    label: "Bancos",
+    href: "/configuracion/bancos",
+    icon: Landmark,
+  },
   { key: "comisiones", slug: "comisiones", label: "Comisiones", href: "/comisiones", icon: Percent },
   {
     key: "notas_credito",
@@ -275,7 +294,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "finanzas",
     title: "Finanzas",
-    itemKeys: ["ventas", "cobranzas", "pagos", "gastos", "compras", "notas_credito", "reportes"],
+    itemKeys: ["ventas", "cobranzas", "bancos", "pagos", "gastos", "compras", "notas_credito", "reportes"],
   },
   { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "produccion"] },
   {
