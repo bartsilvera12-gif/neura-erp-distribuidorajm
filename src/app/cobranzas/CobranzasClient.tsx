@@ -945,31 +945,29 @@ function DetalleSeccion({
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
           {facturas.map((f) => (
-            <li key={f.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-              <span className={`min-w-0 whitespace-nowrap ${f.vencida ? "text-rose-600" : "text-slate-600"}`}>
+            <li key={f.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 px-3 py-2 text-xs">
+              <span className={`min-w-0 truncate ${f.vencida ? "text-rose-600" : "text-slate-600"}`}>
                 {f.numero_factura ?? "—"} · vence {fmtDate(f.fecha_vencimiento)}
               </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <span className="font-semibold tabular-nums text-slate-800">{fmtMoney(f.saldo)}</span>
-                {puedeRegistrar ? (
-                  f.id === oldestId ? (
-                    <button
-                      type="button"
-                      onClick={() => onRegistrar(f)}
-                      className="rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-1 text-[10px] font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/20"
-                    >
-                      Registrar pago
-                    </button>
-                  ) : (
-                    <span
-                      className="text-[10px] text-slate-400"
-                      title={`Primero se cobra la cuota más vieja${oldestNumero ? ` (${oldestNumero})` : ""}`}
-                    >
-                      Pagá primero {oldestNumero ?? "la cuota anterior"}
-                    </span>
-                  )
-                ) : null}
-              </span>
+              <span className="whitespace-nowrap font-semibold tabular-nums text-slate-800">{fmtMoney(f.saldo)}</span>
+              {puedeRegistrar ? (
+                f.id === oldestId ? (
+                  <button
+                    type="button"
+                    onClick={() => onRegistrar(f)}
+                    className="justify-self-end rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-1 text-[10px] font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/20"
+                  >
+                    Registrar pago
+                  </button>
+                ) : (
+                  <span
+                    className="justify-self-end truncate text-[10px] text-slate-400"
+                    title={`Primero se cobra la cuota más vieja${oldestNumero ? ` (${oldestNumero})` : ""}`}
+                  >
+                    Pagá primero {oldestNumero ?? "la cuota anterior"}
+                  </span>
+                )
+              ) : <span />}
             </li>
           ))}
         </ul>
