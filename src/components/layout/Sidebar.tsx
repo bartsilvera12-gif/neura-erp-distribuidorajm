@@ -36,7 +36,6 @@ import {
   TrendingUp,
   ScrollText,
   ListChecks,
-  FolderKanban,
   Factory,
   Percent,
   Tags,
@@ -227,13 +226,6 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: Gauge,
   },
   {
-    key: "proyectos",
-    slug: "proyectos",
-    label: "Proyectos",
-    href: "/dashboard/proyectos",
-    icon: FolderKanban,
-  },
-  {
     // Reporte gerencial de producción. Reusa el permiso del módulo Proyectos (slug),
     // key propia y única. El gate fino (gerencia/admin) lo aplica la API.
     key: "produccion",
@@ -277,7 +269,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "comercial",
     title: "Comercial",
-    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos"],
+    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda"],
   },
   {
     id: "finanzas",

@@ -93,7 +93,6 @@ type ProyectoClienteRow = {
 const TABS: { id: TabId; label: string; showWhen?: (c: Cliente) => boolean }[] = [
   { id: "informacion",   label: "Información"      },
   { id: "estado_cuenta", label: "Estado de cuenta" },
-  { id: "proyectos",     label: "Proyectos"         },
   { id: "actividad",     label: "Actividad"         },
   { id: "notas",         label: "Notas"             },
 ];
@@ -316,7 +315,7 @@ export default function ClienteDetalleClient({
 
   // Estados del formulario de información
   const [form, setForm] = useState({
-    tipo_cliente:        "empresa" as Cliente["tipo_cliente"],
+    tipo_cliente:        "persona" as Cliente["tipo_cliente"],
     empresa:             "",
     razon_social:        "",
     ruc_factura:         "",
@@ -1635,24 +1634,6 @@ export default function ClienteDetalleClient({
               <section className="space-y-4">
                 <SectionTitle>Datos de identificación</SectionTitle>
 
-                <div>
-                  <label className={labelClass}>Tipo de cliente</label>
-                  <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
-                    {(["empresa", "persona"] as Cliente["tipo_cliente"][]).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setForm((prev) => ({ ...prev, tipo_cliente: t }))}
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${
-                          form.tipo_cliente === t ? "bg-[#4FAEB2] text-white" : "bg-white text-slate-600 hover:bg-slate-50"
-                        }`}
-                      >
-                        {t === "empresa" ? "Empresa" : "Persona"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Fila principal: nombre + documento tributario (RUC empresa / CI persona) */}
                 {form.tipo_cliente === "empresa" ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1903,34 +1884,6 @@ export default function ClienteDetalleClient({
                   <div>
                     <label className={labelClass}>Vendedor asignado (texto libre)</label>
                     <input type="text" name="vendedor_asignado" value={form.vendedor_asignado} onChange={handleChange} className={`${inputClass} uppercase`} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Project Manager</label>
-                    <select
-                      name="project_manager_id"
-                      value={form.project_manager_id}
-                      onChange={(e) => setForm((p) => ({ ...p, project_manager_id: e.target.value }))}
-                      className={inputClass}
-                    >
-                      <option value="">— Sin asignar —</option>
-                      {usuariosEmpresa
-                        .filter((u) => u.es_project_manager)
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {(u.nombre ?? "").trim() || u.email}
-                          </option>
-                        ))}
-                    </select>
-                    {usuariosEmpresaError ? (
-                      <p className="mt-1 text-xs text-red-600">{usuariosEmpresaError}</p>
-                    ) : usuariosEmpresa.filter((u) => u.es_project_manager).length === 0 ? (
-                      <p className="mt-1 text-xs text-slate-500">
-                        No hay Project Managers configurados (se marcan en Usuarios).
-                      </p>
-                    ) : null}
                   </div>
                 </div>
 
@@ -2393,76 +2346,6 @@ export default function ClienteDetalleClient({
                     </tbody>
                   </table>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* ── PROYECTOS ────────────────────────────────────────────────── */}
-          {activeTab === "proyectos" && (
-            <div className="max-w-3xl">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700">Proyectos del cliente</h3>
-                  <p className="text-[11px] text-slate-500">En curso y finalizados asociados a este cliente.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void cargarProyectos()}
-                  disabled={cargandoProyectos}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2] disabled:opacity-50"
-                >
-                  {cargandoProyectos ? "Actualizando…" : "Actualizar"}
-                </button>
-              </div>
-
-              {cargandoProyectos && proyectos.length === 0 ? (
-                <p className="text-sm text-slate-400">Cargando proyectos…</p>
-              ) : proyectos.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center">
-                  <p className="text-3xl">📁</p>
-                  <p className="mt-2 text-sm font-medium text-slate-600">Este cliente no tiene proyectos aún</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Al crear un proyecto en{" "}
-                    <Link href="/dashboard/proyectos" className="font-semibold text-[#4FAEB2] hover:underline">
-                      Proyectos
-                    </Link>{" "}
-                    y elegir este cliente, aparecerá acá.
-                  </p>
-                </div>
-              ) : (
-                <ol className="space-y-2">
-                  {proyectos.map((p) => {
-                    const estado = p.proyecto_estado?.nombre ?? "—";
-                    const color = p.proyecto_estado?.color ?? "#94a3b8";
-                    const resp = p.responsable_tecnico?.nombre ?? p.responsable_comercial?.nombre ?? null;
-                    return (
-                      <Link
-                        key={p.id}
-                        href={`/dashboard/proyectos/${p.id}`}
-                        className="block rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-slate-50/60"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-800">
-                              {p.titulo || "(sin título)"}
-                            </p>
-                            <p className="mt-0.5 text-[11px] text-slate-500">
-                              {p.proyecto_tipo?.nombre ? `${p.proyecto_tipo.nombre} · ` : ""}
-                              {resp ? `Resp: ${resp}` : "Sin responsable"}
-                              {p.created_at ? ` · ${formatFecha(p.created_at)}` : ""}
-                            </p>
-                          </div>
-                          <span
-                            className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                            style={{ backgroundColor: `${color}1a`, color }}
-                          >
-                            {estado}
-                          </span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </ol>
               )}
             </div>
           )}

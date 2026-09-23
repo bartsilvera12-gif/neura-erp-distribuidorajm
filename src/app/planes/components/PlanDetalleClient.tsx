@@ -8,14 +8,6 @@ import { FancySelect, type FancySelectOption } from "@/app/dashboard/proyectos/c
 import { getPlan, updatePlan, toggleEstadoPlan, deletePlan } from "@/lib/planes/storage";
 import type { Plan, PlanMarketingItem } from "@/lib/planes/types";
 import { TIPOS_CONTENIDO } from "@/lib/marketing/types";
-import {
-  fetchTiposFormCliente,
-  filasTiposDesdeSistemaEstatico,
-} from "@/lib/clientes/fetch-tipos-servicio-form";
-import {
-  etiquetaVisibleTipoServicio,
-  type ClienteTipoServicioRow,
-} from "@/lib/clientes/tipo-servicio-catalogo";
 
 const fLabelClass = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
 const fInputClass =
@@ -29,10 +21,6 @@ function formatPrecio(p: Plan) {
   return p.moneda === "USD"
     ? `USD ${p.precio.toLocaleString("en-US")}`
     : `Gs. ${formatGs(p.precio)}`;
-}
-
-function limiteLabel(v: number | null) {
-  return v === null ? "Ilimitado" : v.toLocaleString("es-PY");
 }
 
 function SectionCard({
@@ -147,14 +135,6 @@ export default function PlanDetalleClient({
     plantilla_items: [] as PlanMarketingItem[],
   });
 
-  const [filasTipoServicio, setFilasTipoServicio] = useState<ClienteTipoServicioRow[]>(() =>
-    filasTiposDesdeSistemaEstatico()
-  );
-
-  useEffect(() => {
-    void fetchTiposFormCliente().then(setFilasTipoServicio);
-  }, []);
-
   useEffect(() => {
     if (!id) return;
     setLoadError(null);
@@ -212,11 +192,6 @@ export default function PlanDetalleClient({
       setFormError("El precio debe ser mayor a 0.");
       return;
     }
-    if (!form.tipo_servicio) {
-      setFormError("El tipo de servicio es obligatorio.");
-      return;
-    }
-
     const itemsNorm = form.plantilla_items.map((it) => {
       if (it.periodicidad === "semanal") {
         return { ...it, cantidad: Math.max(1, (it.dias_semana ?? []).length) };
@@ -332,18 +307,6 @@ export default function PlanDetalleClient({
               </span>
               <BadgeEstado estado={plan.estado} />
               <BadgePeriodicidad p={plan.periodicidad} />
-              {plan.tipo_servicio ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
-                  {etiquetaVisibleTipoServicio(
-                    plan.tipo_servicio,
-                    Object.fromEntries(filasTipoServicio.map((f) => [f.slug, f.nombre]))
-                  )}
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                  Sin tipo
-                </span>
-              )}
             </div>
             {plan.descripcion && (
               <p className="mt-1 text-sm text-slate-500">{plan.descripcion}</p>
@@ -415,41 +378,6 @@ export default function PlanDetalleClient({
         </SectionCard>
       ) : null}
 
-      {/* Resumen de límites (vista) */}
-      {!editing && (
-        <SectionCard title="Límites del plan" icon="📦">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[
-              { label: "Usuarios", value: limiteLabel(plan.limite_usuarios) },
-              { label: "Clientes", value: limiteLabel(plan.limite_clientes) },
-              { label: "Facturas", value: limiteLabel(plan.limite_facturas) },
-            ].map((item) => {
-              const ilim = item.value === "Ilimitado";
-              return (
-                <div
-                  key={item.label}
-                  className={`rounded-xl border p-4 text-center ${
-                    ilim
-                      ? "border-[#4FAEB2]/30 bg-[#4FAEB2]/8"
-                      : "border-slate-200 bg-slate-50/70"
-                  }`}
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    {item.label}
-                  </p>
-                  <p
-                    className={`mt-1 text-lg font-bold tracking-tight ${
-                      ilim ? "text-[#3F8E91]" : "text-slate-800"
-                    }`}
-                  >
-                    {item.value}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      )}
 
       {/* Formulario de edición */}
       {editing && (
@@ -483,29 +411,17 @@ export default function PlanDetalleClient({
                   className={fInputClass}
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={fLabelClass}>Tipo de servicio *</label>
-                  <FancySelect
-                    ariaLabel="Tipo de servicio"
-                    placeholder="— Elegí un tipo —"
-                    value={form.tipo_servicio}
-                    onChange={(v) => setField("tipo_servicio", v)}
-                    options={filasTipoServicio.map((f) => ({ value: f.slug, label: f.nombre }))}
-                  />
-                </div>
-                <div>
-                  <label className={fLabelClass}>Estado</label>
-                  <FancySelect
-                    ariaLabel="Estado del plan"
-                    value={form.estado}
-                    onChange={(v) => setField("estado", v as "activo" | "inactivo")}
-                    options={[
-                      { value: "activo", label: "Activo" },
-                      { value: "inactivo", label: "Inactivo" },
-                    ]}
-                  />
-                </div>
+              <div>
+                <label className={fLabelClass}>Estado</label>
+                <FancySelect
+                  ariaLabel="Estado del plan"
+                  value={form.estado}
+                  onChange={(v) => setField("estado", v as "activo" | "inactivo")}
+                  options={[
+                    { value: "activo", label: "Activo" },
+                    { value: "inactivo", label: "Inactivo" },
+                  ]}
+                />
               </div>
             </div>
           </SectionCard>
@@ -736,52 +652,6 @@ export default function PlanDetalleClient({
             </div>
           </SectionCard>
 
-          <SectionCard title="Límites del plan" icon="📦">
-            <p className="mb-4 text-xs text-slate-500">
-              Dejar en blanco para indicar que el límite es <strong>ilimitado</strong>.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className={fLabelClass}>Usuarios</label>
-                <input
-                  type="number"
-                  name="limite_usuarios"
-                  value={form.limite_usuarios}
-                  onChange={handleChange}
-                  min={1}
-                  step="1"
-                  placeholder="Ilimitado"
-                  className={fInputClass}
-                />
-              </div>
-              <div>
-                <label className={fLabelClass}>Clientes</label>
-                <input
-                  type="number"
-                  name="limite_clientes"
-                  value={form.limite_clientes}
-                  onChange={handleChange}
-                  min={1}
-                  step="1"
-                  placeholder="Ilimitado"
-                  className={fInputClass}
-                />
-              </div>
-              <div>
-                <label className={fLabelClass}>Facturas</label>
-                <input
-                  type="number"
-                  name="limite_facturas"
-                  value={form.limite_facturas}
-                  onChange={handleChange}
-                  min={1}
-                  step="1"
-                  placeholder="Ilimitado"
-                  className={fInputClass}
-                />
-              </div>
-            </div>
-          </SectionCard>
 
           <div className="flex items-center justify-end gap-3">
             <button

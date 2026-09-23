@@ -7,8 +7,6 @@ import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import EdgeScrollArea from "@/components/ui/EdgeScrollArea";
 import PlanDetalleModal from "@/app/planes/components/PlanDetalleModal";
 import PlanNuevoModal from "@/app/planes/components/PlanNuevoModal";
-import { fetchTiposFormCliente } from "@/lib/clientes/fetch-tipos-servicio-form";
-import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -19,10 +17,6 @@ function formatGs(n: number) {
 function formatPrecio(p: Plan) {
   if (p.moneda === "USD") return `USD ${p.precio.toLocaleString("en-US")}`;
   return `Gs. ${formatGs(p.precio)}`;
-}
-
-function limiteLabel(v: number | null) {
-  return v === null ? "Ilimitado" : v.toLocaleString("es-PY");
 }
 
 // ── Badges ────────────────────────────────────────────────────────────────────
@@ -73,28 +67,6 @@ function BadgePeriodicidad({ p }: { p: Plan["periodicidad"] }) {
   );
 }
 
-function BadgeTipo({
-  tipo,
-  labels,
-}: {
-  tipo: string | null | undefined;
-  labels: Record<string, string>;
-}) {
-  const slug = (tipo ?? "").trim();
-  if (!slug) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-        Sin tipo
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
-      {etiquetaVisibleTipoServicio(slug, labels)}
-    </span>
-  );
-}
-
 // ── Página ────────────────────────────────────────────────────────────────────
 
 export default function PlanesPage() {
@@ -107,14 +79,7 @@ export default function PlanesPage() {
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalleEditing, setDetalleEditing] = useState(false);
-  const [tipoLabels, setTipoLabels] = useState<Record<string, string>>({});
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
-
-  useEffect(() => {
-    void fetchTiposFormCliente().then((filas) =>
-      setTipoLabels(Object.fromEntries(filas.map((f) => [f.slug, f.nombre])))
-    );
-  }, []);
 
   const recargar = () => {
     setCargando(true);
@@ -150,7 +115,6 @@ export default function PlanesPage() {
             p.moneda,
             formatPrecio(p),
             p.tipo_servicio ?? "",
-            p.tipo_servicio ? etiquetaVisibleTipoServicio(p.tipo_servicio, tipoLabels) : "",
           ]
             .join(" ")
             .toLowerCase();
@@ -160,7 +124,7 @@ export default function PlanesPage() {
         if (filtroPer && p.periodicidad !== filtroPer) return false;
         return true;
       }),
-    [planes, busqueda, filtroEst, filtroPer, tipoLabels]
+    [planes, busqueda, filtroEst, filtroPer]
   );
 
   const activos = useMemo(
@@ -377,12 +341,8 @@ export default function PlanesPage() {
                   {[
                     "Código",
                     "Nombre",
-                    "Tipo",
                     "Precio",
                     "Periodicidad",
-                    "Usuarios",
-                    "Clientes",
-                    "Facturas",
                     "Estado",
                     "Acciones",
                   ].map((h) => (
@@ -427,10 +387,6 @@ export default function PlanesPage() {
                           </p>
                         )}
                       </td>
-                      {/* Tipo */}
-                      <td className="px-3 py-2.5">
-                        <BadgeTipo tipo={plan.tipo_servicio} labels={tipoLabels} />
-                      </td>
                       {/* Precio */}
                       <td className="whitespace-nowrap px-3 py-2.5 tabular-nums font-semibold text-[#3F8E91]">
                         {formatPrecio(plan)}
@@ -438,16 +394,6 @@ export default function PlanesPage() {
                       {/* Periodicidad */}
                       <td className="px-3 py-2.5">
                         <BadgePeriodicidad p={plan.periodicidad} />
-                      </td>
-                      {/* Límites */}
-                      <td className="px-3 py-2.5 text-xs tabular-nums text-slate-600">
-                        {limiteLabel(plan.limite_usuarios)}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs tabular-nums text-slate-600">
-                        {limiteLabel(plan.limite_clientes)}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs tabular-nums text-slate-600">
-                        {limiteLabel(plan.limite_facturas)}
                       </td>
                       {/* Estado */}
                       <td className="px-3 py-2.5">
