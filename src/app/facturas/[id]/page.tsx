@@ -179,7 +179,6 @@ function FacturaDetalleInner() {
           </p>
         </div>
         <div className="flex gap-2 print:hidden">
-          <EnviarWhatsappButton facturaId={id} disabled={factura.estado === "Anulado"} />
           <button
             type="button"
             onClick={() => window.print()}
@@ -247,62 +246,6 @@ function FacturaDetalleInner() {
         onResumenLoaded={onResumenLoaded}
         onComercialUpdated={reloadFacturaComercial}
       />
-    </div>
-  );
-}
-
-function EnviarWhatsappButton({ facturaId, disabled }: { facturaId: string; disabled?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-
-  async function enviar() {
-    if (busy) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetchWithSupabaseSession(`/api/facturas/${facturaId}/enviar-whatsapp`, {
-        method: "POST",
-      });
-      const j = (await res.json()) as { success?: boolean; error?: string; data?: { to?: string } };
-      if (!res.ok || !j.success) {
-        setMsg({ kind: "err", text: j.error ?? `Error ${res.status}` });
-      } else {
-        setMsg({ kind: "ok", text: `Enviado al ${j.data?.to ?? "cliente"}.` });
-      }
-    } catch (e) {
-      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Error de red" });
-    } finally {
-      setBusy(false);
-      window.setTimeout(() => setMsg(null), 4000);
-    }
-  }
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={enviar}
-        disabled={busy || disabled}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/60 bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:opacity-50"
-        title={disabled ? "No se puede enviar una factura anulada" : "Enviar el recibo por WhatsApp al cliente"}
-      >
-        {/* icono simple de WhatsApp */}
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
-          <path d="M20.5 3.5A11 11 0 0 0 3.4 17.2L2 22l4.9-1.3A11 11 0 1 0 20.5 3.5Zm-8.4 17a9 9 0 0 1-4.6-1.3l-.3-.2-2.9.8.8-2.8-.2-.3a9 9 0 1 1 7.2 3.8Zm5.1-6.7c-.3-.1-1.6-.8-1.9-.9-.3-.1-.5-.1-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1a7.4 7.4 0 0 1-3.7-3.2c-.3-.5.3-.5.8-1.6.1-.2 0-.3 0-.5 0-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5H8c-.2 0-.5.1-.7.3-.3.3-.9 1-.9 2.3 0 1.4 1 2.7 1.1 2.9.1.2 1.9 3 4.7 4.2 2.8 1.2 2.8.8 3.3.7.5-.1 1.6-.7 1.8-1.3.2-.6.2-1.2.2-1.3-.1-.1-.3-.2-.6-.3Z"/>
-        </svg>
-        {busy ? "Enviando…" : "WhatsApp"}
-      </button>
-      {msg ? (
-        <div
-          className={`absolute right-0 top-full mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] shadow-sm ${
-            msg.kind === "ok"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
-          }`}
-        >
-          {msg.text}
-        </div>
-      ) : null}
     </div>
   );
 }
