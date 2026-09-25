@@ -98,6 +98,13 @@ export type OrigenCatalogo = {
   /** `empresa` = maestro de inventario, sin acotar a camión ni salón. */
   tipo: "camion" | "salon" | "camion_sin_ubicacion" | "empresa";
   camion: string | null;
+  /**
+   * Por qué la lista salió del salón y no de un camión. Solo para diagnosticar
+   * el caso en que el vendedor tiene el camión cargado y la caja igual le
+   * muestra el salón vacío: sin esto, desde la pantalla no hay forma de saber
+   * si el problema es el rol del usuario o el reparto.
+   */
+  motivo_salon?: "rol_no_es_vendedor_movil" | "sin_reparto_abierto" | "varios_repartos_abiertos";
 };
 
 /**

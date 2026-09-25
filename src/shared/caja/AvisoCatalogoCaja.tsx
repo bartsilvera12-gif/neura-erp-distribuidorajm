@@ -62,3 +62,17 @@ export default function AvisoCatalogoCaja({
     </p>
   );
 }
+
+/** El motivo del servidor, dicho para quien está parado frente a la caja. */
+export function textoMotivoSalon(origen?: { motivo_salon?: string } | null): string | null {
+  switch (origen?.motivo_salon) {
+    case "rol_no_es_vendedor_movil":
+      return "Tu usuario no figura como Vendedor Móvil, así que la caja te muestra el salón y no un camión. Se cambia en Usuarios, en el nivel de acceso.";
+    case "sin_reparto_abierto":
+      return "No tenés ningún reparto abierto. Abrí uno en Repartos para vender del camión.";
+    case "varios_repartos_abiertos":
+      return "Tenés más de un reparto abierto y no se puede saber de cuál vendés. Cerrá el que no corresponda en Repartos.";
+    default:
+      return null;
+  }
+}

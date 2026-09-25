@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
-import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
+import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 import { clienteNombre } from "@/lib/clientes/storage";
@@ -425,6 +425,9 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
               : origen?.tipo === "camion"
                 ? "El camión está vacío. Cargalo desde Repartos antes de salir."
                 : "No hay stock en el salón. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
+        {textoMotivoSalon(origen) ? (
+          <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
+        ) : null}
         </p>
       ) : (
         <ul className="mt-3 space-y-2">

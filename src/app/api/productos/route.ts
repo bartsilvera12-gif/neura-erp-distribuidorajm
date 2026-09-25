@@ -16,6 +16,7 @@ import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/norma
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
+import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
  * El camión de un reparto y su ubicación de inventario.
@@ -59,6 +60,43 @@ async function camionDelReparto(
   const row = q.rows[0];
   if (!row) return vacio;
   return { ubicacion_id: row.ubicacion_id, camion: row.nombre, existe: true };
+}
+
+/**
+ * Camión del reparto que este usuario tiene ABIERTO ahora.
+ *
+ * Es el hecho real de "este vendedor está en la calle con este camión", y no
+ * depende de que alguien haya cargado `camiones.repartidor_id`: ese campo es la
+ * asignación fija, que puede estar vacía aunque el reparto esté abierto y
+ * cargado. Cuando lo estaba, el catálogo caía al salón —vacío, porque la
+ * mercadería estaba arriba del camión— y el vendedor no podía vender nada.
+ *
+ * Con más de uno abierto no se elige por él: devuelve vacío para que la
+ * pantalla pregunte de cuál vende.
+ */
+async function misRepartosAbiertos(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  schema: string,
+  empresaId: string,
+  usuarioId: string
+): Promise<CamionDelReparto[]> {
+  const vacio: CamionDelReparto[] = [];
+  const existe = await queryWithRetry<{ r: string | null; c: string | null }>(
+    pool,
+    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c`,
+    [`${schema}.repartos`, `${schema}.camiones`]
+  );
+  if (!existe.rows[0]?.r || !existe.rows[0]?.c) return vacio;
+
+  const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
+    pool,
+    `SELECT c.ubicacion_id, c.nombre
+       FROM ${quoteSchemaTable(schema, "repartos")} r
+       JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
+      WHERE r.empresa_id = $1::uuid AND r.repartidor_id = $2::uuid AND r.estado = 'abierto'`,
+    [empresaId, usuarioId]
+  );
+  return q.rows.map((r) => ({ ubicacion_id: r.ubicacion_id, camion: r.nombre, existe: true }));
 }
 
 /**
@@ -132,6 +170,7 @@ export async function GET(request: NextRequest) {
     const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
 
     let camion: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
+    let motivoSalon: OrigenCatalogo["motivo_salon"];
     if (paraVenta) {
       if (repartoId) camion = await camionDelReparto(pool, schema, empresaId, repartoId);
 
@@ -149,7 +188,18 @@ export async function GET(request: NextRequest) {
       if (!camion.existe) {
         const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
         if (yo && alcanceRepartos(yo.rol) === "propios") {
-          camion = await miCamion(pool, schema, empresaId, yo.id);
+          // Primero el reparto abierto —el hecho— y recién después el camión
+          // asignado en la ficha, que es solo la intención y puede faltar.
+          const abiertos = await misRepartosAbiertos(pool, schema, empresaId, yo.id);
+          if (abiertos.length === 1) {
+            camion = abiertos[0];
+          } else {
+            motivoSalon = abiertos.length === 0 ? "sin_reparto_abierto" : "varios_repartos_abiertos";
+            camion = await miCamion(pool, schema, empresaId, yo.id);
+            if (camion.existe) motivoSalon = undefined;
+          }
+        } else if (yo) {
+          motivoSalon = "rol_no_es_vendedor_movil";
         }
       }
     }
@@ -170,7 +220,7 @@ export async function GET(request: NextRequest) {
       : ubicacionId
         ? { tipo: "camion" as const, camion: camion.camion }
         : paraVenta
-          ? { tipo: "salon" as const, camion: null }
+          ? { tipo: "salon" as const, camion: null, motivo_salon: motivoSalon }
           : { tipo: "empresa" as const, camion: null };
 
     // Stock del salón: el total de la empresa menos lo que está arriba de los

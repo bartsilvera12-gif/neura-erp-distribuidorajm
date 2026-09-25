@@ -265,6 +265,21 @@ export default function PagosPage() {
     () => Object.fromEntries(clientes.map((c) => [c.id, nombreClienteDisplay(c, "—")])),
     [clientes]
   );
+  /**
+   * Mapa clienteId → "Empresa" / "Persona".
+   *
+   * La columna tenía encabezado pero no celda: la fila traía 9 `<td>` contra 10
+   * `<th>`, así que todo lo que venía después se corría una columna y los
+   * botones caían bajo "Estado", dejando "Acción" vacía. No era un problema de
+   * padding.
+   */
+  const tipoPorCliente = useMemo(
+    () =>
+      Object.fromEntries(
+        clientes.map((c) => [c.id, c.tipo_cliente === "persona" ? "Persona" : "Empresa"])
+      ) as Record<string, string>,
+    [clientes]
+  );
   /** Mapa clienteId → vendedor asignado (nombre del usuario resuelto, o el texto libre). */
   const vendedorPorCliente = useMemo(
     () =>
@@ -507,6 +522,9 @@ export default function PagosPage() {
                             `Cliente #${String(f.cliente_id).slice(0, 8)}`}
                         </Link>
                       </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-600 sm:px-4">
+                        {tipoPorCliente[String(f.cliente_id)] ?? "—"}
+                      </td>
                       <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
                         <span className="inline-block max-w-[12rem] truncate">
                           {vendedorPorCliente[String(f.cliente_id)] ?? "—"}
@@ -697,14 +715,6 @@ export default function PagosPage() {
                           title={p.cliente_nombre}
                         >
                           {p.cliente_nombre}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
-                        <span
-                          className="inline-block max-w-[18rem] truncate 2xl:max-w-none"
-                          title={p.servicio_tipo_nombre}
-                        >
-                          {p.servicio_tipo_nombre}
                         </span>
                       </td>
                       <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
-import AvisoCatalogoCaja from "@/shared/caja/AvisoCatalogoCaja";
+import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
@@ -136,6 +136,9 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
             : caja.repartoId
               ? "El camión está vacío. Cargalo desde Repartos antes de salir."
               : "No hay stock disponible para vender. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
+              {textoMotivoSalon(origen) ? (
+                <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
+              ) : null}
         </p>
       ) : (
         <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

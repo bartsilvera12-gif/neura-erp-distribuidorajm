@@ -285,7 +285,7 @@ export function useCajaVenta() {
    * muestra sea siempre el primero que hay que resolver.
    */
   const motivoNoConfirmar = useMemo((): string | null => {
-    if (!clienteElegido) return "Elegí el cliente para poder cobrar.";
+    if (!clienteElegido) return "Elegí el cliente, o tocá «Sin nombre» para vender sin identificarlo.";
     if (carrito.length === 0) return "Agregá al menos un producto.";
     if (moneda === "USD" && tipoCambioNum <= 0) return "Cargá el tipo de cambio.";
     if (aCredito && !creditoDisponible) {
