@@ -37,6 +37,25 @@ function abreTeclado(el: Element | null): boolean {
   );
 }
 
+/**
+ * La decisión, separada del DOM para poder probarla.
+ *
+ * Cuando se puede MEDIR la pantalla, la medida manda y el foco no se mira: el
+ * teclado de Android se cierra con el botón de atrás sin sacar el foco del
+ * campo, y mirando el foco la app se quedaba creída de que seguía abierto —con
+ * la pantalla contraída y en blanco— hasta que se tocaba en cualquier lado. El
+ * foco queda solo de respaldo para navegadores sin `visualViewport`.
+ */
+export function tecladoAbierto(estado: {
+  medible: boolean;
+  achicada: boolean;
+  tactil: boolean;
+  enfocado: boolean;
+}): boolean {
+  if (estado.medible) return estado.achicada;
+  return estado.tactil && estado.enfocado;
+}
+
 export function useTecladoVirtual(): boolean {
   const [abierto, setAbierto] = useState(false);
 
@@ -55,10 +74,14 @@ export function useTecladoVirtual(): boolean {
       const enfocado = abreTeclado(document.activeElement);
       const alto = vv?.height ?? window.innerHeight;
 
-      if (!enfocado && alto > referencia) referencia = alto;
+      // La referencia solo crece, así que subirla es siempre señal de pantalla
+      // sin teclado. Antes esto pedía además que no hubiera nada enfocado, y
+      // con el campo todavía enfocado al cerrarse el teclado la referencia
+      // quedaba vieja y la pantalla no se recuperaba.
+      if (alto > referencia) referencia = alto;
 
       const achicada = referencia - alto > 150;
-      setAbierto((tactil && enfocado) || achicada);
+      setAbierto(tecladoAbierto({ medible: !!vv, achicada, tactil, enfocado }));
     };
 
     revisar();
