@@ -104,7 +104,11 @@ export type OrigenCatalogo = {
    * muestra el salón vacío: sin esto, desde la pantalla no hay forma de saber
    * si el problema es el rol del usuario o el reparto.
    */
-  motivo_salon?: "rol_no_es_vendedor_movil" | "sin_reparto_abierto" | "varios_repartos_abiertos";
+  motivo_salon?:
+    | "rol_no_es_vendedor_movil"
+    | "sin_reparto_abierto"
+    | "varios_repartos_abiertos"
+    | "usuario_no_encontrado";
 };
 
 /**

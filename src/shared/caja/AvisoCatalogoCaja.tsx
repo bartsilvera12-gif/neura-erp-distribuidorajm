@@ -70,6 +70,8 @@ export function textoMotivoSalon(origen?: { motivo_salon?: string } | null): str
       return "Tu usuario no figura como Vendedor Móvil, así que la caja te muestra el salón y no un camión. Se cambia en Usuarios, en el nivel de acceso.";
     case "sin_reparto_abierto":
       return "No tenés ningún reparto abierto. Abrí uno en Repartos para vender del camión.";
+    case "usuario_no_encontrado":
+      return "El usuario con el que entraste no figura en la lista de usuarios de la empresa (se busca por correo). Revisá que el correo de la ficha sea el mismo con el que iniciás sesión.";
     case "varios_repartos_abiertos":
       return "Tenés más de un reparto abierto y no se puede saber de cuál vendés. Cerrá el que no corresponda en Repartos.";
     default:

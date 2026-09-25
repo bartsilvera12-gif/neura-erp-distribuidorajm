@@ -78,15 +78,32 @@ async function misRepartosAbiertos(
   pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
   schema: string,
   empresaId: string,
-  usuarioId: string
-): Promise<CamionDelReparto[]> {
-  const vacio: CamionDelReparto[] = [];
-  const existe = await queryWithRetry<{ r: string | null; c: string | null }>(
+  email: string | null | undefined,
+  usuarioCatalogId: string | null
+): Promise<{ camiones: CamionDelReparto[]; usuarioEncontrado: boolean; rol: string | null }> {
+  const nada = { camiones: [] as CamionDelReparto[], usuarioEncontrado: false, rol: null };
+  const existe = await queryWithRetry<{ r: string | null; c: string | null; u: string | null }>(
     pool,
-    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c`,
-    [`${schema}.repartos`, `${schema}.camiones`]
+    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c, to_regclass($3)::text AS u`,
+    [`${schema}.repartos`, `${schema}.camiones`, `${schema}.usuarios`]
   );
-  if (!existe.rows[0]?.r || !existe.rows[0]?.c) return vacio;
+  const e = existe.rows[0];
+  if (!e?.r || !e?.c || !e?.u) return nada;
+
+  // El usuario se busca por correo O por el id del catálogo: atarlo solo al
+  // correo hacía que un correo distinto entre la ficha y el login dejara al
+  // vendedor sin camión, sin que nada lo dijera.
+  const yo = await queryWithRetry<{ id: string; rol: string | null }>(
+    pool,
+    `SELECT id, rol FROM ${quoteSchemaTable(schema, "usuarios")}
+      WHERE empresa_id = $1::uuid
+        AND ( ($2::text IS NOT NULL AND lower(btrim(email)) = lower(btrim($2::text)))
+           OR ($3::uuid IS NOT NULL AND id = $3::uuid) )
+      LIMIT 1`,
+    [empresaId, email ?? null, usuarioCatalogId ?? null]
+  );
+  const row = yo.rows[0];
+  if (!row) return nada;
 
   const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
@@ -94,9 +111,13 @@ async function misRepartosAbiertos(
        FROM ${quoteSchemaTable(schema, "repartos")} r
        JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
       WHERE r.empresa_id = $1::uuid AND r.repartidor_id = $2::uuid AND r.estado = 'abierto'`,
-    [empresaId, usuarioId]
+    [empresaId, row.id]
   );
-  return q.rows.map((r) => ({ ubicacion_id: r.ubicacion_id, camion: r.nombre, existe: true }));
+  return {
+    camiones: q.rows.map((x) => ({ ubicacion_id: x.ubicacion_id, camion: x.nombre, existe: true })),
+    usuarioEncontrado: true,
+    rol: row.rol,
+  };
 }
 
 /**
@@ -186,20 +207,27 @@ export async function GET(request: NextRequest) {
       // sin catálogo. Es la misma regla que aplica la pantalla (`useCajaVenta`);
       // acá faltaba, así que las dos podían no coincidir.
       if (!camion.existe) {
-        const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
-        if (yo && alcanceRepartos(yo.rol) === "propios") {
-          // Primero el reparto abierto —el hecho— y recién después el camión
-          // asignado en la ficha, que es solo la intención y puede faltar.
-          const abiertos = await misRepartosAbiertos(pool, schema, empresaId, yo.id);
-          if (abiertos.length === 1) {
-            camion = abiertos[0];
-          } else {
-            motivoSalon = abiertos.length === 0 ? "sin_reparto_abierto" : "varios_repartos_abiertos";
-            camion = await miCamion(pool, schema, empresaId, yo.id);
-            if (camion.existe) motivoSalon = undefined;
-          }
-        } else if (yo) {
+        const mio = await misRepartosAbiertos(
+          pool,
+          schema,
+          empresaId,
+          ctx.auth.user?.email,
+          ctx.auth.usuarioCatalogId ?? null
+        );
+        if (!mio.usuarioEncontrado) {
+          motivoSalon = "usuario_no_encontrado";
+        } else if (alcanceRepartos(mio.rol) !== "propios") {
           motivoSalon = "rol_no_es_vendedor_movil";
+        } else if (mio.camiones.length === 1) {
+          // Manda el hecho —el reparto abierto— y no la asignación de la ficha.
+          camion = mio.camiones[0];
+        } else {
+          motivoSalon =
+            mio.camiones.length === 0 ? "sin_reparto_abierto" : "varios_repartos_abiertos";
+          // El camión asignado queda de respaldo por si el reparto no se abrió.
+          const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
+          if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
+          if (camion.existe) motivoSalon = undefined;
         }
       }
     }
