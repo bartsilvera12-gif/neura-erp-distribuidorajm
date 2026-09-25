@@ -72,7 +72,7 @@ export function textoMotivoSalon(
   }
   switch (origen?.motivo_salon) {
     case "rol_no_es_vendedor_movil":
-      return "Tu usuario no figura como Vendedor Móvil, así que la caja te muestra el salón y no un camión. Se cambia en Usuarios, en el nivel de acceso.";
+      return "Tu usuario es administrador, así que la caja vende del salón aunque figures en un reparto. Para vender del camión, entrá con el usuario del repartidor.";
     case "sin_reparto_abierto":
       return "No tenés ningún reparto abierto. Abrí uno en Repartos para vender del camión.";
     case "usuario_no_encontrado":

@@ -15,8 +15,8 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
-import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
 import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
+import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
@@ -236,12 +236,19 @@ export async function GET(request: NextRequest) {
           ctx.auth.user?.email,
           ctx.auth.usuarioCatalogId ?? null
         );
+        // Tener un reparto ABIERTO a tu nombre es el hecho más fuerte que hay:
+        // significa que saliste con ese camión. Antes se exigía además que el
+        // `rol` dijera "vendedor_movil", y ese campo puede estar vacío o
+        // escrito distinto en bases heredadas —incluso faltar la columna—, con
+        // lo cual un vendedor con el camión cargado terminaba viendo el salón
+        // entero. Ahora el rol solo sirve para lo que hace falta: dejar afuera
+        // al administrador, que vende de mostrador aunque figure en un reparto.
+        const esAdmin = esRolAdminEmpresa(mio.rol);
         if (!mio.usuarioEncontrado) {
           motivoSalon = "usuario_no_encontrado";
-        } else if (alcanceRepartos(mio.rol) !== "propios") {
+        } else if (esAdmin) {
           motivoSalon = "rol_no_es_vendedor_movil";
         } else if (mio.camiones.length === 1) {
-          // Manda el hecho —el reparto abierto— y no la asignación de la ficha.
           camion = mio.camiones[0];
         } else {
           motivoSalon =
