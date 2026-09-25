@@ -1,6 +1,8 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { Info, Truck } from "lucide-react";
+import { fechaCorta, etiquetaCamion } from "@/shared/caja/arqueo-ui";
+import type { Reparto } from "@/lib/repartos/types";
 
 /** Piezas que comparten el cierre mobile y el desktop. */
 
@@ -97,6 +99,66 @@ export function AvisoSinReparto() {
           Este cierre es del día, no de un camión. Abrí un reparto para tener también el control
           de mercadería.
         </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Repartos que siguen abiertos, con el día en que se abrieron y un atajo para
+ * ir a cerrarlos.
+ *
+ * El cierre se mira por fecha, y un reparto que quedó abierto hace una semana
+ * no aparece en el día de hoy: la pantalla decía "Sin reparto" mientras el
+ * camión figuraba en la calle, y para cerrarlo había que adivinar el día en el
+ * calendario. Acá está la fecha y el botón que lleva a esa fecha.
+ */
+export function RepartosAbiertosPendientes({
+  repartos,
+  fechaActual,
+  onIrAFecha,
+}: {
+  repartos: Reparto[];
+  fechaActual: string;
+  onIrAFecha: (fecha: string) => void;
+}) {
+  const otros = repartos.filter((r) => r.fecha !== fechaActual);
+  if (otros.length === 0) return null;
+
+  return (
+    <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <Truck className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+      <div className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900">
+        <p className="font-semibold">
+          {otros.length === 1
+            ? "Hay un reparto abierto de otro día"
+            : `Hay ${otros.length} repartos abiertos de otros días`}
+        </p>
+        <p className="mt-1">
+          Mientras siga abierto, el camión no puede salir de nuevo. Entrá a su fecha para cerrarlo.
+        </p>
+        <ul className="mt-2.5 space-y-1.5">
+          {otros.map((r) => (
+            <li
+              key={r.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2"
+            >
+              <span className="min-w-0">
+                <span className="font-semibold text-slate-800">{etiquetaCamion(r.camion)}</span>
+                <span className="text-slate-500">
+                  {r.repartidor ? ` · ${r.repartidor}` : ""} · abierto el {fechaCorta(r.fecha)}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onIrAFecha(r.fecha)}
+                className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-amber-600"
+              >
+                Ir a cerrarlo
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

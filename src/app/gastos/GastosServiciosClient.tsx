@@ -395,9 +395,9 @@ function GastoFormModal({
                 <p className="text-sm text-slate-400">Cargando…</p>
               ) : (
                 <>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-                    El control financiero de deuda (Cuentas por Pagar y pagos a proveedores) se habilitará en la Fase 3. Aquí solo se registra el documento fiscal.
-                  </div>
+                  {/* Acá se registra el comprobante del gasto. El aviso que
+                      había hablaba de una "Fase 3" del proyecto original, que
+                      no significa nada para quien está cargando una factura. */}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Proveedor *">

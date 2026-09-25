@@ -6,7 +6,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useCierreReparto } from "@/shared/hooks/useCierreReparto";
 import { useRepartos } from "@/shared/hooks/useRepartos";
 import { fechaCorta, hoyEnAsuncion, etiquetaCamion } from "@/shared/caja/arqueo-ui";
-import { AvisoSinPagos, AvisoSinReparto } from "@/shared/caja/cierre-ui";
+import { AvisoSinPagos, AvisoSinReparto, RepartosAbiertosPendientes } from "@/shared/caja/cierre-ui";
 import ResumenCierre from "@/shared/caja/ResumenCierre";
 import ControlMercaderia from "@/shared/caja/ControlMercaderia";
 
@@ -25,6 +25,9 @@ export default function CierreRepartoMobile() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   const { repartos, disponible: repartosDisponibles, mutate: refrescarRepartos } =
     useRepartos({ fecha });
+  // Los abiertos van aparte de los del día: un reparto que quedó abierto otro
+  // día no aparece acá y es justamente el que hay que ir a cerrar.
+  const { repartos: repartosAbiertos } = useRepartos({ abiertos: true });
   const [elegido, setElegido] = useState<string | null>(null);
 
   // Derivado y no estado sincronizado: si el reparto elegido desaparece al
@@ -105,6 +108,14 @@ export default function CierreRepartoMobile() {
             {!cierre.cobranzas?.disponible ? <AvisoSinPagos /> : null}
           </>
         ) : null}
+
+        {!repartosDisponibles ? null : (
+          <RepartosAbiertosPendientes
+            repartos={repartosAbiertos}
+            fechaActual={fecha}
+            onIrAFecha={setFecha}
+          />
+        )}
 
         {!repartosDisponibles ? null : repartos.length === 0 ? (
           <AvisoSinReparto />
