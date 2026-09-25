@@ -135,7 +135,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
             ? `Ningún producto coincide con “${query}”.`
             : caja.repartoId
               ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-              : "Todavía no hay productos con stock. Cargalos desde Inventario."}
+              : "No hay stock disponible para vender. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
         </p>
       ) : (
         <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

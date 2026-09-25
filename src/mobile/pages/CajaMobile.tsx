@@ -382,6 +382,22 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
   }, [conStock, query]);
 
 
+  // Con más de un camión en la calle hay que elegir ACÁ, no en el paso de
+  // pago: el catálogo de este paso es el stock del camión elegido. Sin elegir,
+  // la lista salía del salón —vacío, porque la mercadería está arriba de los
+  // camiones— y el mensaje mandaba a cargar stock que ya existía.
+  if (caja.faltaElegirReparto) {
+    return (
+      <div className="pt-4">
+        <p className="mb-3 text-sm text-slate-600">
+          Tenés más de un reparto abierto. Elegí de qué camión vas a vender para ver su
+          mercadería.
+        </p>
+        <SelectorReparto caja={caja} />
+      </div>
+    );
+  }
+
   return (
     <div className="pt-4">
       <div className="relative">
@@ -408,7 +424,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
               ? "No se puede vender desde este camión hasta que tenga ubicación de inventario."
               : origen?.tipo === "camion"
                 ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-                : "Todavía no hay productos con stock en el salón. Cargalos desde Inventario."}
+                : "No hay stock en el salón. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
         </p>
       ) : (
         <ul className="mt-3 space-y-2">
