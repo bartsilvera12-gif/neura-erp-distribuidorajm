@@ -64,7 +64,12 @@ export default function AvisoCatalogoCaja({
 }
 
 /** El motivo del servidor, dicho para quien está parado frente a la caja. */
-export function textoMotivoSalon(origen?: { motivo_salon?: string } | null): string | null {
+export function textoMotivoSalon(
+  origen?: { motivo_salon?: string; error_camion?: string | null } | null
+): string | null {
+  if (origen?.error_camion) {
+    return `No se pudo resolver tu camión (${origen.error_camion}), así que la lista es la del salón.`;
+  }
   switch (origen?.motivo_salon) {
     case "rol_no_es_vendedor_movil":
       return "Tu usuario no figura como Vendedor Móvil, así que la caja te muestra el salón y no un camión. Se cambia en Usuarios, en el nivel de acceso.";

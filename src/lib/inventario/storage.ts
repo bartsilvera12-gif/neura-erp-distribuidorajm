@@ -109,6 +109,8 @@ export type OrigenCatalogo = {
     | "sin_reparto_abierto"
     | "varios_repartos_abiertos"
     | "usuario_no_encontrado";
+  /** Falló resolver el camión, pero la lista igual se pudo traer. */
+  error_camion?: string | null;
 };
 
 /**

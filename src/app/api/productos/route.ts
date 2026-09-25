@@ -16,6 +16,7 @@ import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/norma
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
+import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
@@ -90,15 +91,31 @@ async function misRepartosAbiertos(
   const e = existe.rows[0];
   if (!e?.r || !e?.c || !e?.u) return nada;
 
-  // El usuario se busca por correo O por el id del catálogo: atarlo solo al
-  // correo hacía que un correo distinto entre la ficha y el login dejara al
-  // vendedor sin camión, sin que nada lo dijera.
+  // Las columnas de `usuarios` varían entre schemas —hay bases heredadas sin
+  // `rol` o sin `email`—, así que se piden las que estén. Nombrar una que no
+  // existe no devuelve vacío: rompe la consulta entera con un 42703, y como
+  // esto corre dentro del catálogo, se llevaba puesta toda la lista de
+  // productos. Es el mismo cuidado que ya tenía el listado de repartidores.
+  const colsQ = await queryWithRetry<{ columna: string }>(
+    pool,
+    `SELECT column_name AS columna FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'usuarios'`,
+    [schema]
+  );
+  const cols = new Set(colsQ.rows.map((r) => r.columna));
+  const hayEmail = cols.has("email");
+  const hayRol = cols.has("rol");
+
+  const condiciones: string[] = [];
+  if (hayEmail) {
+    condiciones.push(`($2::text IS NOT NULL AND lower(btrim(email)) = lower(btrim($2::text)))`);
+  }
+  condiciones.push(`($3::uuid IS NOT NULL AND id = $3::uuid)`);
+
   const yo = await queryWithRetry<{ id: string; rol: string | null }>(
     pool,
-    `SELECT id, rol FROM ${quoteSchemaTable(schema, "usuarios")}
-      WHERE empresa_id = $1::uuid
-        AND ( ($2::text IS NOT NULL AND lower(btrim(email)) = lower(btrim($2::text)))
-           OR ($3::uuid IS NOT NULL AND id = $3::uuid) )
+    `SELECT id, ${hayRol ? "rol" : "NULL::text AS rol"} FROM ${quoteSchemaTable(schema, "usuarios")}
+      WHERE empresa_id = $1::uuid AND ( ${condiciones.join(" OR ")} )
       LIMIT 1`,
     [empresaId, email ?? null, usuarioCatalogId ?? null]
   );
@@ -192,6 +209,7 @@ export async function GET(request: NextRequest) {
 
     let camion: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
     let motivoSalon: OrigenCatalogo["motivo_salon"];
+    let errorCamion: string | null = null;
     if (paraVenta) {
       if (repartoId) camion = await camionDelReparto(pool, schema, empresaId, repartoId);
 
@@ -207,6 +225,10 @@ export async function GET(request: NextRequest) {
       // sin catálogo. Es la misma regla que aplica la pantalla (`useCajaVenta`);
       // acá faltaba, así que las dos podían no coincidir.
       if (!camion.existe) {
+        // Resolver el camión es un agregado: si falla, la caja tiene que
+        // seguir mostrando productos. Antes un error acá devolvía 500 y el
+        // vendedor veía la lista vacía sin saber que la consulta se cayó.
+        try {
         const mio = await misRepartosAbiertos(
           pool,
           schema,
@@ -229,6 +251,10 @@ export async function GET(request: NextRequest) {
           if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
           if (camion.existe) motivoSalon = undefined;
         }
+        } catch (e) {
+          console.error("[/api/productos] resolviendo camión del vendedor:", e);
+          errorCamion = motivoDelError(e) || "no se pudo resolver tu camión";
+        }
       }
     }
 
@@ -248,7 +274,12 @@ export async function GET(request: NextRequest) {
       : ubicacionId
         ? { tipo: "camion" as const, camion: camion.camion }
         : paraVenta
-          ? { tipo: "salon" as const, camion: null, motivo_salon: motivoSalon }
+          ? {
+              tipo: "salon" as const,
+              camion: null,
+              motivo_salon: motivoSalon,
+              error_camion: errorCamion,
+            }
           : { tipo: "empresa" as const, camion: null };
 
     // Stock del salón: el total de la empresa menos lo que está arriba de los
@@ -333,7 +364,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(successResponse({ productos, origen }));
   } catch (err) {
     console.error("[/api/productos GET]", err instanceof Error ? err.message : err);
-    return NextResponse.json(errorResponse("No se pudieron cargar los productos."), { status: 500 });
+    // Con el motivo real: "No se pudieron cargar los productos" a secas obliga a
+    // mirar los logs del servidor, que quien está vendiendo no tiene.
+    return NextResponse.json(
+      errorResponse(conMotivo("No se pudieron cargar los productos", err)),
+      { status: 500 }
+    );
   }
 }
 import {
