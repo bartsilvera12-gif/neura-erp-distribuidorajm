@@ -722,6 +722,15 @@ function BarraAccion({ caja }: { caja: CajaVenta }) {
         </div>
       ) : null}
 
+      {/* En los pasos anteriores el motivo es evidente (falta el cliente, falta
+          el producto). En el de pago no: puede ser el método, el crédito o el
+          camión, y el botón gris no lo dice. */}
+      {enPago && !caja.puedeAvanzar && caja.motivoNoConfirmar ? (
+        <p className="mb-2 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+          {caja.motivoNoConfirmar}
+        </p>
+      ) : null}
+
       <button
         type="button"
         onClick={enPago ? caja.confirmar : caja.siguiente}

@@ -275,6 +275,36 @@ export function useCajaVenta() {
    * la desktop tiene todo a la vista y la evalúa de una. Si viviera duplicada en
    * cada pantalla, una de las dos se iba a quedar atrás.
    */
+  /**
+   * Por qué NO se puede cobrar todavía, en castellano.
+   *
+   * Un botón gris sin explicación deja a quien está cobrando adivinando: el
+   * caso real fue un carrito cargado, el método elegido y el botón muerto
+   * porque faltaba el cliente, que se elige más arriba y queda fuera de
+   * pantalla. El mismo orden que `puedeConfirmar`, para que el motivo que se
+   * muestra sea siempre el primero que hay que resolver.
+   */
+  const motivoNoConfirmar = useMemo((): string | null => {
+    if (!clienteElegido) return "Elegí el cliente para poder cobrar.";
+    if (carrito.length === 0) return "Agregá al menos un producto.";
+    if (moneda === "USD" && tipoCambioNum <= 0) return "Cargá el tipo de cambio.";
+    if (aCredito && !creditoDisponible) {
+      return "Este cliente no puede comprar a crédito. Elegí otra forma de cobro.";
+    }
+    if (!aCredito && metodoPago === null) return "Elegí con qué se cobra.";
+    if (faltaElegirReparto) return "Elegí de qué camión sale la mercadería.";
+    return null;
+  }, [
+    clienteElegido,
+    carrito.length,
+    moneda,
+    tipoCambioNum,
+    metodoPago,
+    aCredito,
+    creditoDisponible,
+    faltaElegirReparto,
+  ]);
+
   const puedeConfirmar = useMemo(() => {
     if (!clienteElegido) return false;
     if (carrito.length === 0) return false;
@@ -445,6 +475,7 @@ export function useCajaVenta() {
     // reglas
     puedeAvanzar,
     puedeConfirmar,
+    motivoNoConfirmar,
     creditoDisponible,
     // acciones
     elegirCliente,

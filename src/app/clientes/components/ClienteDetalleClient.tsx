@@ -316,7 +316,7 @@ export default function ClienteDetalleClient({
 
   // Estados del formulario de información
   const [form, setForm] = useState({
-    tipo_cliente:        "persona" as Cliente["tipo_cliente"],
+    tipo_cliente:        "empresa" as Cliente["tipo_cliente"],
     empresa:             "",
     razon_social:        "",
     ruc_factura:         "",
@@ -1638,6 +1638,24 @@ export default function ClienteDetalleClient({
               {/* Tipo */}
               <section className="space-y-4">
                 <SectionTitle>Datos de identificación</SectionTitle>
+
+                <div>
+                  <label className={labelClass}>Tipo de cliente</label>
+                  <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
+                    {(["empresa", "persona"] as Cliente["tipo_cliente"][]).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, tipo_cliente: t }))}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                          form.tipo_cliente === t ? "bg-[#4FAEB2] text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {t === "empresa" ? "Empresa" : "Persona"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Fila principal: nombre + documento tributario (RUC empresa / CI persona) */}
                 {form.tipo_cliente === "empresa" ? (

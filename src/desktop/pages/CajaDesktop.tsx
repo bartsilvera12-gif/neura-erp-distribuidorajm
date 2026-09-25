@@ -352,6 +352,12 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             </p>
           ) : null}
 
+          {!caja.puedeConfirmar && caja.motivoNoConfirmar && !caja.error ? (
+            <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+              {caja.motivoNoConfirmar}
+            </p>
+          ) : null}
+
           <button
             type="button"
             onClick={caja.confirmar}
