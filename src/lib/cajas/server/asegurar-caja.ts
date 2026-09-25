@@ -34,18 +34,6 @@ export async function asegurarCajaAbierta(
     }
 
     const tC = quoteSchemaTable(schema, "cajas");
-    const abierta = await client.query<{ id: string }>(
-      `SELECT id FROM ${tC}
-        WHERE empresa_id = $1::uuid AND estado = 'abierta'
-        ORDER BY fecha_apertura DESC
-        LIMIT 1
-        FOR UPDATE`,
-      [empresaId]
-    );
-    if (abierta.rows.length > 0) {
-      await client.query("COMMIT");
-      return abierta.rows[0].id;
-    }
 
     // Quién la abrió, si la tabla lo guarda. Sin esto el arqueo no sabe de
     // quién es la caja y el vendedor termina viendo las de todos.
@@ -60,6 +48,34 @@ export async function asegurarCajaAbierta(
       : cols.has("usuario_id")
         ? "usuario_id"
         : null;
+
+    /*
+     * La caja tiene que ser UNA QUE EL VENDEDOR VEA EN SU ARQUEO.
+     *
+     * Antes se tomaba cualquier caja abierta de la empresa, la más reciente.
+     * Si otra persona tenía una abierta —el administrador probando, otro
+     * vendedor—, la venta se imputaba ahí, y el arqueo, que muestra solo las
+     * propias, no la mostraba nunca: plata cobrada que no aparecía en el
+     * cierre de quien la cobró.
+     *
+     * El filtro es el mismo que usa el arqueo (`/api/cajas/arqueo`): la suya, o
+     * una sin dueño cuando el schema no guarda quién la abrió. Si no hay
+     * ninguna, se abre la suya más abajo.
+     */
+    const filtroDueno =
+      colDueno && usuarioId ? ` AND (${colDueno} = $2::uuid OR ${colDueno} IS NULL)` : "";
+    const abierta = await client.query<{ id: string }>(
+      `SELECT id FROM ${tC}
+        WHERE empresa_id = $1::uuid AND estado = 'abierta'${filtroDueno}
+        ORDER BY ${colDueno && usuarioId ? `(${colDueno} IS NULL), ` : ""}fecha_apertura DESC
+        LIMIT 1
+        FOR UPDATE`,
+      filtroDueno ? [empresaId, usuarioId] : [empresaId]
+    );
+    if (abierta.rows.length > 0) {
+      await client.query("COMMIT");
+      return abierta.rows[0].id;
+    }
 
     const sig = await client.query<{ n: string }>(
       `SELECT COALESCE(max(numero_caja), 0)::text AS n FROM ${tC} WHERE empresa_id = $1::uuid`,
