@@ -192,6 +192,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Un repartidor tampoco puede tener dos repartos abiertos, aunque sean de
+    // camiones distintos: sale con uno solo, y con dos abiertos la caja no
+    // puede resolver de cuál vende —le queda pidiendo que elija en cada venta—
+    // y el control de mercadería se reparte entre dos jornadas que en la calle
+    // fueron una. Pasó con dos camiones duplicados asignados a la misma
+    // persona.
+    const suyoQ = await client.query<{ id: string; camion: string | null }>(
+      `SELECT r.id, c.nombre AS camion
+         FROM ${tR} r LEFT JOIN ${tC} c ON c.id = r.camion_id
+        WHERE r.empresa_id = $1::uuid AND r.repartidor_id = $2::uuid AND r.estado = 'abierto'
+        FOR UPDATE OF r`,
+      [empresaId, repartidorId]
+    );
+    if (suyoQ.rows.length > 0) {
+      await client.query("ROLLBACK");
+      const otro = suyoQ.rows[0].camion?.trim();
+      return NextResponse.json(
+        errorResponse(
+          otro
+            ? `Ese repartidor ya tiene abierto el reparto de ${otro}. Cerralo antes de abrir otro.`
+            : "Ese repartidor ya tiene un reparto abierto. Cerralo antes de abrir otro."
+        ),
+        { status: 409 }
+      );
+    }
+
     const repartoQ = await client.query<{ id: string }>(
       `INSERT INTO ${tR} (empresa_id, camion_id, repartidor_id, fecha)
        VALUES ($1::uuid, $2::uuid, $3::uuid,
