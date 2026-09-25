@@ -120,7 +120,7 @@ export type OrigenCatalogo = {
  */
 export async function getProductosConOrigen(
   repartoId?: string | null
-): Promise<{ productos: Producto[]; origen: OrigenCatalogo }> {
+): Promise<{ productos: Producto[]; origen: OrigenCatalogo; error?: string }> {
   const salon: OrigenCatalogo = { tipo: "salon", camion: null };
   try {
     const qs = repartoId
@@ -129,8 +129,13 @@ export async function getProductosConOrigen(
     const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
-      console.error("[inventario] getProductos:", (j as { error?: string })?.error ?? r.status);
-      return { productos: [], origen: salon };
+      // Un fallo del servidor devolvía "salón, 0 productos", que en pantalla es
+      // idéntico a no tener stock: el vendedor veía "no hay nada en el salón"
+      // cuando en realidad la consulta había fallado. El error se devuelve para
+      // que la caja lo muestre en vez de disfrazarlo de lista vacía.
+      const motivo = (j as { error?: string })?.error ?? `Error ${r.status}`;
+      console.error("[inventario] getProductos:", motivo);
+      return { productos: [], origen: salon, error: motivo };
     }
     const data = j.data as { productos?: ProductoRow[]; origen?: OrigenCatalogo };
     return {
@@ -138,8 +143,9 @@ export async function getProductosConOrigen(
       origen: data.origen ?? salon,
     };
   } catch (err) {
-    console.error("[inventario] getProductos:", err instanceof Error ? err.message : err);
-    return { productos: [], origen: salon };
+    const motivo = err instanceof Error ? err.message : String(err);
+    console.error("[inventario] getProductos:", motivo);
+    return { productos: [], origen: salon, error: motivo };
   }
 }
 

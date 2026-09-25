@@ -16,6 +16,9 @@ function hostnameFromNextPublicSupabaseUrl(): string | null {
  */
 export async function GET() {
   const sha =
+    process.env.NEXT_PUBLIC_BUILD_SHA?.trim() ||
+    process.env.SOURCE_COMMIT?.trim() ||
+    process.env.COOLIFY_GIT_COMMIT_SHA?.trim() ||
     process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
     process.env.VERCEL_GIT_COMMIT_REF?.trim() ||
     null;
@@ -27,6 +30,13 @@ export async function GET() {
     /** Alias pedido: production | preview | development | null si no es Vercel. */
     env: vercelEnv,
     git_commit_sha: sha,
+    /** Cuándo se construyó este build (no cuándo se levantó el contenedor). */
+    build_time: process.env.NEXT_PUBLIC_BUILD_TIME ?? null,
+    /**
+     * Nombre de lo último que entró. Se compara de un vistazo contra lo que se
+     * espera, sin tener que leer un hash.
+     */
+    incluye: "caja-catalogo-por-reparto-abierto-y-error-visible",
     vercel_env: vercelEnv,
     supabase_api_hostname: hostnameFromNextPublicSupabaseUrl(),
     neura_auth_bundle: "api-auth-context-v2-rls",

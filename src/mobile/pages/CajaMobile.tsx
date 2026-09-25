@@ -362,7 +362,7 @@ function PasoCliente({
 
 function PasoProductos({ caja }: { caja: CajaVenta }) {
   // Si la venta sale de un camión, el catálogo es el stock de ese camión.
-  const { productos, origen, isLoading } = useCatalogoVenta(caja.repartoId);
+  const { productos, origen, isLoading, errorCatalogo } = useCatalogoVenta(caja.repartoId);
   const [query, setQuery] = useState("");
 
   // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo
@@ -410,13 +410,25 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
         />
       </div>
 
+      {errorCatalogo ? (
+        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+          <p className="text-sm font-semibold text-rose-700">
+            No se pudo cargar la lista de productos.
+          </p>
+          <p className="mt-1 text-xs text-rose-600">{errorCatalogo}</p>
+          <p className="mt-1 text-xs text-rose-600">
+            Esto no es falta de stock: la consulta falló.
+          </p>
+        </div>
+      ) : null}
+
       {isLoading ? null : (
         <AvisoCatalogoCaja origen={origen} ocultos={ocultosSinStock} />
       )}
 
       {isLoading ? (
         <p className="mt-6 text-center text-sm text-slate-400">Cargando productos…</p>
-      ) : filtrados.length === 0 ? (
+      ) : errorCatalogo ? null : filtrados.length === 0 ? (
         <p className="mt-6 text-center text-sm text-slate-400">
           {query
             ? `Ningún producto coincide con “${query}”.`

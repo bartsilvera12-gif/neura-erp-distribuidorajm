@@ -30,7 +30,7 @@ export function useProductos() {
  * salón. `origen` dice cuál de los dos, según el servidor.
  */
 export function useCatalogoVenta(repartoId?: string | null) {
-  const swr = useSWR<{ productos: Producto[]; origen: OrigenCatalogo }>(
+  const swr = useSWR<{ productos: Producto[]; origen: OrigenCatalogo; error?: string }>(
     repartoId ? `caja:catalogo:reparto:${repartoId}` : "caja:catalogo",
     () => getProductosConOrigen(repartoId),
     {
@@ -45,6 +45,12 @@ export function useCatalogoVenta(repartoId?: string | null) {
     origen: swr.data?.origen ?? null,
     isLoading: swr.isLoading,
     error: swr.error as Error | undefined,
+    /**
+     * Falla del servidor al traer el catálogo. Va aparte de `error` de SWR
+     * porque la consulta "sale bien" devolviendo una lista vacía: sin esto, un
+     * 500 se ve igual que no tener stock.
+     */
+    errorCatalogo: swr.data?.error ?? null,
     mutate: swr.mutate,
   };
 }

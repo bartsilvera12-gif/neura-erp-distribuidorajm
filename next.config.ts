@@ -2,6 +2,21 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
+   * Qué commit y cuándo se construyó esto. Se resuelve en build porque en
+   * runtime no queda rastro, y sin esto "¿está deployado?" solo se puede
+   * discutir: ahora se mira en /api/deploy-info y se compara con el commit.
+   */
+  env: {
+    NEXT_PUBLIC_BUILD_SHA:
+      process.env.SOURCE_COMMIT ||
+      process.env.COOLIFY_GIT_COMMIT_SHA ||
+      process.env.GIT_COMMIT_SHA ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      "",
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  },
+
+  /**
    * Salida standalone: genera .next/standalone con server.js y solo el subconjunto
    * de node_modules que el trazado de Next detecta como necesario. La imagen final
    * deja de arrastrar todo el proyecto → "exporting layers" mucho más corta.
