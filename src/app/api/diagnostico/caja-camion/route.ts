@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       fecha: string;
     }>(
       pool,
-      `SELECT r.id AS reparto_id, c.nombre AS camion, c.ubicacion_id,
+      `SELECT r.id AS reparto_id, c.alias AS camion, c.ubicacion_id,
               r.repartidor_id, u.email AS repartidor_email, r.fecha::text AS fecha
          FROM ${tR} r
          LEFT JOIN ${tC} c ON c.id = r.camion_id

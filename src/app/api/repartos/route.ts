@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
     // fueron una. Pasó con dos camiones duplicados asignados a la misma
     // persona.
     const suyoQ = await client.query<{ id: string; camion: string | null }>(
-      `SELECT r.id, c.nombre AS camion
+      `SELECT r.id, c.alias AS camion
          FROM ${tR} r LEFT JOIN ${tC} c ON c.id = r.camion_id
         WHERE r.empresa_id = $1::uuid AND r.repartidor_id = $2::uuid AND r.estado = 'abierto'
         FOR UPDATE OF r`,

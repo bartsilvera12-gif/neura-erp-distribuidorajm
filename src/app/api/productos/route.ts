@@ -53,7 +53,7 @@ async function camionDelReparto(
 
   const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
-    `SELECT c.ubicacion_id, c.nombre
+    `SELECT c.ubicacion_id, c.alias AS nombre
        FROM ${quoteSchemaTable(schema, "repartos")} r
        JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
       WHERE r.id = $1::uuid AND r.empresa_id = $2::uuid`,
@@ -99,7 +99,7 @@ async function misRepartosAbiertos(
 
   const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
-    `SELECT c.ubicacion_id, c.nombre
+    `SELECT c.ubicacion_id, c.alias AS nombre
        FROM ${quoteSchemaTable(schema, "repartos")} r
        JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
       WHERE r.empresa_id = $1::uuid AND r.repartidor_id = $2::uuid AND r.estado = 'abierto'`,
@@ -135,7 +135,7 @@ async function miCamion(
   if (cols.rows.length === 0) return vacio;
   const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
-    `SELECT ubicacion_id, nombre FROM ${quoteSchemaTable(schema, "camiones")}
+    `SELECT ubicacion_id, alias AS nombre FROM ${quoteSchemaTable(schema, "camiones")}
       WHERE empresa_id = $1::uuid AND repartidor_id = $2::uuid AND activo = true
       LIMIT 1`,
     [empresaId, usuarioId]
