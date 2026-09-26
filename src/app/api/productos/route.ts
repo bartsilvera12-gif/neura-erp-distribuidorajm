@@ -229,7 +229,7 @@ export async function GET(request: NextRequest) {
           motivoSalon =
             mio.camiones.length === 0 ? "sin_reparto_abierto" : "varios_repartos_abiertos";
           // El camión asignado queda de respaldo por si el reparto no se abrió.
-          const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
+          const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
           if (yo) camion = await miCamion(pool, schema, empresaId, yo.id);
           if (camion.existe) motivoSalon = undefined;
         }

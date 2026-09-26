@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     const exprTelefono = colCliente.has("telefono") ? "c.telefono" : "NULL::text";
 
     // El vendedor móvil cobra lo suyo: las ventas que salieron de sus repartos.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email });
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     const soloPropias =
       alcanceRepartos(yo?.rol) === "propios" && yo !== null && colVenta.has("reparto_id");
     const filtroPropias = soloPropias

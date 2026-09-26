@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     // Alcance del rol: el vendedor móvil solo toca sus propios repartos. El
     // chequeo va en el servidor porque ocultar el botón no impide la llamada.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     if (alcanceRepartos(yo?.rol) === "propios") {
       const dueno = await client.query<{ ok: number }>(
         `SELECT 1 AS ok FROM ${quoteSchemaTable(schema, "repartos")}

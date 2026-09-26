@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
         schema,
         empresaId: auth.empresa_id,
         email: auth.user.email,
+        catalogId: auth.usuarioCatalogId ?? null,
       });
       repartoFinal = await asegurarRepartoAbierto(schema, auth.empresa_id, yo?.id ?? null);
     }

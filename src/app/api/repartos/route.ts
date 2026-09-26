@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     // El vendedor móvil solo ve los suyos. Se decide en el servidor: ocultarlos
     // solo en la pantalla dejaría la API abierta.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     const soloDe = alcanceRepartos(yo?.rol) === "propios" ? (yo?.id ?? null) : null;
 
     const repartos = await listarRepartos({
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
     // Un vendedor móvil sale con su camión, no manda a otro: el reparto se abre
     // siempre a su nombre, venga lo que venga en el body.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     const propio = alcanceRepartos(yo?.rol) === "propios";
     const repartidorId = propio && yo ? yo.id : String(body?.repartidor_id ?? "").trim();
     if (!UUID_RE.test(repartidorId)) {

@@ -1,4 +1,5 @@
 import "server-only";
+import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import type { Camion, ItemReparto, Reparto, Ubicacion } from "@/lib/repartos/types";
@@ -274,17 +275,17 @@ export async function usuarioDelSchema(opts: {
   schema: string;
   empresaId: string;
   email: string | null | undefined;
+  /** Id del catálogo, de respaldo cuando el correo no coincide. */
+  catalogId?: string | null;
 }): Promise<{ id: string; rol: string | null } | null> {
-  const pool = getChatPostgresPool();
-  if (!pool || !opts.email) return null;
-
-  const tU = quoteSchemaTable(opts.schema, "usuarios");
-  const q = await queryWithRetry<{ id: string; rol: string | null }>(
-    pool,
-    `SELECT id, rol FROM ${tU}
-      WHERE empresa_id = $1::uuid AND lower(btrim(email)) = lower(btrim($2))
-      LIMIT 1`,
-    [opts.empresaId, opts.email]
-  );
-  return q.rows[0] ?? null;
+  // Una sola forma de responder "¿quién soy?" en todo el sistema. Antes esta
+  // función buscaba solo por correo y el catálogo de la caja por correo o id:
+  // dos respuestas distintas para el mismo vendedor, y la lista de repartos y
+  // el catálogo terminaban decidiendo cosas distintas sobre él.
+  return resolverUsuarioTenant({
+    schema: opts.schema,
+    empresaId: opts.empresaId,
+    email: opts.email,
+    catalogId: opts.catalogId ?? null,
+  });
 }

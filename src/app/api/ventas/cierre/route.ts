@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 
       // El vendedor móvil no puede leer el cierre de otro camión: ahí están las
       // ventas y la plata de un compañero.
-      const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email });
+      const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
       if (alcanceRepartos(yo?.rol) === "propios") {
         const tR2 = quoteSchemaTable(schema, "repartos");
         const propio = await queryWithRetry<{ ok: number }>(
