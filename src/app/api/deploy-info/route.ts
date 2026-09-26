@@ -36,7 +36,12 @@ export async function GET() {
      * Nombre de lo último que entró. Se compara de un vistazo contra lo que se
      * espera, sin tener que leer un hash.
      */
-    incluye: "caja-catalogo-por-reparto-abierto-y-error-visible",
+    /*
+     * CAMBIAR ESTE VALOR EN CADA PUSH QUE HAYA QUE PROBAR. Si no se cambia, dos
+     * versiones distintas dicen lo mismo y el campo no sirve para lo único que
+     * existe: saber si lo último que se subió ya está corriendo.
+     */
+    incluye: "diagnostico-caja-camion-y-usuario-unico",
     vercel_env: vercelEnv,
     supabase_api_hostname: hostnameFromNextPublicSupabaseUrl(),
     neura_auth_bundle: "api-auth-context-v2-rls",
