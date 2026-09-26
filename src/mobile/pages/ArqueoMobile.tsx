@@ -69,7 +69,11 @@ export default function ArqueoMobile() {
           <AvisoSinCajas />
         ) : arqueo && arqueo.cajas.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-            {todas ? "No hubo cajas abiertas este día." : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
+            {todas
+              ? "No hubo cajas abiertas este día."
+              : (arqueo?.otras_cajas ?? 0) > 0
+                ? `No tenés ninguna caja tuya este día, pero hay ${arqueo?.otras_cajas} caja(s) de otras personas. Si cobraste y no ves la plata acá, mirá «Ver todas las cajas del día»: puede haber quedado imputada a la caja de otro.`
+                : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
           </p>
         ) : (
           <>

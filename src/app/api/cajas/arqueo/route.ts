@@ -160,7 +160,36 @@ export async function GET(request: NextRequest) {
     }
 
     if (cajasQ.rows.length === 0) {
-      return NextResponse.json(successResponse({ arqueo: { disponible: true, fecha, alcance: todas ? "todas" : "mia", credito, cajas: [] } }));
+      /*
+       * Ninguna caja TUYA ese día no es lo mismo que ningún movimiento ese día.
+       * Si hay cajas de otra persona, el arqueo en cero hace pensar que no se
+       * cobró nada, cuando en realidad la plata está en la caja de otro. Se
+       * cuenta y se avisa, para que se sepa dónde mirar.
+       */
+      let otras = 0;
+      if (!todas) {
+        const otrasQ = await queryWithRetry<{ n: string }>(
+          pool,
+          `SELECT count(*)::text AS n FROM ${tC}
+            WHERE empresa_id = $1::uuid
+              AND ( (fecha_apertura AT TIME ZONE $2)::date = $3::date
+                    OR (estado = 'abierta' AND (fecha_apertura AT TIME ZONE $2)::date <= $3::date) )`,
+          [empresaId, TZ, fecha]
+        );
+        otras = Number(otrasQ.rows[0]?.n ?? 0);
+      }
+      return NextResponse.json(
+        successResponse({
+          arqueo: {
+            disponible: true,
+            fecha,
+            alcance: todas ? "todas" : "mia",
+            credito,
+            cajas: [],
+            otras_cajas: otras,
+          },
+        })
+      );
     }
 
     const ids = cajasQ.rows.map((c) => c.id);

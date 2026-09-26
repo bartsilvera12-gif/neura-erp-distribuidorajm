@@ -47,6 +47,12 @@ export interface Arqueo {
   /** Ventas a crédito del día: vendidas pero no cobradas, fuera del cajón. */
   credito?: { cantidad: number; total: number };
   cajas: ArqueoCaja[];
+  /**
+   * Cajas del día que NO son tuyas, cuando el arqueo propio quedó vacío. Un
+   * cero sin esto se lee como "no se cobró nada", y puede ser que la plata esté
+   * en la caja de otra persona.
+   */
+  otras_cajas?: number;
 }
 
 /** Arqueo de las cajas de un día. Sin `fecha`, hoy en hora de Asunción. */
