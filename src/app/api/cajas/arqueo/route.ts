@@ -5,6 +5,7 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
+import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 
@@ -96,10 +97,57 @@ export async function GET(request: NextRequest) {
 
     const auth = await getUserAndEmpresa(request);
     const yo = auth?.usuarioCatalogId ?? null;
-    const filtroDueno =
-      !todas && colDueno && yo ? ` AND (${colDueno} = $4::uuid OR ${colDueno} IS NULL)` : "";
+
+    /*
+     * "Mi arqueo" es donde están MIS VENTAS, no solo las cajas que abrí yo.
+     *
+     * El camionero cobra y la venta queda imputada a la caja que estuviera
+     * abierta en ese momento, que puede no ser la suya: entonces su arqueo le
+     * daba cero y tenía que ir a buscar la plata en "todas las cajas". Una
+     * venta es suya cuando salió de SU reparto (`ventas.reparto_id`), así que
+     * las cajas que contienen esas ventas también son suyas para mirar.
+     *
+     * Esto además cubre lo ya cobrado antes del arreglo, sin tocar los datos.
+     */
+    const yoTenant =
+      !todas && yo
+        ? await resolverUsuarioTenant({
+            schema,
+            empresaId,
+            email: auth?.user?.email,
+            catalogId: yo,
+          })
+        : null;
+
+    const hayVentasYRepartos = await queryWithRetry<{ v: string | null; r: string | null }>(
+      pool,
+      `SELECT to_regclass($1)::text AS v, to_regclass($2)::text AS r`,
+      [`${schema}.ventas`, `${schema}.repartos`]
+    );
+    const puedePorReparto =
+      !!yoTenant && !!hayVentasYRepartos.rows[0]?.v && !!hayVentasYRepartos.rows[0]?.r;
+
     const paramsCajas: unknown[] = [empresaId, TZ, fecha];
-    if (filtroDueno) paramsCajas.push(yo);
+    let filtroDueno = "";
+    if (!todas && (colDueno || puedePorReparto)) {
+      const partes: string[] = [];
+      if (colDueno && yo) {
+        paramsCajas.push(yo);
+        partes.push(`${colDueno} = $${paramsCajas.length}::uuid OR ${colDueno} IS NULL`);
+      }
+      if (puedePorReparto) {
+        paramsCajas.push(yoTenant!.id);
+        partes.push(
+          `id IN (SELECT v.caja_id
+                    FROM ${quoteSchemaTable(schema, "ventas")} v
+                    JOIN ${quoteSchemaTable(schema, "repartos")} r ON r.id = v.reparto_id
+                   WHERE v.empresa_id = $1::uuid
+                     AND v.caja_id IS NOT NULL
+                     AND r.repartidor_id = $${paramsCajas.length}::uuid)`
+        );
+      }
+      if (partes.length > 0) filtroDueno = ` AND ( ${partes.join(" OR ")} )`;
+    }
 
     // Una caja abierta ayer y todavía sin cerrar sigue siendo la caja de hoy:
     // se incluye aunque su apertura sea de otro día.
@@ -129,7 +177,7 @@ export async function GET(request: NextRequest) {
           ${filtroDueno}
         -- La abierta primero: es la que se está usando ahora.
         ORDER BY (estado = 'abierta') DESC, fecha_apertura DESC
-        ${todas ? "" : "LIMIT 1"}`,
+        ${todas ? "" : "LIMIT 5"}`,
       paramsCajas
     );
 

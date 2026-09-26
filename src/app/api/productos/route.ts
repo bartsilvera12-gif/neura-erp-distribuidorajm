@@ -16,6 +16,7 @@ import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/norma
 import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
+import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
@@ -83,44 +84,18 @@ async function misRepartosAbiertos(
   usuarioCatalogId: string | null
 ): Promise<{ camiones: CamionDelReparto[]; usuarioEncontrado: boolean; rol: string | null }> {
   const nada = { camiones: [] as CamionDelReparto[], usuarioEncontrado: false, rol: null };
-  const existe = await queryWithRetry<{ r: string | null; c: string | null; u: string | null }>(
+  const existe = await queryWithRetry<{ r: string | null; c: string | null }>(
     pool,
-    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c, to_regclass($3)::text AS u`,
-    [`${schema}.repartos`, `${schema}.camiones`, `${schema}.usuarios`]
+    `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c`,
+    [`${schema}.repartos`, `${schema}.camiones`]
   );
   const e = existe.rows[0];
-  if (!e?.r || !e?.c || !e?.u) return nada;
+  if (!e?.r || !e?.c) return nada;
 
-  // Las columnas de `usuarios` varían entre schemas —hay bases heredadas sin
-  // `rol` o sin `email`—, así que se piden las que estén. Nombrar una que no
-  // existe no devuelve vacío: rompe la consulta entera con un 42703, y como
-  // esto corre dentro del catálogo, se llevaba puesta toda la lista de
-  // productos. Es el mismo cuidado que ya tenía el listado de repartidores.
-  const colsQ = await queryWithRetry<{ columna: string }>(
-    pool,
-    `SELECT column_name AS columna FROM information_schema.columns
-      WHERE table_schema = $1 AND table_name = 'usuarios'`,
-    [schema]
-  );
-  const cols = new Set(colsQ.rows.map((r) => r.columna));
-  const hayEmail = cols.has("email");
-  const hayRol = cols.has("rol");
-
-  const condiciones: string[] = [];
-  if (hayEmail) {
-    condiciones.push(`($2::text IS NOT NULL AND lower(btrim(email)) = lower(btrim($2::text)))`);
-  }
-  condiciones.push(`($3::uuid IS NOT NULL AND id = $3::uuid)`);
-
-  const yo = await queryWithRetry<{ id: string; rol: string | null }>(
-    pool,
-    `SELECT id, ${hayRol ? "rol" : "NULL::text AS rol"} FROM ${quoteSchemaTable(schema, "usuarios")}
-      WHERE empresa_id = $1::uuid AND ( ${condiciones.join(" OR ")} )
-      LIMIT 1`,
-    [empresaId, email ?? null, usuarioCatalogId ?? null]
-  );
-  const row = yo.rows[0];
-  if (!row) return nada;
+  // Mismo resolvedor que usa el arqueo: por correo o por el id del catálogo, y
+  // tolerante a las columnas que el schema tenga.
+  const yo = await resolverUsuarioTenant({ schema, empresaId, email, catalogId: usuarioCatalogId });
+  if (!yo) return nada;
 
   const q = await queryWithRetry<{ ubicacion_id: string | null; nombre: string | null }>(
     pool,
@@ -128,12 +103,12 @@ async function misRepartosAbiertos(
        FROM ${quoteSchemaTable(schema, "repartos")} r
        JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.id = r.camion_id
       WHERE r.empresa_id = $1::uuid AND r.repartidor_id = $2::uuid AND r.estado = 'abierto'`,
-    [empresaId, row.id]
+    [empresaId, yo.id]
   );
   return {
     camiones: q.rows.map((x) => ({ ubicacion_id: x.ubicacion_id, camion: x.nombre, existe: true })),
     usuarioEncontrado: true,
-    rol: row.rol,
+    rol: yo.rol,
   };
 }
 
