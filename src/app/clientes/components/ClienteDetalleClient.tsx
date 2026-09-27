@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ConsultarSetButton, { type DatosSet } from "@/components/clientes/ConsultarSetButton";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -645,6 +646,33 @@ export default function ClienteDetalleClient({
 
   const upper = ["empresa", "razon_social", "nombre_contacto", "ciudad", "pais", "vendedor_asignado", "condicion_pago", "direccion", "sifen_codigo_pais"];
   const lower = ["email", "email_secundario"];
+
+  /** Completa la ficha con lo que devolvió la SET (ver `ConsultarSetButton`). */
+  function aplicarDatosSet(d: DatosSet) {
+    const rucCompleto = `${d.ruc}-${d.dv}`;
+    const nombrePersona = d.razon_social.includes(",")
+      ? d.razon_social.split(",").map((x) => x.trim()).reverse().join(" ")
+      : d.razon_social;
+    setForm((prev) =>
+      d.tipo_cliente === "empresa"
+        ? {
+            ...prev,
+            tipo_cliente: "empresa",
+            ruc: rucCompleto,
+            empresa: (d.nombre_comercial ?? d.razon_social).toUpperCase(),
+            razon_social: d.razon_social.toUpperCase(),
+            ruc_factura: rucCompleto,
+          }
+        : {
+            ...prev,
+            tipo_cliente: "persona",
+            documento: d.ruc,
+            nombre_contacto: prev.nombre_contacto.trim() || nombrePersona.toUpperCase(),
+            razon_social: d.razon_social.toUpperCase(),
+            ruc_factura: rucCompleto,
+          }
+    );
+  }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     setFormError(null);
@@ -1667,6 +1695,7 @@ export default function ClienteDetalleClient({
                     <div>
                       <label className={labelClass}>RUC</label>
                       <input type="text" name="ruc" value={form.ruc} onChange={handleChange} className={inputClass} placeholder="00000000-0" />
+                      <ConsultarSetButton valor={form.ruc} onDatos={aplicarDatosSet} />
                     </div>
                   </div>
                 ) : (
@@ -1678,6 +1707,7 @@ export default function ClienteDetalleClient({
                     <div>
                       <label className={labelClass}>CI / Documento</label>
                       <input type="text" name="documento" value={form.documento} onChange={handleChange} className={inputClass} />
+                      <ConsultarSetButton valor={form.documento} onDatos={aplicarDatosSet} />
                     </div>
                   </div>
                 )}

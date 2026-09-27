@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import ConsultarSetButton, { type DatosSet } from "@/components/clientes/ConsultarSetButton";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   apiCreateCliente,
@@ -109,6 +110,39 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     sifen_num_casa_de: "",
     sifen_descripcion_tipo_doc: "",
   });
+
+  /**
+   * Completa el formulario con lo que devolvió la SET. La SET escribe a las
+   * personas como "APELLIDO, NOMBRE": se da vuelta para el nombre del cliente y
+   * se deja tal cual en la razón social, que es como tiene que ir en la factura.
+   */
+  function aplicarDatosSet(d: DatosSet) {
+    const rucCompleto = `${d.ruc}-${d.dv}`;
+    const nombrePersona = d.razon_social.includes(",")
+      ? d.razon_social.split(",").map((x) => x.trim()).reverse().join(" ")
+      : d.razon_social;
+    setRazonSocialTouched(true);
+    setRucFacturaTouched(true);
+    setForm((prev) =>
+      d.tipo_cliente === "empresa"
+        ? {
+            ...prev,
+            tipo_cliente: "empresa",
+            ruc: rucCompleto,
+            empresa: (d.nombre_comercial ?? d.razon_social).toUpperCase(),
+            razon_social: d.razon_social.toUpperCase(),
+            ruc_factura: rucCompleto,
+          }
+        : {
+            ...prev,
+            tipo_cliente: "persona",
+            documento: d.ruc,
+            nombre_contacto: prev.nombre_contacto.trim() || nombrePersona.toUpperCase(),
+            razon_social: d.razon_social.toUpperCase(),
+            ruc_factura: rucCompleto,
+          }
+    );
+  }
 
   const [formSusc, setFormSusc] = useState({
     plan_id: "",
@@ -515,6 +549,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                     placeholder="00000000-0"
                     className={inputClass}
                   />
+                  <ConsultarSetButton valor={form.ruc} onDatos={aplicarDatosSet} />
                 </div>
               </div>
             ) : (
@@ -543,6 +578,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                     placeholder="CI sin puntos"
                     className={inputClass}
                   />
+                  {/* En Paraguay el RUC de una persona es su CI con el dígito
+                      verificador: se consulta con lo que ya está escrito. */}
+                  <ConsultarSetButton valor={form.documento} onDatos={aplicarDatosSet} />
                 </div>
               </div>
             )}
