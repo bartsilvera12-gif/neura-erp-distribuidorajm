@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiCreateCliente } from "@/lib/api/client";
 import { clienteDesdeFila } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
+import ConsultarSetButton, { type DatosSet } from "@/components/clientes/ConsultarSetButton";
 
 /**
  * Alta de cliente desde la caja, con lo mínimo para facturarle y volver a
@@ -31,6 +32,23 @@ export default function NuevoClienteRapido({
   const [telefono, setTelefono] = useState("");
   const [email, setEmail] = useState("");
   const [documento, setDocumento] = useState("");
+  /**
+   * Lo que trajo la SET, si se consultó. Decide cómo se guarda: una empresa
+   * (persona jurídica) se registra como empresa, con su razón social y RUC para
+   * la factura; si no, queda como persona, igual que antes.
+   */
+  const [datosSet, setDatosSet] = useState<DatosSet | null>(null);
+
+  function aplicarDatosSet(d: DatosSet) {
+    setDatosSet(d);
+    const nombrePersona = d.razon_social.includes(",")
+      ? d.razon_social.split(",").map((x) => x.trim()).reverse().join(" ")
+      : d.razon_social;
+    setNombre(
+      (d.tipo_cliente === "empresa" ? d.nombre_comercial ?? d.razon_social : nombrePersona).toUpperCase()
+    );
+    setDocumento(`${d.ruc}-${d.dv}`);
+  }
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,13 +65,33 @@ export default function NuevoClienteRapido({
     setGuardando(true);
     // `persona` es lo que corresponde a un cliente de mostrador: así el nombre
     // que se carga acá es el que se muestra y el que sale en la factura.
-    const res = await apiCreateCliente({
-      tipo_cliente: "persona",
-      nombre_contacto: nombre.trim(),
-      telefono: telefono.trim() || undefined,
-      email: correo || undefined,
-      documento: documento.trim() || undefined,
-    });
+    // Solo se usa lo de la SET si el documento sigue siendo el consultado: si
+    // después lo cambiaron a mano, manda lo que está escrito.
+    const set =
+      datosSet && documento.trim() === `${datosSet.ruc}-${datosSet.dv}` ? datosSet : null;
+    const rucSet = set ? `${set.ruc}-${set.dv}` : undefined;
+    const res = await apiCreateCliente(
+      set?.tipo_cliente === "empresa"
+        ? {
+            tipo_cliente: "empresa",
+            empresa: nombre.trim().toUpperCase(),
+            nombre_contacto: nombre.trim(),
+            razon_social: set.razon_social.toUpperCase(),
+            ruc: rucSet,
+            ruc_factura: rucSet,
+            telefono: telefono.trim() || undefined,
+            email: correo || undefined,
+          }
+        : {
+            tipo_cliente: "persona",
+            nombre_contacto: nombre.trim(),
+            telefono: telefono.trim() || undefined,
+            email: correo || undefined,
+            documento: set ? set.ruc : documento.trim() || undefined,
+            razon_social: set ? set.razon_social.toUpperCase() : undefined,
+            ruc_factura: rucSet,
+          }
+    );
     setGuardando(false);
 
     if (!res.ok) {
@@ -111,6 +149,7 @@ export default function NuevoClienteRapido({
             placeholder="Para que salga en la factura"
             className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           />
+          <ConsultarSetButton valor={documento} onDatos={aplicarDatosSet} />
         </Campo>
       </div>
 
