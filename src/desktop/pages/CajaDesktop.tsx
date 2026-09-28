@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
+import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
 import {
   Banknote,
@@ -171,7 +173,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
                   Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
                 </p>
                 <p className="mt-1 text-base font-bold text-[#4FAEB2]">
-                  {formatGs(p.precio_venta)}
+                  {formatGs(precioSegunLista(p.precio_venta, caja.lista))}
                 </p>
 
                 <div className="mt-3 flex items-center gap-2">
@@ -216,6 +218,12 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           entra todo, scrollea el panel entero en vez de tapar nada. */}
       <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
         <SelectorCliente caja={caja} />
+        <div className="border-b border-slate-100 px-5 py-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Tipo de venta
+          </p>
+          <SelectorListaPrecio caja={caja} />
+        </div>
 
         <div className="min-h-[7rem] flex-1 overflow-y-auto px-5">
           {caja.carrito.length === 0 ? (
@@ -244,7 +252,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-500">
                         {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
-                        {item.producto.unidad_medida} × {formatGs(item.producto.precio_venta)}
+                        {item.producto.unidad_medida} × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
                       </span>
                       <span className="text-sm font-semibold tabular-nums text-slate-900">
                         {formatGs(linea?.total_linea ?? 0)}

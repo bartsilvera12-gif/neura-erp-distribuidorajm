@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
+import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -400,6 +402,10 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
 
   return (
     <div className="pt-4">
+      {/* Antes de buscar: la lista decide el precio que se ve en cada producto. */}
+      <div className="mb-3">
+        <SelectorListaPrecio caja={caja} />
+      </div>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
@@ -460,7 +466,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
                     Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
                   </p>
                   <p className="mt-0.5 text-sm font-bold text-[#4FAEB2]">
-                    {formatGs(p.precio_venta)}
+                    {formatGs(precioSegunLista(p.precio_venta, caja.lista))}
                   </p>
                 </div>
 
@@ -507,7 +513,7 @@ function PasoResumen({ caja }: { caja: CajaVenta }) {
                   </p>
                   <p className="text-xs text-slate-500">
                     {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
-                    {item.producto.unidad_medida} × {formatGs(item.producto.precio_venta)}
+                    {item.producto.unidad_medida} × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
                   </p>
                 </div>
                 <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">

@@ -68,6 +68,8 @@ export interface Venta {
 
   /** Reparto del que salió la mercadería. `null` = venta de mostrador. */
   reparto_id?: string | null;
+  /** Lista de precio de la venta: minorista o mayorista (−10%). */
+  lista_precio?: "minorista" | "mayorista";
 
   /** Cliente de la venta. `null` = venta sin nombre. */
   cliente_id?: string | null;

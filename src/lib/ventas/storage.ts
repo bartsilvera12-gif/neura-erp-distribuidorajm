@@ -53,6 +53,7 @@ export async function saveVenta(
         metodo_pago: datos.metodo_pago ?? null,
         caja_id: datos.caja_id ?? null,
         reparto_id: datos.reparto_id ?? null,
+        lista_precio: datos.lista_precio ?? "minorista",
         cliente_id: datos.cliente_id ?? null,
         observaciones: null,
       }),

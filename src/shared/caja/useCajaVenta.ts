@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import { useRepartos } from "@/shared/hooks/useRepartos";
 import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
@@ -74,6 +75,12 @@ export function useCajaVenta() {
 
   // ── Condiciones ────────────────────────────────────────────────────────────
   const [moneda, setMoneda] = useState<MonedaVenta>("GS");
+  /**
+   * Minorista o mayorista. Cambia el precio de todas las líneas —las que ya
+   * están en el carrito también—, porque es una decisión sobre la venta entera,
+   * no sobre cada producto.
+   */
+  const [lista, setLista] = useState<ListaPrecio>("minorista");
   const [tipoCambio, setTipoCambio] = useState("");
   const [metodoPago, setMetodoPago] = useState<MetodoPagoVenta | null>(null);
   // El crédito es una condición de la venta (`tipo_venta`), no un medio de
@@ -188,7 +195,7 @@ export function useCajaVenta() {
     return carrito.map((item) => {
       // El catálogo guarda el precio en guaraníes. Con moneda USD, el original es
       // el equivalente en dólares y el importe en GS se mantiene exacto.
-      const precioGs = item.producto.precio_venta;
+      const precioGs = precioSegunLista(item.producto.precio_venta, lista);
       const precioOriginal =
         moneda === "USD" && tipoCambioNum > 0 ? precioGs / tipoCambioNum : precioGs;
 
@@ -210,7 +217,7 @@ export function useCajaVenta() {
         total_linea: subtotal,
       };
     });
-  }, [carrito, moneda, tipoCambioNum]);
+  }, [carrito, moneda, tipoCambioNum, lista]);
 
   const totales = useMemo(() => {
     const subtotal = lineas.reduce((acc, l) => acc + l.subtotal, 0);
@@ -402,6 +409,7 @@ export function useCajaVenta() {
       caja_id: aCredito ? null : (caja?.id ?? null),
       reparto_id: repartoId,
       cliente_id: cliente?.id ?? null,
+      lista_precio: lista,
     });
 
     setGuardando(false);
@@ -428,6 +436,7 @@ export function useCajaVenta() {
     cliente,
     repartoId,
     faltaElegirReparto,
+    lista,
   ]);
 
   const reiniciar = useCallback(() => {
@@ -436,6 +445,7 @@ export function useCajaVenta() {
     setSinNombre(false);
     setCarrito([]);
     setMoneda("GS");
+    setLista("minorista");
     setTipoCambio("");
     setMetodoPago(null);
     setACredito(false);
@@ -457,6 +467,7 @@ export function useCajaVenta() {
     lineas,
     totales,
     moneda,
+    lista,
     tipoCambio,
     tipoCambioNum,
     metodoPago,
@@ -486,6 +497,7 @@ export function useCajaVenta() {
     quitarItem,
     cambiarIva,
     setMoneda,
+    setLista,
     setTipoCambio,
     setMetodoPago,
     setACredito,

@@ -1,5 +1,6 @@
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
 
 export interface CreateVentaItemInput {
   producto_id: string;
@@ -29,6 +30,8 @@ export interface CreateVentaPgParams {
   cajaId: string | null;
   /** Reparto del que sale la mercadería. */
   repartoId: string | null;
+  /** Lista de precio: minorista (precio de venta) o mayorista (−10%). */
+  listaPrecio: ListaPrecio;
   items: CreateVentaItemInput[];
   /** Totales enviados por el cliente (se contrastan con el recálculo). */
   subtotalDeclarado: number;
@@ -119,7 +122,7 @@ export async function createVentaTransaccionalPg(
 
     const ids = [...qtyByProduct.keys()];
     const lockSql = `
-      SELECT id, stock_actual, costo_promedio, nombre, sku
+      SELECT id, stock_actual, costo_promedio, nombre, sku, precio_venta
       FROM ${prodT}
       WHERE empresa_id = $1 AND id = ANY($2::uuid[])
       FOR UPDATE
@@ -130,10 +133,31 @@ export async function createVentaTransaccionalPg(
       costo_promedio: string;
       nombre: string;
       sku: string;
+      precio_venta: string | null;
     }>(lockSql, [params.empresaId, ids]);
 
     if (locked.rows.length !== ids.length) {
       throw new Error("Uno o más productos no existen o no pertenecen a esta empresa.");
+    }
+
+    /*
+     * El precio de cada línea lo decide el catálogo, no la pantalla.
+     *
+     * Hasta acá solo se verificaba que las sumas cerraran entre sí, así que se
+     * podía mandar cualquier precio. Con la lista mayorista eso importa más: el
+     * descuento tiene que salir de acá, del precio de venta guardado, para que
+     * nadie cobre "mayorista" a un precio que no es. La caja no permite editar
+     * precios a mano, así que un precio distinto solo puede ser un catálogo que
+     * cambió mientras la pantalla estaba abierta: se avisa para recargar.
+     */
+    const precioDb = new Map(locked.rows.map((r) => [r.id, Number(r.precio_venta ?? 0)]));
+    for (const it of items) {
+      const esperado = precioSegunLista(precioDb.get(it.producto_id) ?? 0, params.listaPrecio);
+      if (Math.abs(it.precio_venta - esperado) > 1) {
+        throw new Error(
+          `El precio de "${it.producto_nombre}" cambió (${params.listaPrecio}: Gs. ${esperado.toLocaleString("es-PY")}). Recargá la caja y volvé a cargar la venta.`
+        );
+      }
     }
 
     const stockMap = new Map<
@@ -184,7 +208,7 @@ export async function createVentaTransaccionalPg(
       SELECT column_name AS columna
         FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = 'ventas'
-         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id')
+         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio')
       `,
       [params.schema]
     );
@@ -203,6 +227,11 @@ export async function createVentaTransaccionalPg(
     if (columnas.has("reparto_id")) {
       extraCols.push("reparto_id");
       extraVals.push(params.repartoId);
+    }
+    // Opcional (migración 39): saber después qué ventas fueron mayoristas.
+    if (columnas.has("lista_precio")) {
+      extraCols.push("lista_precio");
+      extraVals.push(params.listaPrecio);
     }
     // Los placeholders siguen después de los 12 fijos del INSERT.
     const extraPlaceholders = extraCols.map((_, i) => `$${13 + i}`);

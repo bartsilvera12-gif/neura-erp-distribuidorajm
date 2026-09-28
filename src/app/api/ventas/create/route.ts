@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { esListaPrecio, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { createVentaTransaccionalPg } from "@/lib/ventas/server/create-venta-pg";
@@ -120,6 +121,9 @@ export async function POST(request: NextRequest) {
         ? null
         : String(o.observaciones).slice(0, 4000);
 
+    // Sin lista (pantallas viejas en caché) es minorista, que es lo que era todo.
+    const listaPrecio: ListaPrecio = esListaPrecio(o.lista_precio) ? o.lista_precio : "minorista";
+
     const repartoRaw = o.reparto_id;
     const repartoId =
       repartoRaw === null || repartoRaw === undefined || repartoRaw === ""
@@ -220,6 +224,7 @@ export async function POST(request: NextRequest) {
       metodoPago,
       cajaId: cajaFinal,
       repartoId: repartoFinal,
+      listaPrecio,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,
