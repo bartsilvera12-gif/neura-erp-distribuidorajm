@@ -25,6 +25,7 @@ import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
+import TicketVenta from "@/shared/caja/TicketVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
@@ -611,6 +612,31 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   };
 
   const legal = esFacturaLegal(emisor);
+
+  // Sin nombre no hay a quién facturarle: sale directo el ticket.
+  if (comp.sinCliente) {
+    return (
+      <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl">
+        <TicketVenta datos={datos} />
+        <div className="no-imprimir mt-1 flex gap-2">
+          <Link
+            href="/ventas/arqueo"
+            className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Ver arqueo
+          </Link>
+          <button
+            type="button"
+            onClick={caja.reiniciar}
+            className="flex-1 rounded-xl py-3 text-sm font-semibold text-white"
+            style={{ backgroundColor: TEAL }}
+          >
+            Nueva venta
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (verFactura) {
     return (

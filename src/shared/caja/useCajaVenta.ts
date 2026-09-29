@@ -454,6 +454,7 @@ export function useCajaVenta() {
 
     setComprobante({
       nombreCliente: cliente ? clienteNombre(cliente) : "Sin nombre",
+      sinCliente: cliente === null,
       telefonoCliente: cliente?.telefono ?? null,
       rucCliente: cliente ? cliente.ruc_factura || cliente.ruc || cliente.documento || null : null,
       direccionCliente: cliente?.direccion || null,
@@ -555,6 +556,8 @@ export type CajaVenta = ReturnType<typeof useCajaVenta>;
 
 export interface ComprobanteCaja {
   nombreCliente: string;
+  /** Venta Sin nombre: sale ticket en vez de factura A4. */
+  sinCliente: boolean;
   telefonoCliente: string | null;
   rucCliente: string | null;
   direccionCliente: string | null;

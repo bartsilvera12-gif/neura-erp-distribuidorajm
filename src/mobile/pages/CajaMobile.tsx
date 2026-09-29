@@ -29,6 +29,7 @@ import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
+import TicketVenta from "@/shared/caja/TicketVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import {
   compartirComprobante,
@@ -789,7 +790,10 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
       {/* El comprobante empieza cerrado: lo que el vendedor necesita ver de un
           vistazo es el número y el total, y lo que necesita hacer es mandárselo
           al cliente. La factura entera queda a un toque. */}
-      {verFactura ? (
+      {comp.sinCliente ? (
+        // Sin nombre no hay a quién facturarle: sale directo el ticket.
+        <TicketVenta datos={datos} />
+      ) : verFactura ? (
         <>
           <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
           <div className="no-imprimir px-4">
