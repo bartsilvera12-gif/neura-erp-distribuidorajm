@@ -7,8 +7,11 @@ import type { Cliente } from "@/lib/clientes/types";
 import ConsultarSetButton, { type DatosSet } from "@/components/clientes/ConsultarSetButton";
 
 /**
- * Alta de cliente desde la caja, con lo mínimo para facturarle y volver a
- * encontrarlo: nombre y un contacto.
+ * Alta de cliente desde la caja: RUC y nombre, nada más.
+ *
+ * El RUC va primero porque con él se consulta la SET, que completa el nombre y
+ * la razón social para la factura. Teléfono y correo no se piden acá: se
+ * cargan después desde Clientes si hacen falta.
  *
  * Es a propósito más corta que la ficha de Clientes. El vendedor está con el
  * cliente enfrente esperando; pedirle acá los veinte campos de la ficha
@@ -29,8 +32,6 @@ export default function NuevoClienteRapido({
   mostrarTitulo?: boolean;
 }) {
   const [nombre, setNombre] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [email, setEmail] = useState("");
   const [documento, setDocumento] = useState("");
   /**
    * Lo que trajo la SET, si se consultó. Decide cómo se guarda: una empresa
@@ -56,11 +57,6 @@ export default function NuevoClienteRapido({
 
   async function guardar() {
     setError(null);
-    const correo = email.trim();
-    if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
-      setError("El correo no parece válido. Revisalo o dejalo vacío.");
-      return;
-    }
 
     setGuardando(true);
     // `persona` es lo que corresponde a un cliente de mostrador: así el nombre
@@ -79,14 +75,10 @@ export default function NuevoClienteRapido({
             razon_social: set.razon_social.toUpperCase(),
             ruc: rucSet,
             ruc_factura: rucSet,
-            telefono: telefono.trim() || undefined,
-            email: correo || undefined,
           }
         : {
             tipo_cliente: "persona",
             nombre_contacto: nombre.trim(),
-            telefono: telefono.trim() || undefined,
-            email: correo || undefined,
             documento: set ? set.ruc : documento.trim() || undefined,
             razon_social: set ? set.razon_social.toUpperCase() : undefined,
             ruc_factura: rucSet,
@@ -110,52 +102,32 @@ export default function NuevoClienteRapido({
       ) : null}
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <Campo label="Nombre y apellido" obligatorio>
+        {/* El RUC primero: con él se consulta la SET y el nombre se completa solo. */}
+        <div>
+          <span className="mb-1 block text-xs font-medium text-slate-600">RUC o cédula</span>
           <input
             autoFocus
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            placeholder="Ej.: María González"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-          />
-        </Campo>
-
-        <Campo label="Teléfono">
-          <input
-            inputMode="tel"
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-            placeholder="0981 123 456"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-          />
-        </Campo>
-
-        <Campo label="Correo electrónico">
-          <input
-            inputMode="email"
-            autoCapitalize="none"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="maria@correo.com"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-          />
-        </Campo>
-
-        <Campo label="RUC o cédula">
-          <input
             inputMode="text"
             value={documento}
             onChange={(e) => setDocumento(e.target.value)}
-            placeholder="Para que salga en la factura"
+            placeholder="80012345-6"
             className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           />
           <ConsultarSetButton valor={documento} onDatos={aplicarDatosSet} />
+        </div>
+
+        <Campo label="Nombre" obligatorio>
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Se completa con la SET, o escribilo"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+          />
         </Campo>
       </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-        El teléfono sirve para mandarle la factura por WhatsApp. Lo demás se completa después
-        desde Clientes.
+        Teléfono y demás datos se completan después desde Clientes.
       </p>
 
       {error ? (
