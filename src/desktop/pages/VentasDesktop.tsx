@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useEffect, useState } from "react";
 import { getVentas } from "@/lib/ventas/storage";
@@ -84,6 +85,7 @@ export default function VentasPage() {
   const [busqueda,   setBusqueda]   = useState("");
   const [filtroTipo, setFiltroTipo] = useState<TipoVenta | "">("");
   const [filtroIva,  setFiltroIva]  = useState<TipoIvaVenta | "">("");
+  const [viendo,     setViendo]     = useState<Venta | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -252,7 +254,12 @@ export default function VentasPage() {
                 filtradas.map((v) => {
                   const cantTotal = v.items.reduce((s, i) => s + i.cantidad, 0);
                   return (
-                    <tr key={v.id} className="border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors">
+                    <tr
+                      key={v.id}
+                      onClick={() => setViendo(v)}
+                      title="Ver el detalle de la venta"
+                      className="cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors"
+                    >
                       <td className="py-4 pr-4 font-mono text-xs text-gray-500 align-middle">
                         {v.numero_control}
                       </td>
@@ -295,6 +302,7 @@ export default function VentasPage() {
 
       </section>
 
+      {viendo ? <DetalleVenta venta={viendo} onCerrar={() => setViendo(null)} /> : null}
     </div>
   );
 }

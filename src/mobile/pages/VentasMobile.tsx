@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import { useMemo, useState } from "react";
 import { Ban, Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
 import { anularVenta } from "@/lib/ventas/storage";
@@ -24,6 +25,7 @@ import type { Venta, TipoVenta } from "@/lib/ventas/types";
 export default function VentasMobile() {
   const { ventas, isLoading, error, mutate } = useVentas();
   const [anulando, setAnulando] = useState<Venta | null>(null);
+  const [viendo, setViendo] = useState<Venta | null>(null);
   // El día de hoy y nada más: la jornada es lo que se mira, y una lista con las
   // ventas de todo el mes obliga a buscar la de recién entre cientos.
   const [fecha, setFecha] = useState(hoyEnAsuncion());
@@ -167,10 +169,21 @@ export default function VentasMobile() {
       ) : (
         <ul className="space-y-2">
           {ventasFiltradas.map((v) => (
-            <VentaCard key={v.id} venta={v} onAnular={() => setAnulando(v)} />
+            <VentaCard key={v.id} venta={v} onVer={() => setViendo(v)} onAnular={() => setAnulando(v)} />
           ))}
         </ul>
       )}
+
+      {viendo ? (
+        <DetalleVenta
+          venta={viendo}
+          onCerrar={() => setViendo(null)}
+          onAnular={() => {
+            setAnulando(viendo);
+            setViendo(null);
+          }}
+        />
+      ) : null}
 
       {anulando ? (
         <ModalAnular
@@ -268,7 +281,15 @@ function ModalAnular({
 
 // ── Card de venta ────────────────────────────────────────────────────────────
 
-function VentaCard({ venta, onAnular }: { venta: Venta; onAnular: () => void }) {
+function VentaCard({
+  venta,
+  onVer,
+  onAnular,
+}: {
+  venta: Venta;
+  onVer: () => void;
+  onAnular: () => void;
+}) {
   const anulada = (venta.estado ?? "") === "anulada";
   const cantidadItems = venta.items.reduce((s, i) => s + i.cantidad, 0);
   const primerItem = venta.items[0];
@@ -276,8 +297,18 @@ function VentaCard({ venta, onAnular }: { venta: Venta; onAnular: () => void }) 
 
   return (
     <li>
+      {/* Toda la tarjeta abre el detalle; el botón de anular tiene el suyo. */}
       <div
-        className={`flex flex-col gap-2.5 rounded-2xl border bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] ${
+        role="button"
+        tabIndex={0}
+        onClick={onVer}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onVer();
+          }
+        }}
+        className={`flex cursor-pointer flex-col gap-2.5 rounded-2xl border bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] active:bg-slate-50 ${
           anulada ? "border-slate-200 opacity-60" : "border-slate-200"
         }`}
       >
@@ -319,7 +350,10 @@ function VentaCard({ venta, onAnular }: { venta: Venta; onAnular: () => void }) 
         {anulada ? null : (
           <button
             type="button"
-            onClick={onAnular}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAnular();
+            }}
             className="inline-flex items-center justify-center gap-1.5 self-end rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 active:bg-red-50 active:text-red-600"
           >
             <Ban className="h-3.5 w-3.5" />

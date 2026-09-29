@@ -49,6 +49,8 @@ export interface LineaVenta {
   subtotal:              number;  // precio_venta × cantidad
   monto_iva:             number;  // IVA CONTENIDO en el subtotal, no agregado
   total_linea:           number;  // = subtotal: el precio ya lleva el IVA
+  /** Unidad del producto (KG, UNIDAD…), para mostrar 1,5 KG y no 1,5 a secas. */
+  unidad_medida?:        string | null;
 }
 
 /** Cabecera de venta: condiciones comerciales + totales consolidados. */
@@ -85,6 +87,8 @@ export interface Venta {
   /** Cliente de la venta. `null` = venta sin nombre. */
   cliente_id?: string | null;
   cliente_nombre?: string | null;
+  /** "Camion 1 · CAMION PRUEBA" si salió de un reparto. */
+  reparto_etiqueta?: string | null;
 
   fecha: string;             // ISO string, generado automáticamente
 }
