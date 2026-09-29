@@ -61,6 +61,19 @@ export function formatGs(valor: number): string {
   return `Gs. ${Math.round(valor).toLocaleString("es-PY")}`;
 }
 
+/**
+ * IVA con el que entra un producto al carrito: el suyo si lo tiene cargado.
+ * Antes todo entraba con 10% y había que acordarse de pasar el pollo a 5% en
+ * cada línea; olvidarse era una factura con el IVA mal. Sigue pudiéndose
+ * cambiar a mano en la línea.
+ */
+function ivaDelProducto(producto: { tipo_iva?: string | null }): TipoIvaVenta {
+  const v = (producto.tipo_iva ?? "").trim().toUpperCase();
+  if (v === "5%" || v === "5") return "5%";
+  if (v === "EXENTA" || v === "EXENTO" || v === "0" || v === "0%") return "EXENTA";
+  return "10%";
+}
+
 export function useCajaVenta() {
   const [paso, setPaso] = useState<PasoCaja>("cliente");
 
@@ -154,7 +167,7 @@ export function useCajaVenta() {
       );
 
       if (siguiente === 0) return prev.filter((i) => i.producto.id !== producto.id);
-      if (idx === -1) return [...prev, { producto, cantidad: siguiente, tipoIva: "10%" }];
+      if (idx === -1) return [...prev, { producto, cantidad: siguiente, tipoIva: ivaDelProducto(producto) }];
       const copia = [...prev];
       copia[idx] = { ...copia[idx], cantidad: siguiente };
       return copia;
@@ -172,7 +185,7 @@ export function useCajaVenta() {
     setCarrito((prev) => {
       if (limpia === 0) return prev.filter((i) => i.producto.id !== producto.id);
       const idx = prev.findIndex((i) => i.producto.id === producto.id);
-      if (idx === -1) return [...prev, { producto, cantidad: limpia, tipoIva: "10%" }];
+      if (idx === -1) return [...prev, { producto, cantidad: limpia, tipoIva: ivaDelProducto(producto) }];
       const copia = [...prev];
       copia[idx] = { ...copia[idx], cantidad: limpia };
       return copia;

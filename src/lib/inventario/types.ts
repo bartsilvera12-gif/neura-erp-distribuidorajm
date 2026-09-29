@@ -19,6 +19,8 @@ export interface Producto {
   categoria_principal_id?: string | null;
   ubicacion_principal_id?: string | null;
   proveedor_principal_id?: string | null;
+  /** IVA con el que se vende: "5%" (pollo), "10%", "EXENTA". `null` = sin definir. */
+  tipo_iva?: string | null;
 }
 
 export interface MovimientoInventario {

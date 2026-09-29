@@ -272,6 +272,19 @@ export async function GET(request: NextRequest) {
     // que todavía no lleva el depósito por ubicación no tiene filas ahí, y
     // sumarlas daría cero en todo. Restando, el peor caso es el total de la
     // empresa, que es como estaba antes.
+    // IVA propio del producto (migración 41). Se pregunta si la columna existe
+    // antes de nombrarla: pedir una columna que falta no devuelve vacío, rompe
+    // la consulta entera y deja la caja sin catálogo.
+    const ivaQ = await queryWithRetry<{ c: string }>(
+      pool,
+      `SELECT column_name AS c FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'productos' AND column_name = 'tipo_iva'`,
+      [schema]
+    );
+    const hayIva = ivaQ.rows.length > 0;
+    const ivaP = hayIva ? "p.tipo_iva" : "NULL::text AS tipo_iva";
+    const ivaSinAlias = hayIva ? "tipo_iva" : "NULL::text AS tipo_iva";
+
     const sqlSalon = `
       WITH en_camiones AS (
         SELECT su.producto_id, sum(su.stock_actual) AS cantidad
@@ -286,7 +299,7 @@ export async function GET(request: NextRequest) {
              p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
              p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
              p.imagen_path, p.imagen_url, p.categoria_principal_id,
-             p.ubicacion_principal_id, p.proveedor_principal_id
+             p.ubicacion_principal_id, p.proveedor_principal_id, ${ivaP}
         FROM ${t} p
         LEFT JOIN en_camiones ec ON ec.producto_id = p.id
        WHERE p.empresa_id = $1::uuid AND p.activo = true
@@ -309,7 +322,7 @@ export async function GET(request: NextRequest) {
           : `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
                   unidad_medida, metodo_valuacion, activo, created_at, updated_at,
                   codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
-                  categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
+                  categoria_principal_id, ubicacion_principal_id, proveedor_principal_id, ${ivaSinAlias}
              FROM ${t}
             WHERE empresa_id = $1::uuid AND activo = true
             ORDER BY nombre`
@@ -318,7 +331,7 @@ export async function GET(request: NextRequest) {
                   p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
                   p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
                   p.imagen_path, p.imagen_url, p.categoria_principal_id,
-                  p.ubicacion_principal_id, p.proveedor_principal_id
+                  p.ubicacion_principal_id, p.proveedor_principal_id, ${ivaP}
              FROM ${t} p
              JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
                ON su.producto_id = p.id AND su.ubicacion_id = $2::uuid

@@ -30,6 +30,7 @@ interface ProductoRow {
   categoria_principal_id?: string | null;
   ubicacion_principal_id?: string | null;
   proveedor_principal_id?: string | null;
+  tipo_iva?: string | null;
 }
 
 interface MovimientoRow {
@@ -70,6 +71,7 @@ function rowToProducto(row: ProductoRow): Producto {
     categoria_principal_id: row.categoria_principal_id ?? null,
     ubicacion_principal_id: row.ubicacion_principal_id ?? null,
     proveedor_principal_id: row.proveedor_principal_id ?? null,
+    tipo_iva: row.tipo_iva ?? null,
   };
 }
 
