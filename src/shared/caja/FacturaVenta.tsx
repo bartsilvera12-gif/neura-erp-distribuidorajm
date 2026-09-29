@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Printer, Share2 } from "lucide-react";
+import { FileText, Printer, Receipt, Share2 } from "lucide-react";
 import FacturaA4 from "@/shared/caja/FacturaA4";
 import HojaA4 from "@/shared/caja/HojaA4";
+import ReciboVenta from "@/shared/caja/ReciboVenta";
 import type { DatosComprobante } from "@/lib/ventas/comprobante";
 import {
   compartirComprobante,
@@ -13,8 +14,8 @@ import { comprobantePdf, nombreArchivoPdf } from "@/lib/ventas/comprobante-pdf";
 
 /**
  * La factura como la ve el cliente: la hoja A4 (FacturaA4), igual en pantalla
- * que en el papel, y las cuatro formas de hacérsela llegar (imprimir,
- * compartir, WhatsApp, PDF).
+ * que en el papel, las formas de hacérsela llegar (imprimir, compartir,
+ * WhatsApp, PDF) y, si fue al contado, el recibo de dinero.
  *
  * Cuando no hay timbrado configurado el título dice COMPROBANTE DE VENTA y no
  * FACTURA. Un papel que dice "factura" sin timbrado no es una factura ante la
@@ -32,6 +33,9 @@ export default function FacturaVenta({
 }) {
   const { venta } = datos;
   const [aviso, setAviso] = useState<string | null>(null);
+  const [verRecibo, setVerRecibo] = useState(false);
+  // Recibo de dinero: solo si la plata entró (contado) y la venta sigue viva.
+  const conRecibo = venta.tipo_venta !== "CREDITO" && venta.estado !== "anulada";
 
   async function compartir() {
     setAviso(await compartirComprobante(datos));
@@ -57,12 +61,31 @@ export default function FacturaVenta({
     }
   }
 
+  if (verRecibo) {
+    return (
+      <div>
+        <div className="no-imprimir flex justify-center pt-4">
+          <button
+            type="button"
+            onClick={() => setVerRecibo(false)}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            ← Volver a la factura
+          </button>
+        </div>
+        <ReciboVenta datos={datos} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[830px] px-4 py-5">
       {/* La misma hoja A4 que sale por la impresora, achicada al ancho de la
           pantalla. `factura-imprimible` es lo único que va al papel: el resto
           lo esconde @media print en globals.css. */}
-      <div className="no-imprimir mx-auto mb-4 grid max-w-md grid-cols-4 gap-2">
+      <div
+        className={`no-imprimir mx-auto mb-4 grid gap-2 ${conRecibo ? "max-w-lg grid-cols-5" : "max-w-md grid-cols-4"}`}
+      >
         <Accion label="Imprimir" onClick={() => window.print()}>
           <Printer className="h-5 w-5" />
         </Accion>
@@ -75,6 +98,11 @@ export default function FacturaVenta({
         <Accion label="PDF" onClick={pdf}>
           <FileText className="h-5 w-5" />
         </Accion>
+        {conRecibo ? (
+          <Accion label="Recibo" onClick={() => setVerRecibo(true)}>
+            <Receipt className="h-5 w-5" />
+          </Accion>
+        ) : null}
       </div>
       {aviso ? (
         <p
