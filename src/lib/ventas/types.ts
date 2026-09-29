@@ -87,6 +87,9 @@ export interface Venta {
   /** Cliente de la venta. `null` = venta sin nombre. */
   cliente_id?: string | null;
   cliente_nombre?: string | null;
+  /** RUC o documento del cliente y su dirección, para la factura. */
+  cliente_ruc?: string | null;
+  cliente_direccion?: string | null;
   /** "Camion 1 · CAMION PRUEBA" si salió de un reparto. */
   reparto_etiqueta?: string | null;
 

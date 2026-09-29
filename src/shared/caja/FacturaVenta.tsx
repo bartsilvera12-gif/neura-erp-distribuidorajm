@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { FileText, Printer, Share2 } from "lucide-react";
 import { formatCantidad } from "@/lib/inventario/unidades";
-import { esFacturaLegal, fechaHora, gs, type DatosComprobante } from "@/lib/ventas/comprobante";
+import FacturaA4 from "@/shared/caja/FacturaA4";
+import { esFacturaLegal, fechaHora, gs, numeroFactura, type DatosComprobante } from "@/lib/ventas/comprobante";
 import { compartirComprobante, whatsappComprobante } from "@/lib/ventas/compartir-comprobante";
 import { comprobantePdf, nombreArchivoPdf } from "@/lib/ventas/comprobante-pdf";
 
@@ -57,9 +58,12 @@ export default function FacturaVenta({
 
   return (
     <div className="mx-auto max-w-md px-4 py-5">
-      {/* `factura-imprimible` es lo único que sale por la impresora: el resto de
-          la pantalla lo esconde la regla @media print de globals.css. */}
-      <article className="factura-imprimible rounded-2xl border border-slate-200 bg-white p-5">
+      {/* En pantalla, la tarjeta. Por la impresora sale la hoja A4 de abajo
+          (`factura-imprimible`); el resto lo esconde @media print en globals.css. */}
+      <div className="factura-imprimible hidden print:block">
+        <FacturaA4 datos={datos} />
+      </div>
+      <article className="no-imprimir rounded-2xl border border-slate-200 bg-white p-5">
         <header className="border-b border-slate-200 pb-3">
           <h2 className="text-lg font-black tracking-tight" style={{ color: TINTA }}>
             {emisor?.nombre_fantasia ?? emisor?.razon_social ?? "Distribuidora JM"}
@@ -77,7 +81,7 @@ export default function FacturaVenta({
           </p>
           <div className="text-right text-[11px] text-slate-600">
             {legal ? <p>Timbrado N.°: {emisor!.timbrado_numero}</p> : null}
-            <p className="font-semibold text-slate-900">N.° {venta.numero_control}</p>
+            <p className="font-semibold text-slate-900">N.° {numeroFactura(datos)}</p>
           </div>
         </div>
 

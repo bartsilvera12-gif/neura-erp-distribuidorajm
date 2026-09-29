@@ -73,6 +73,8 @@ export default function DetalleVenta({
     venta,
     emisor,
     cliente: venta.cliente_nombre ?? "Sin nombre",
+    clienteRuc: venta.cliente_ruc ?? null,
+    clienteDireccion: venta.cliente_direccion ?? null,
     formaPago: formaDePago(venta),
     unidades: Object.fromEntries(
       venta.items.filter((i) => i.unidad_medida).map((i) => [i.producto_id, i.unidad_medida as string])

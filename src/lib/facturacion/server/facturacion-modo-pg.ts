@@ -128,8 +128,35 @@ export interface AutoimpresorRow {
   formato_impresion_default: ImpresionTipo;
   leyenda_papel_termico: string | null;
   observaciones: string | null;
+  /** Datos de la cabecera de la factura (migración 43). `null` si falta la columna. */
+  actividad_economica: string | null;
+  departamento: string | null;
+  ciudad: string | null;
+  email: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Columnas agregadas por la migración 43. Se leen y se guardan solo si existen:
+ * nombrar una que falta rompe la consulta entera y deja sin configuración.
+ */
+const AI_EXTRAS = ["actividad_economica", "departamento", "ciudad", "email"] as const;
+type AiExtra = (typeof AI_EXTRAS)[number];
+
+async function extrasPresentes(schema: string): Promise<AiExtra[]> {
+  const { rows } = await pool().query<{ c: string }>(
+    `SELECT column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'empresa_autoimpresor_config'
+        AND column_name = ANY($2::text[])`,
+    [schema, AI_EXTRAS as unknown as string[]]
+  );
+  const hay = new Set(rows.map((r) => r.c));
+  return AI_EXTRAS.filter((c) => hay.has(c));
+}
+
+function colsConExtras(presentes: AiExtra[]): string {
+  return `${AI_COLS}, ${AI_EXTRAS.map((c) => (presentes.includes(c) ? c : `NULL::text AS ${c}`)).join(", ")}`;
 }
 
 const AI_COLS = `
@@ -156,6 +183,7 @@ export function defaultAutoimpresor(empresaId: string): AutoimpresorRow {
     tipo_documento_default: "factura",
     formato_impresion_default: "pdf_a4",
     leyenda_papel_termico: null, observaciones: null,
+    actividad_economica: null, departamento: null, ciudad: null, email: null,
     created_at: now, updated_at: now,
   };
 }
@@ -173,8 +201,9 @@ export async function getAutoimpresor(
     `${schema}.empresa_autoimpresor_config`,
   ]);
   if (!existe.rows[0]?.t) return defaultAutoimpresor(empresaId);
+  const presentes = await extrasPresentes(schema);
   const { rows } = await pool().query<AutoimpresorRow>(
-    `SELECT ${AI_COLS} FROM ${t} WHERE empresa_id = $1::uuid LIMIT 1`,
+    `SELECT ${colsConExtras(presentes)} FROM ${t} WHERE empresa_id = $1::uuid LIMIT 1`,
     [empresaId]
   );
   return rows[0] ?? defaultAutoimpresor(empresaId);
@@ -199,6 +228,10 @@ export interface AutoimpresorPatch {
   formato_impresion_default?: ImpresionTipo;
   leyenda_papel_termico?: string | null;
   observaciones?: string | null;
+  actividad_economica?: string | null;
+  departamento?: string | null;
+  ciudad?: string | null;
+  email?: string | null;
 }
 
 export async function upsertAutoimpresor(
@@ -276,7 +309,25 @@ export async function upsertAutoimpresor(
      m.tipo_documento_default, m.formato_impresion_default,
      m.leyenda_papel_termico, m.observaciones]
   );
-  return rows[0];
+
+  // Los datos de cabecera de la migración 43, solo los que la tabla tenga.
+  const presentes = await extrasPresentes(schema);
+  const aGuardar = presentes.filter((c) => p[c] !== undefined);
+  const extras: Record<AiExtra, string | null> = {
+    actividad_economica: base.actividad_economica,
+    departamento: base.departamento,
+    ciudad: base.ciudad,
+    email: base.email,
+  };
+  if (aGuardar.length > 0) {
+    await pool().query(
+      `UPDATE ${t} SET ${aGuardar.map((c, i) => `${c} = $${i + 2}`).join(", ")}
+        WHERE empresa_id = $1::uuid`,
+      [empresaId, ...aGuardar.map((c) => p[c] ?? null)]
+    );
+    for (const c of aGuardar) extras[c] = p[c] ?? null;
+  }
+  return { ...rows[0], ...extras };
 }
 
 /** Valida configuracion minima de autoimpresor si activo=true. */

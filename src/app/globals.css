@@ -178,4 +178,13 @@ body {
   .no-imprimir {
     display: none !important;
   }
+
+  body:has(.factura-imprimible) .factura-imprimible {
+    background: #fff;
+  }
+
+  .factura-a4 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

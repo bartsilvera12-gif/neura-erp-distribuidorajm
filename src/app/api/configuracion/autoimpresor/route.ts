@@ -75,6 +75,10 @@ export async function PATCH(request: NextRequest) {
           ? String(body.formato_impresion_default) as ImpresionTipo : "pdf_a4"),
       leyenda_papel_termico: body.leyenda_papel_termico === undefined ? undefined : str(body.leyenda_papel_termico),
       observaciones: body.observaciones === undefined ? undefined : str(body.observaciones),
+      actividad_economica: body.actividad_economica === undefined ? undefined : str(body.actividad_economica),
+      departamento: body.departamento === undefined ? undefined : str(body.departamento),
+      ciudad: body.ciudad === undefined ? undefined : str(body.ciudad),
+      email: body.email === undefined ? undefined : str(body.email),
     };
 
     // Si activamos autoimpresor, validar campos minimos

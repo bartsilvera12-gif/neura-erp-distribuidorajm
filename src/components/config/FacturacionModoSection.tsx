@@ -33,6 +33,10 @@ interface Autoimpresor {
   formato_impresion_default: Impresion;
   leyenda_papel_termico: string | null;
   observaciones: string | null;
+  actividad_economica?: string | null;
+  departamento?: string | null;
+  ciudad?: string | null;
+  email?: string | null;
 }
 
 const modoCards: Array<{ key: Modo; titulo: string; resumen: string }> = [
@@ -254,6 +258,10 @@ function AutoimpresorForm({
         <Field label="Nombre fantasía"><input className={`${inputClass} uppercase`} value={f.nombre_fantasia ?? ""} onChange={(e) => set("nombre_fantasia", e.target.value || null)} /></Field>
         <Field label="Dirección" className="md:col-span-2"><input className={`${inputClass} uppercase`} value={f.direccion_matriz ?? ""} onChange={(e) => set("direccion_matriz", e.target.value || null)} /></Field>
         <Field label="Teléfono"><input className={inputClass} value={f.telefono ?? ""} onChange={(e) => set("telefono", e.target.value || null)} /></Field>
+        <Field label="Actividad económica" className="md:col-span-2"><input className={`${inputClass} uppercase`} placeholder="COMERCIO AL POR MAYOR DE CARNE…" value={f.actividad_economica ?? ""} onChange={(e) => set("actividad_economica", e.target.value || null)} /></Field>
+        <Field label="Email"><input type="email" className={inputClass} value={f.email ?? ""} onChange={(e) => set("email", e.target.value || null)} /></Field>
+        <Field label="Departamento"><input className={`${inputClass} uppercase`} placeholder="CENTRAL" value={f.departamento ?? ""} onChange={(e) => set("departamento", e.target.value || null)} /></Field>
+        <Field label="Ciudad"><input className={`${inputClass} uppercase`} placeholder="ITA" value={f.ciudad ?? ""} onChange={(e) => set("ciudad", e.target.value || null)} /></Field>
       </div>
 
       <div className="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-3 gap-3">

@@ -770,6 +770,8 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     venta,
     emisor,
     cliente: comp.nombreCliente,
+    clienteRuc: comp.rucCliente,
+    clienteDireccion: comp.direccionCliente,
     formaPago: etiquetaCobro(comp),
     unidades,
   };

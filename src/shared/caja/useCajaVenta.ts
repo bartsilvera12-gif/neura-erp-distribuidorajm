@@ -455,6 +455,8 @@ export function useCajaVenta() {
     setComprobante({
       nombreCliente: cliente ? clienteNombre(cliente) : "Sin nombre",
       telefonoCliente: cliente?.telefono ?? null,
+      rucCliente: cliente ? cliente.ruc_factura || cliente.ruc || cliente.documento || null : null,
+      direccionCliente: cliente?.direccion || null,
       aCredito,
       metodoPago: aCredito ? null : metodoPago,
       unidades: Object.fromEntries(
@@ -554,6 +556,8 @@ export type CajaVenta = ReturnType<typeof useCajaVenta>;
 export interface ComprobanteCaja {
   nombreCliente: string;
   telefonoCliente: string | null;
+  rucCliente: string | null;
+  direccionCliente: string | null;
   aCredito: boolean;
   metodoPago: MetodoPagoVenta | null;
   /** Unidad de cada producto: no viaja en la venta y sin ella 1,5 KG se lee 1,5 a secas. */

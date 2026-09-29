@@ -105,6 +105,7 @@ export async function GET(request: NextRequest) {
     const idsCliente = [...new Set(ventasQ.rows.map((r) => r.cliente_id).filter(Boolean))] as string[];
     const idsReparto = [...new Set(ventasQ.rows.map((r) => r.reparto_id).filter(Boolean))] as string[];
     const nombreCliente = new Map<string, string>();
+    const datosCliente = new Map<string, { ruc: string | null; direccion: string | null }>();
     const etiquetaReparto = new Map<string, string>();
     if (idsCliente.length > 0) {
       try {
@@ -128,12 +129,25 @@ export async function GET(request: NextRequest) {
                       THEN COALESCE(NULLIF(btrim(cl.nombre_contacto), ''), ${partes.join(", ")}, 'Cliente')
                       ELSE COALESCE(${partes.join(", ")}, 'Cliente') END`
               : `COALESCE(${partes.join(", ")}, 'Cliente')`;
-        const q = await queryWithRetry<{ id: string; nombre: string }>(pool,
-          `SELECT cl.id, ${exprNombre} AS nombre
+        const rucs = ["ruc_factura", "ruc", "documento"]
+          .filter((c) => hay.has(c))
+          .map((c) => `NULLIF(btrim(cl.${c}), '')`);
+        const exprRuc = rucs.length > 0 ? `COALESCE(${rucs.join(", ")})` : "NULL::text";
+        const exprDir = hay.has("direccion") ? "NULLIF(btrim(cl.direccion), '')" : "NULL::text";
+        const q = await queryWithRetry<{
+          id: string;
+          nombre: string;
+          ruc: string | null;
+          direccion: string | null;
+        }>(pool,
+          `SELECT cl.id, ${exprNombre} AS nombre, ${exprRuc} AS ruc, ${exprDir} AS direccion
              FROM ${quoteSchemaTable(schema, "clientes")} cl WHERE cl.id = ANY($1::uuid[])`,
           [idsCliente]
         );
-        for (const r of q.rows) nombreCliente.set(r.id, r.nombre);
+        for (const r of q.rows) {
+          nombreCliente.set(r.id, r.nombre);
+          datosCliente.set(r.id, { ruc: r.ruc, direccion: r.direccion });
+        }
       } catch (e) {
         console.warn("[/api/ventas GET] nombres de cliente:", e instanceof Error ? e.message : e);
       }
@@ -210,6 +224,8 @@ export async function GET(request: NextRequest) {
         metodo_pago: (r.metodo_pago as Venta["metodo_pago"]) ?? null,
         cliente_id: r.cliente_id ?? null,
         cliente_nombre: r.cliente_id ? nombreCliente.get(r.cliente_id) ?? null : null,
+        cliente_ruc: r.cliente_id ? datosCliente.get(r.cliente_id)?.ruc ?? null : null,
+        cliente_direccion: r.cliente_id ? datosCliente.get(r.cliente_id)?.direccion ?? null : null,
         reparto_id: r.reparto_id ?? null,
         reparto_etiqueta: r.reparto_id ? etiquetaReparto.get(r.reparto_id) ?? null : null,
         lista_precio: r.lista_precio === "mayorista" ? "mayorista" : "minorista",
