@@ -141,6 +141,12 @@ export function useCajaVenta() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ventaCreada, setVentaCreada] = useState<Venta | null>(null);
+  /**
+   * Lo que el comprobante muestra de la venta recién hecha. Se copia al
+   * confirmar porque en ese mismo momento la caja se limpia: la venta
+   * siguiente no puede arrancar con el cliente ni el carrito de la anterior.
+   */
+  const [comprobante, setComprobante] = useState<ComprobanteCaja | null>(null);
 
   const tipoCambioNum = moneda === "USD" ? parseFloat(tipoCambio) || 0 : 1;
 
@@ -380,6 +386,20 @@ export function useCajaVenta() {
 
   // ── Confirmación ───────────────────────────────────────────────────────────
 
+  /** Deja la caja lista para la venta siguiente. El reparto no se toca: sigue siendo el mismo camión en la calle. */
+  const limpiarVenta = useCallback(() => {
+    setCliente(null);
+    setSinNombre(false);
+    setCarrito([]);
+    setMoneda("GS");
+    setLista("minorista");
+    setTipoCambio("");
+    setMetodoPago(null);
+    setACredito(false);
+    setPlazoDias("");
+    setError(null);
+  }, []);
+
   const confirmar = useCallback(async () => {
     if (guardando) return;
     if (carrito.length === 0) {
@@ -432,9 +452,21 @@ export function useCajaVenta() {
       return;
     }
 
+    setComprobante({
+      nombreCliente: cliente ? clienteNombre(cliente) : "Sin nombre",
+      telefonoCliente: cliente?.telefono ?? null,
+      aCredito,
+      metodoPago: aCredito ? null : metodoPago,
+      unidades: Object.fromEntries(
+        carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
+      ),
+    });
+    limpiarVenta();
     setVentaCreada(res.venta);
     setPaso("listo");
   }, [
+    carrito,
+    limpiarVenta,
     guardando,
     carrito.length,
     metodoPago,
@@ -453,20 +485,11 @@ export function useCajaVenta() {
   ]);
 
   const reiniciar = useCallback(() => {
-    setPaso("cliente");
-    setCliente(null);
-    setSinNombre(false);
-    setCarrito([]);
-    setMoneda("GS");
-    setLista("minorista");
-    setTipoCambio("");
-    setMetodoPago(null);
-    setACredito(false);
-    setPlazoDias("");
-    setError(null);
+    limpiarVenta();
+    setComprobante(null);
     setVentaCreada(null);
-    // El reparto no se limpia: sigue siendo el mismo camión en la calle.
-  }, []);
+    setPaso("cliente");
+  }, [limpiarVenta]);
 
   const nombreCliente = cliente ? clienteNombre(cliente) : "Sin nombre";
 
@@ -492,6 +515,7 @@ export function useCajaVenta() {
     guardando,
     error,
     ventaCreada,
+    comprobante,
     repartosAbiertos,
     repartosDisponibles,
     repartoId,
@@ -526,3 +550,12 @@ export function useCajaVenta() {
 }
 
 export type CajaVenta = ReturnType<typeof useCajaVenta>;
+
+export interface ComprobanteCaja {
+  nombreCliente: string;
+  telefonoCliente: string | null;
+  aCredito: boolean;
+  metodoPago: MetodoPagoVenta | null;
+  /** Unidad de cada producto: no viaja en la venta y sin ella 1,5 KG se lee 1,5 a secas. */
+  unidades: Record<string, string>;
+}

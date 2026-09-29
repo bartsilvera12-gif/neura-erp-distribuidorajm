@@ -37,7 +37,7 @@ import {
 import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { formatCantidad } from "@/lib/inventario/unidades";
-import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
+import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta, type ComprobanteCaja } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
@@ -69,7 +69,7 @@ export default function CajaMobile() {
   const teclado = useTecladoVirtual();
   const barraVisible = !teclado && !(caja.paso === "cliente" && subCliente !== null);
 
-  if (caja.paso === "listo" && caja.ventaCreada) {
+  if (caja.paso === "listo" && caja.ventaCreada && caja.comprobante) {
     return <Comprobante caja={caja} />;
   }
 
@@ -761,17 +761,16 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const [verFactura, setVerFactura] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
-  // La unidad de cada producto no viaja en la venta, pero sí está en el
-  // carrito que la acaba de generar: sin ella, 1,5 KG se lee como 1,5 a secas.
-  const unidades = Object.fromEntries(
-    caja.carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
-  );
+  // El cliente, el cobro y las unidades salen de la copia tomada al confirmar:
+  // la caja ya quedó limpia para la venta siguiente.
+  const comp = caja.comprobante!;
+  const unidades = comp.unidades;
 
   const datos: DatosComprobante = {
     venta,
     emisor,
-    cliente: caja.nombreCliente,
-    formaPago: etiquetaCobro(caja),
+    cliente: comp.nombreCliente,
+    formaPago: etiquetaCobro(comp),
     unidades,
   };
 
@@ -790,7 +789,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           al cliente. La factura entera queda a un toque. */}
       {verFactura ? (
         <>
-          <FacturaVenta datos={datos} telefonoCliente={caja.cliente?.telefono ?? null} />
+          <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
           <div className="no-imprimir px-4">
             <button
               type="button"
@@ -817,7 +816,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
                 valor={venta.numero_control}
               />
               <FilaComprobante termino="Fecha y hora" valor={`${fecha} ${hora}`} />
-              <FilaComprobante termino="Cliente" valor={caja.nombreCliente} />
+              <FilaComprobante termino="Cliente" valor={comp.nombreCliente} />
               <div className="flex items-center justify-between border-t border-slate-200 pt-2">
                 <dt className="text-sm font-semibold text-slate-900">Total</dt>
                 <dd className="text-xl font-bold tabular-nums text-slate-900">
@@ -854,7 +853,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             </button>
             <button
               type="button"
-              onClick={() => whatsappComprobante(datos, caja.cliente?.telefono ?? null)}
+              onClick={() => whatsappComprobante(datos, comp.telefonoCliente)}
               className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
             >
               Enviar por WhatsApp
@@ -893,7 +892,7 @@ function FilaComprobante({ termino, valor }: { termino: string; valor: string })
 }
 
 /** Cómo se cobró, en palabras: a crédito, o el medio elegido. */
-function etiquetaCobro(caja: CajaVenta): string {
-  if (caja.aCredito) return "A crédito";
-  return METODOS_PAGO.find((m) => m.value === caja.metodoPago)?.label ?? "—";
+function etiquetaCobro(comp: ComprobanteCaja): string {
+  if (comp.aCredito) return "A crédito";
+  return METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—";
 }

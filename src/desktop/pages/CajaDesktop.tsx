@@ -59,7 +59,7 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
 export default function CajaDesktop() {
   const caja = useCajaVenta();
 
-  if (caja.paso === "listo" && caja.ventaCreada) {
+  if (caja.paso === "listo" && caja.ventaCreada && caja.comprobante) {
     return <Comprobante caja={caja} />;
   }
 
@@ -585,20 +585,19 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const [aviso, setAviso] = useState<string | null>(null);
   const { fecha, hora } = fechaHora(venta.fecha);
 
-  // La unidad de cada producto no viaja en la venta, pero sí está en el carrito
-  // que la acaba de generar: sin ella, 1,5 KG se lee como 1,5 a secas.
-  const unidades = Object.fromEntries(
-    caja.carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
-  );
+  // El cliente, el cobro y las unidades salen de la copia tomada al confirmar:
+  // la caja ya quedó limpia para la venta siguiente.
+  const comp = caja.comprobante!;
+  const unidades = comp.unidades;
 
-  const cobro = caja.aCredito
+  const cobro = comp.aCredito
     ? "A crédito"
-    : (METODOS_PAGO.find((m) => m.value === caja.metodoPago)?.label ?? "—");
+    : (METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—");
 
   const datos: DatosComprobante = {
     venta,
     emisor,
-    cliente: caja.nombreCliente,
+    cliente: comp.nombreCliente,
     formaPago: cobro,
     unidades,
   };
@@ -608,7 +607,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   if (verFactura) {
     return (
       <div className="mx-auto max-w-lg p-6">
-        <FacturaVenta datos={datos} telefonoCliente={caja.cliente?.telefono ?? null} />
+        <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
         <div className="no-imprimir px-4">
           <button
             type="button"
@@ -638,7 +637,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             valor={venta.numero_control}
           />
           <Dato label="Fecha y hora" valor={`${fecha} ${hora}`} />
-          <Dato label="Cliente" valor={caja.nombreCliente} />
+          <Dato label="Cliente" valor={comp.nombreCliente} />
           <Dato label="Cobro" valor={cobro} />
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <dt className="text-sm font-semibold text-slate-900">Total</dt>
