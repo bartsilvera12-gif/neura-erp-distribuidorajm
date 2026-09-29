@@ -19,6 +19,17 @@ export const METODOS_PAGO: { value: MetodoPagoVenta; label: string }[] = [
 ];
 
 /**
+ * Con qué se puede cobrar hoy: efectivo, transferencia o cheque. Es la lista
+ * que ofrecen la caja y el cobro de ventas a crédito.
+ *
+ * `METODOS_PAGO` queda completa porque hay ventas viejas con tarjeta o mixto y
+ * tienen que seguir mostrándose con su nombre; esta es la que se OFRECE.
+ */
+export const METODOS_COBRO: { value: MetodoPagoVenta; label: string }[] = METODOS_PAGO.filter(
+  (m) => m.value === "efectivo" || m.value === "transferencia" || m.value === "cheque"
+);
+
+/**
  * `caja_movimientos.medio_pago` usa otro vocabulario que `ventas.metodo_pago`:
  * no tiene `mixto`, tiene `otro`. Esta es la traducción entre los dos.
  */

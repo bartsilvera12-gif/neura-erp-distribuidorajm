@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
 import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   Banknote,
-  CalendarClock,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -39,7 +39,7 @@ import { useEmisor } from "@/shared/hooks/useEmisor";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
-import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
 /**
  * Caja mobile: asistente de cobro a pantalla completa.
@@ -631,44 +631,16 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
   return (
     <div className="pt-4">
       {/* El crédito no es un medio de cobro: es una condición de la venta. */}
-      <button
-        type="button"
-        disabled={!caja.creditoDisponible}
-        onClick={() => caja.setACredito(!caja.aCredito)}
-        className={`mb-4 flex w-full items-center gap-3 rounded-xl border-2 bg-white p-4 text-left transition-colors disabled:opacity-50 ${
-          caja.aCredito ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
-        }`}
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-          <CalendarClock className="h-4 w-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-slate-900">Venta a crédito</span>
-          <span className="block text-xs text-slate-500">
-            {caja.creditoDisponible
-              ? "Se cobra después; no entra plata a la caja ahora"
-              : "Solo para clientes identificados"}
-          </span>
-        </span>
-        <span
-          className={`h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors ${
-            caja.aCredito ? "bg-[#4FAEB2]" : "bg-slate-200"
-          }`}
-        >
-          <span
-            className={`block h-4 w-4 rounded-full bg-white transition-transform ${
-              caja.aCredito ? "translate-x-4" : ""
-            }`}
-          />
-        </span>
-      </button>
+      <div className="mb-4">
+        <SelectorCondicionVenta caja={caja} grande />
+      </div>
 
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
         {caja.aCredito ? "Plazo" : "Con qué se cobra"}
       </p>
 
       <ul className={`space-y-2 ${caja.aCredito ? "hidden" : ""}`}>
-        {METODOS_PAGO.map((o) => {
+        {METODOS_COBRO.map((o) => {
           const Icono = ICONOS_PAGO[o.value];
           const deshabilitado = false;
           const elegido = caja.metodoPago === o.value;

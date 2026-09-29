@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
 import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
@@ -33,7 +34,7 @@ import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
-import { METODOS_PAGO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
 /**
  * Caja desktop. Misma lógica que la mobile (`useCajaVenta`), otro layout.
@@ -297,35 +298,17 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           </div>
 
           {/* El crédito no es un medio de cobro: es una condición de la venta. */}
-          <label
-            className={`mt-4 flex items-center gap-2.5 rounded-lg border-2 p-2.5 transition-colors ${
-              caja.aCredito ? "border-[#4FAEB2] bg-[#4FAEB2]/10" : "border-slate-200"
-            } ${caja.creditoDisponible ? "cursor-pointer" : "opacity-50"}`}
-          >
-            <input
-              type="checkbox"
-              disabled={!caja.creditoDisponible}
-              checked={caja.aCredito}
-              onChange={(e) => caja.setACredito(e.target.checked)}
-              className="h-4 w-4 accent-[#4FAEB2]"
-            />
-            <span className="min-w-0">
-              <span className="block text-xs font-semibold text-slate-900">Venta a crédito</span>
-              <span className="block text-[11px] text-slate-500">
-                {caja.creditoDisponible
-                  ? "No entra plata a la caja ahora"
-                  : "Solo para clientes identificados"}
-              </span>
-            </span>
-          </label>
+          <div className="mt-4">
+            <SelectorCondicionVenta caja={caja} />
+          </div>
 
           {!caja.aCredito ? (
             <>
               <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
                 Con qué se cobra
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                {METODOS_PAGO.map(({ value: m, label }) => {
+              <div className="grid grid-cols-3 gap-2">
+                {METODOS_COBRO.map(({ value: m, label }) => {
                   const Icono = ICONOS_PAGO[m];
                   const elegido = caja.metodoPago === m;
                   return (

@@ -8,7 +8,7 @@ import {
   type ClienteCobranzaCredito,
   type VentaCobranza,
 } from "@/lib/cobranzas/credito";
-import { METODOS_PAGO } from "@/lib/ventas/types";
+import { METODOS_COBRO } from "@/lib/ventas/types";
 
 const TEAL = "#4FAEB2";
 
@@ -501,7 +501,7 @@ function ModalCobro({
             onChange={(e) => setMedio(e.target.value)}
             className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           >
-            {METODOS_PAGO.filter((m) => m.value !== "mixto").map((m) => (
+            {METODOS_COBRO.map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
               </option>

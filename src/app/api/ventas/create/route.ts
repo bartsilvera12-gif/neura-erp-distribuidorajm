@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { METODOS_COBRO } from "@/lib/ventas/types";
 import { esListaPrecio, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
@@ -136,6 +137,21 @@ export async function POST(request: NextRequest) {
     const metodoPago = (METODOS_VALIDOS as readonly string[]).includes(metodoRaw)
       ? (metodoRaw as Metodo)
       : null;
+
+    // Hoy se cobra solo en efectivo, transferencia o cheque. Tarjeta y mixto
+    // siguen siendo valores válidos en la base (hay ventas viejas con ellos),
+    // pero una venta NUEVA de contado no puede entrar con esos: una pantalla
+    // vieja en caché los podría seguir ofreciendo.
+    if (
+      tipoVenta === "CONTADO" &&
+      metodoPago !== null &&
+      !(METODOS_COBRO.map((m) => m.value) as string[]).includes(metodoPago)
+    ) {
+      return NextResponse.json(
+        errorResponse("Se cobra en efectivo, transferencia o cheque. Recargá la caja."),
+        { status: 400 }
+      );
+    }
 
     const cajaRaw = o.caja_id;
     const cajaId =
