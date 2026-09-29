@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import DetalleVenta from "@/shared/ventas/DetalleVenta";
+import ModalAnularVenta from "@/shared/ventas/ModalAnularVenta";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useEffect, useState } from "react";
 import { getVentas } from "@/lib/ventas/storage";
@@ -86,6 +87,8 @@ export default function VentasPage() {
   const [filtroTipo, setFiltroTipo] = useState<TipoVenta | "">("");
   const [filtroIva,  setFiltroIva]  = useState<TipoIvaVenta | "">("");
   const [viendo,     setViendo]     = useState<Venta | null>(null);
+  const [anulando,   setAnulando]   = useState<Venta | null>(null);
+  const [recarga,    setRecarga]    = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +104,7 @@ export default function VentasPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [recarga]);
 
   const filtradas = todas.filter((v) => {
     // Búsqueda global: número de control, nombre o SKU de cualquier ítem
@@ -302,7 +305,20 @@ export default function VentasPage() {
 
       </section>
 
-      {viendo ? <DetalleVenta venta={viendo} onCerrar={() => setViendo(null)} /> : null}
+      {viendo ? (
+        <DetalleVenta
+          venta={viendo}
+          onCerrar={() => setViendo(null)}
+          onAnular={() => { setAnulando(viendo); setViendo(null); }}
+        />
+      ) : null}
+      {anulando ? (
+        <ModalAnularVenta
+          venta={anulando}
+          onCerrar={() => setAnulando(null)}
+          onAnulada={() => { setAnulando(null); setRecarga((n) => n + 1); }}
+        />
+      ) : null}
     </div>
   );
 }
