@@ -183,7 +183,7 @@ export default function FacturaA4({ datos }: { datos: DatosComprobante }) {
                 const fila: Record<Col, string> = {
                   cod: it.sku ?? "",
                   cant: formatCantidad(it.cantidad, u),
-                  desc: it.producto_nombre.toUpperCase(),
+                  desc: (it.producto_nombre ?? "").toUpperCase(),
                   precio: miles(it.precio_venta),
                   dto: "0",
                   exentas:

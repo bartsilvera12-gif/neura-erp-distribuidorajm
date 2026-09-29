@@ -285,7 +285,7 @@ export async function comprobantePdf(d: DatosComprobante): Promise<Blob> {
         derecha: true,
       });
       texto(
-        ajustar(it.producto_nombre.toUpperCase(), C.precio - C.desc - 6, 7),
+        ajustar((it.producto_nombre ?? "").toUpperCase(), C.precio - C.desc - 6, 7),
         C.desc + 3,
         fy,
         { size: 7 },

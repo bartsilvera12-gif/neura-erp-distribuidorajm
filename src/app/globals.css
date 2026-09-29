@@ -183,6 +183,32 @@ body {
     background: #fff;
   }
 
+  /* La factura dentro del modal: solo el modal va al papel, sin el fondo
+     oscuro ni el scroll, que cortaría la hoja al alto de la pantalla. */
+  body:has(.modal-comprobante) > *:not(.modal-comprobante) {
+    display: none !important;
+  }
+
+  .modal-comprobante {
+    position: static !important;
+    overflow: visible !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .modal-comprobante > div {
+    display: block !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* En pantalla la hoja va achicada y con marco; en el papel, a tamaño real. */
+  .hoja-a4 {
+    zoom: 1 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
   .factura-a4 {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

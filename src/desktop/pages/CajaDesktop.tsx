@@ -24,6 +24,7 @@ import { useClientes } from "@/shared/hooks/useClientes";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
+import ModalComprobante from "@/shared/caja/ModalComprobante";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
@@ -59,10 +60,9 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
 export default function CajaDesktop() {
   const caja = useCajaVenta();
 
-  if (caja.paso === "listo" && caja.ventaCreada && caja.comprobante) {
-    return <Comprobante caja={caja} />;
-  }
-
+  // La venta ya está registrada y la caja limpia: el comprobante se abre en
+  // una ventana encima, y "Nueva venta" la cierra.
+  const listo = caja.paso === "listo" && caja.ventaCreada && caja.comprobante;
 
   return (
     <div className="mx-auto max-w-[1400px] p-6">
@@ -85,6 +85,12 @@ export default function CajaDesktop() {
         <Catalogo caja={caja} />
         <PanelCobro caja={caja} />
       </div>
+
+      {listo ? (
+        <ModalComprobante>
+          <Comprobante caja={caja} />
+        </ModalComprobante>
+      ) : null}
     </div>
   );
 }
@@ -608,24 +614,22 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
 
   if (verFactura) {
     return (
-      <div className="mx-auto max-w-lg p-6">
+      <div className="relative w-full max-w-[880px] rounded-2xl bg-[#F8FAFC] pb-4">
+        <button
+          type="button"
+          onClick={() => setVerFactura(false)}
+          className="no-imprimir absolute left-4 top-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          ← Volver al resumen
+        </button>
         <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
-        <div className="no-imprimir px-4">
-          <button
-            type="button"
-            onClick={() => setVerFactura(false)}
-            className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            Volver al resumen
-          </button>
-        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-lg p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+    <div className="w-full max-w-lg">
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
           <CheckCircle2 className="h-9 w-9 text-emerald-500" />
         </div>
