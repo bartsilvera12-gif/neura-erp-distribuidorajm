@@ -30,6 +30,7 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
+import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import {
   compartirComprobante,
@@ -760,6 +761,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const venta = caja.ventaCreada!;
   const { emisor } = useEmisor();
   const [verFactura, setVerFactura] = useState(false);
+  const [verRecibo, setVerRecibo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
   // El cliente, el cobro y las unidades salen de la copia tomada al confirmar:
@@ -780,6 +782,19 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const legal = esFacturaLegal(emisor);
   const { fecha, hora } = fechaHora(venta.fecha);
 
+  // Recibo de dinero: solo al contado, que es cuando entra plata.
+  const botonRecibo = comp.aCredito ? null : (
+    <button
+      type="button"
+      onClick={() => setVerRecibo(true)}
+      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 py-3.5 text-sm font-semibold"
+      style={{ borderColor: TEAL, color: TEAL_OSCURO }}
+    >
+      <Receipt className="h-4 w-4" />
+      Imprimir recibo
+    </button>
+  );
+
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
       <div className="no-imprimir flex items-center gap-2 bg-[var(--zentra-sidebar)] px-4 py-3 text-white">
@@ -790,9 +805,25 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
       {/* El comprobante empieza cerrado: lo que el vendedor necesita ver de un
           vistazo es el número y el total, y lo que necesita hacer es mandárselo
           al cliente. La factura entera queda a un toque. */}
-      {comp.sinCliente ? (
+      {verRecibo ? (
+        <>
+          <ReciboVenta datos={datos} />
+          <div className="no-imprimir px-4">
+            <button
+              type="button"
+              onClick={() => setVerRecibo(false)}
+              className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
+            >
+              Volver
+            </button>
+          </div>
+        </>
+      ) : comp.sinCliente ? (
         // Sin nombre no hay a quién facturarle: sale directo el ticket.
-        <TicketVenta datos={datos} />
+        <>
+          <TicketVenta datos={datos} />
+          <div className="no-imprimir px-4">{botonRecibo}</div>
+        </>
       ) : verFactura ? (
         <>
           <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
@@ -864,6 +895,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             >
               Enviar por WhatsApp
             </button>
+            {botonRecibo}
           </div>
         </div>
       )}

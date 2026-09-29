@@ -26,6 +26,7 @@ import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogo
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
 import TicketVenta from "@/shared/caja/TicketVenta";
+import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
@@ -589,6 +590,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const venta = caja.ventaCreada!;
   const { emisor } = useEmisor();
   const [verFactura, setVerFactura] = useState(false);
+  const [verRecibo, setVerRecibo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const { fecha, hora } = fechaHora(venta.fecha);
 
@@ -613,12 +615,41 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
 
   const legal = esFacturaLegal(emisor);
 
+  // Recibo de dinero: solo al contado, que es cuando entra plata.
+  const botonRecibo = comp.aCredito ? null : (
+    <button
+      type="button"
+      onClick={() => setVerRecibo(true)}
+      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-semibold"
+      style={{ borderColor: TEAL, color: "#3F8E91" }}
+    >
+      <Receipt className="h-4 w-4" />
+      Imprimir recibo
+    </button>
+  );
+
+  if (verRecibo) {
+    return (
+      <div className="relative w-full max-w-[880px] rounded-2xl bg-[#F8FAFC] pb-4">
+        <button
+          type="button"
+          onClick={() => setVerRecibo(false)}
+          className="no-imprimir absolute left-4 top-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          ← Volver
+        </button>
+        <ReciboVenta datos={datos} />
+      </div>
+    );
+  }
+
   // Sin nombre no hay a quién facturarle: sale directo el ticket.
   if (comp.sinCliente) {
     return (
       <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl">
         <TicketVenta datos={datos} />
-        <div className="no-imprimir mt-1 flex gap-2">
+        <div className="no-imprimir mb-2">{botonRecibo}</div>
+        <div className="no-imprimir flex gap-2">
           <Link
             href="/ventas/arqueo"
             className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600 hover:bg-slate-50"
@@ -708,6 +739,8 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             Compartir
           </button>
         </div>
+
+        {botonRecibo ? <div className="mt-2">{botonRecibo}</div> : null}
 
         <div className="mt-2 flex gap-2">
           <Link
