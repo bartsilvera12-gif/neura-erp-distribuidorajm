@@ -92,6 +92,7 @@ export function nivelFromRolDb(rol: string | null | undefined): NivelUsuario {
   const r = (rol ?? "").trim().toLowerCase();
   if (r === "administrador" || r === "admin") return "administrador";
   if (r === "supervisor") return "supervisor";
+  if (r === "cajero") return "cajero";
   if (r === "vendedor_movil" || r === "vendedor movil" || r === "vendedor móvil") {
     return "vendedor_movil";
   }
@@ -139,6 +140,11 @@ const NIVEL_OPTIONS: (FancySelectOption & { value: NivelUsuario })[] = [
     value: "vendedor_movil",
     label: "Vendedor Móvil",
     description: "Sale con el camión. Solo ve y cierra sus propios repartos.",
+  },
+  {
+    value: "cajero",
+    label: "Cajero",
+    description: "Solo la caja: sin menú lateral, cobra, imprime y hace su arqueo.",
   },
   {
     value: "supervisor",

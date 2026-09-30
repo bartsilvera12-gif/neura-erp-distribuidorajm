@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import Sidebar from "./layout/Sidebar";
 import Header from "./layout/Header";
 import AgentPresenceHeartbeat from "./AgentPresenceHeartbeat";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
+import { esSoloCaja } from "@/lib/usuarios/solo-caja";
 
 const STANDALONE_ROUTES = ["/login"];
 
@@ -29,6 +31,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
    *  el sidebar siempre está visible en su flujo normal. */
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // Cajero: solo la caja, sin sidebar ni botón de menú. El header queda, que
+  // es donde está "Cerrar sesión".
+  const { usuario } = useUsuarioActual();
+  const soloCaja = esSoloCaja(usuario?.rol);
+
   /** Cerrar el sidebar mobile automáticamente al navegar entre pantallas. */
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -51,12 +58,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           mobileSidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
-      <Sidebar
-        mobileOpen={mobileSidebarOpen}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
-      />
+      {soloCaja ? null : (
+        <Sidebar
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
+      )}
       <div id="neura-main-column" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
+        <Header onOpenMobileSidebar={soloCaja ? undefined : () => setMobileSidebarOpen(true)} />
         <main id="neura-main-content" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 sm:p-6">
           {children}
         </main>

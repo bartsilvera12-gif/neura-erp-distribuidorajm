@@ -25,6 +25,7 @@ import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
+import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
@@ -61,6 +62,7 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
 
 export default function CajaDesktop() {
   const caja = useCajaVenta();
+  const soloCaja = useSoloCaja();
 
   // La venta ya está registrada y la caja limpia: el comprobante se abre en
   // una ventana encima, y "Nueva venta" la cierra.
@@ -75,12 +77,14 @@ export default function CajaDesktop() {
             Cargá los productos y cobrá sin salir de esta pantalla.
           </p>
         </div>
-        <Link
-          href="/ventas"
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          Ver ventas
-        </Link>
+        {soloCaja ? null : (
+          <Link
+            href="/ventas"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            Ver ventas
+          </Link>
+        )}
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_380px]">

@@ -30,6 +30,7 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
+import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import {
@@ -100,6 +101,8 @@ export default function CajaMobile() {
 // ── Encabezado con stepper ───────────────────────────────────────────────────
 
 function Encabezado({ caja, compacto }: { caja: CajaVenta; compacto?: boolean }) {
+  // El cajero no tiene adónde salir: la caja es todo lo que usa.
+  const soloCaja = useSoloCaja();
   const indiceActual = PASOS_CAJA.findIndex((p) => p.id === caja.paso);
 
   return (
@@ -109,7 +112,7 @@ function Encabezado({ caja, compacto }: { caja: CajaVenta; compacto?: boolean })
       }`}
     >
       <div className="flex items-center gap-2">
-        {caja.paso === "cliente" ? (
+        {caja.paso === "cliente" && soloCaja ? null : caja.paso === "cliente" ? (
           <Link
             href="/ventas"
             aria-label="Salir de la caja"

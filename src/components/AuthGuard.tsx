@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { INICIO_CAJERO, esSoloCaja, rutaPermitidaCajero } from "@/lib/usuarios/solo-caja";
 import { getCurrentUser, getSession } from "@/lib/auth";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import {
@@ -15,7 +16,7 @@ import { BootProvider } from "@/components/BootContext";
 
 const PUBLIC_ROUTES = ["/login"];
 
-type ModuleAccess = { superAdmin: boolean; slugs: Set<string> };
+type ModuleAccess = { superAdmin: boolean; slugs: Set<string>; rol: string | null };
 
 /**
  * AuthGuard NO bloqueante.
@@ -70,13 +71,19 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
 
       let superAdmin = false;
       let slugs: string[] = [];
+      let rol: string | null = null;
 
       const bootstrapSuper = isBootstrapSuperAdminEmail(session.user.email ?? null);
 
       if (res.ok) {
-        const data = (await res.json()) as { superAdmin?: boolean; slugs?: string[] };
+        const data = (await res.json()) as {
+          superAdmin?: boolean;
+          slugs?: string[];
+          rol?: string | null;
+        };
         superAdmin = !!data.superAdmin || bootstrapSuper;
         slugs = Array.isArray(data.slugs) ? data.slugs : [];
+        rol = data.rol ?? null;
       } else {
         superAdmin = bootstrapSuper;
       }
@@ -91,7 +98,7 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
       }
 
       if (!cancelled) {
-        setAccess({ superAdmin, slugs: new Set(slugs) });
+        setAccess({ superAdmin, slugs: new Set(slugs), rol });
       }
     }
 
@@ -105,6 +112,12 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
   // Redirect por permisos cuando llega `access`. No bloquea render mientras tanto.
   useEffect(() => {
     if (isPublic || !access || !pathname) return;
+
+    // Cajero: solo la caja. Cualquier otra pantalla lo devuelve ahí.
+    if (!access.superAdmin && esSoloCaja(access.rol)) {
+      if (!rutaPermitidaCajero(pathname)) router.replace(INICIO_CAJERO);
+      return;
+    }
 
     if (pathname.startsWith("/admin") && !access.superAdmin) {
       router.replace(firstAccessibleHref(access.slugs, { superAdmin: false }));

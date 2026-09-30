@@ -25,6 +25,7 @@ function roleLabel(rol: string | null | undefined): string {
     administrador: "Admin",
     super_admin: "Super admin",
     supervisor: "Supervisor",
+    cajero: "Cajero",
     vendedor: "Vendedor",
     asesor: "Asesor",
     comercial: "Comercial",
@@ -64,7 +65,9 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
     let alive = true;
     async function loadUsuario() {
       try {
-        const res = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
+        const res = await fetchWithSupabaseSession("/api/usuarios/me", {
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error(`Error ${res.status}`);
         const json = (await res.json()) as { usuario?: HeaderUsuario };
         if (alive) setUsuario(json.usuario ?? null);
@@ -82,7 +85,9 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
   const fallbackEmail = clean(usuario?.email);
   const displayName = nombreReal || fallbackEmail || "Usuario";
   const dropdownName = nombreReal || "Usuario";
-  const avatarInitial = (nombreReal || fallbackEmail || "Usuario").charAt(0).toUpperCase();
+  const avatarInitial = (nombreReal || fallbackEmail || "Usuario")
+    .charAt(0)
+    .toUpperCase();
   const displayRole = roleLabel(usuario?.rol);
 
   return (
@@ -90,15 +95,20 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
       id="neura-header"
       className="z-40 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200/90 bg-white/95 px-3 sm:px-6 shadow-[inset_0_-1px_0_0_rgba(10,37,64,0.05)] backdrop-blur-sm"
     >
-      {/* Hamburguesa: solo mobile. Abre el sidebar como sheet desde la izquierda. */}
-      <button
-        type="button"
-        onClick={() => onOpenMobileSidebar?.()}
-        aria-label="Abrir menú"
-        className="-ml-1 flex h-11 w-11 items-center justify-center rounded-lg text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9] md:hidden"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+      {/* Hamburguesa: solo mobile. Abre el sidebar como sheet desde la izquierda.
+          Sin sidebar (usuario de solo caja) no hay nada que abrir. */}
+      {onOpenMobileSidebar ? (
+        <button
+          type="button"
+          onClick={() => onOpenMobileSidebar?.()}
+          aria-label="Abrir menú"
+          className="-ml-1 flex h-11 w-11 items-center justify-center rounded-lg text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9] md:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      ) : (
+        <span className="md:hidden" />
+      )}
       {/* Spacer en desktop para mantener el justify-end original. */}
       <span className="hidden md:block" />
 
@@ -123,10 +133,14 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
               <span className="text-sm font-bold">{avatarInitial}</span>
             </div>
             <div className="hidden text-left sm:block">
-              <p className="max-w-[180px] truncate text-sm font-medium text-[#0F172A]">{displayName}</p>
+              <p className="max-w-[180px] truncate text-sm font-medium text-[#0F172A]">
+                {displayName}
+              </p>
               <p className="text-xs text-[#475569]">{displayRole}</p>
             </div>
-            <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`h-4 w-4 text-slate-500 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
+            />
           </button>
 
           <div
@@ -135,7 +149,9 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
             }`}
           >
             <div className="border-b border-slate-200 px-4 py-2">
-              <p className="truncate text-sm font-medium text-[#0F172A]">{dropdownName}</p>
+              <p className="truncate text-sm font-medium text-[#0F172A]">
+                {dropdownName}
+              </p>
             </div>
             <button
               type="button"

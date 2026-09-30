@@ -8,10 +8,12 @@ import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
 import { useRepartos } from "@/shared/hooks/useRepartos";
+import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
 /** Arqueo de caja mobile: una tarjeta por caja del día. */
 export default function ArqueoMobile() {
+  const soloCaja = useSoloCaja();
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   // Lo normal es mirar la propia caja. La lista de todas las del día es para
   // revisar el negocio, no para vender, así que se pide a mano.
@@ -29,7 +31,7 @@ export default function ArqueoMobile() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <Link
-              href="/ventas"
+              href={soloCaja ? "/ventas/nueva" : "/ventas"}
               aria-label="Volver a Caja"
               className="-ml-1 rounded-lg p-1.5 active:bg-white/10"
             >
@@ -97,12 +99,14 @@ export default function ArqueoMobile() {
           </button>
         ) : null}
 
-        <Link
-          href="/ventas/cierre"
-          className="block w-full rounded-xl border border-slate-200 bg-white py-3.5 text-center text-sm font-medium text-slate-600"
-        >
-          Cierre de reparto
-        </Link>
+        {soloCaja ? null : (
+          <Link
+            href="/ventas/cierre"
+            className="block w-full rounded-xl border border-slate-200 bg-white py-3.5 text-center text-sm font-medium text-slate-600"
+          >
+            Cierre de reparto
+          </Link>
+        )}
         <Link
           href="/ventas/nueva"
           className="block w-full rounded-xl py-3.5 text-center text-sm font-semibold text-white"

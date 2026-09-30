@@ -9,10 +9,12 @@ import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
 import AperturaCaja from "@/shared/caja/AperturaCaja";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
+import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
 /** Arqueo de caja desktop: las cajas del día en grilla. */
 export default function ArqueoDesktop() {
+  const soloCaja = useSoloCaja();
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   // Lo normal es mirar la propia caja. La lista de todas las del día es para
   // revisar el negocio, no para vender, así que se pide a mano.
@@ -49,12 +51,14 @@ export default function ArqueoDesktop() {
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </button>
-          <Link
-            href="/ventas/cierre"
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-          >
-            Cierre de reparto
-          </Link>
+          {soloCaja ? null : (
+            <Link
+              href="/ventas/cierre"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Cierre de reparto
+            </Link>
+          )}
           <Link
             href="/ventas/nueva"
             className="rounded-lg px-4 py-2 text-sm font-semibold text-white"

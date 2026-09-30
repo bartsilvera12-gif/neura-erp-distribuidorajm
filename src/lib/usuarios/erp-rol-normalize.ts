@@ -45,6 +45,14 @@ export function isErpRolVendedorMovil(rol: string | null | undefined): boolean {
  * no maneja, y cerrarlo le cerraría la jornada a un compañero. Supervisor y
  * administrador ven todos, que es justo el control que pide el documento.
  */
+/**
+ * Cajero: solo usa la caja. Sin sidebar ni menú, y cualquier otra pantalla lo
+ * devuelve a la caja (ver `src/lib/usuarios/solo-caja.ts`).
+ */
+export function isErpRolCajero(rol: string | null | undefined): boolean {
+  return normalizeErpRolSlug(rol) === "cajero";
+}
+
 export function alcanceRepartos(rol: string | null | undefined): "propios" | "todos" {
   return isErpRolVendedorMovil(rol) ? "propios" : "todos";
 }
@@ -60,6 +68,7 @@ export function alcanceRepartos(rol: string | null | undefined): "propios" | "to
 const COBERTURA_NIVELES: Record<NivelUsuario, true> = {
   usuario: true,
   vendedor_movil: true,
+  cajero: true,
   supervisor: true,
   administrador: true,
 };
@@ -79,6 +88,7 @@ export function canonicalErpRol(rol: string | null | undefined): string | null {
   const r = normalizeErpRolSlug(rol);
   if (!r) return null;
   if (isErpRolVendedorMovil(r)) return "vendedor_movil";
+  if (r === "cajero") return "cajero";
   if (r === "usuario" || r === "supervisor" || r === "administrador") return r;
   if (r === "admin" || r === "super_admin") return r;
   return null;

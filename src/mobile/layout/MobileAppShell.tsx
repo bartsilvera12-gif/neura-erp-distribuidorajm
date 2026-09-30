@@ -2,6 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import BottomNav from "./BottomNav";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
+import { esSoloCaja } from "@/lib/usuarios/solo-caja";
 import MobileHeader from "./MobileHeader";
 import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
@@ -26,6 +28,10 @@ const STANDALONE_ROUTES = ["/login"];
 export default function MobileAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const teclado = useTecladoVirtual();
+  // Cajero: solo la caja, sin barra de abajo (el menú del header queda para
+  // cerrar sesión).
+  const { usuario } = useUsuarioActual();
+  const soloCaja = esSoloCaja(usuario?.rol);
   // /m/* = app móvil del asesor (Capacitor/APK): pantalla completa, sin header/bottom-nav del ERP.
   const isStandalone =
     !!pathname && (STANDALONE_ROUTES.includes(pathname) || pathname.startsWith("/m/"));
@@ -50,13 +56,13 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
 
       <main
         className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain ${
-          teclado ? "pb-2" : "pb-16"
+          teclado || soloCaja ? "pb-2" : "pb-16"
         }`}
       >
         {children}
       </main>
 
-      <BottomNav />
+      {soloCaja ? null : <BottomNav />}
     </div>
   );
 }

@@ -134,6 +134,8 @@ const POR_ROL: Record<string, Accion[]> = {
     "caja.movimiento",
   ],
   usuario: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento"],
+  // Solo caja: abre, cobra (también a crédito) y cierra la suya.
+  cajero: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento"],
 };
 
 function esAdmin(rol: string): boolean {
