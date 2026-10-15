@@ -409,27 +409,27 @@ export function useCajaVenta() {
     setError(null);
   }, []);
 
-  const confirmar = useCallback(async () => {
-    if (guardando) return;
+  const confirmar = useCallback(async (): Promise<boolean> => {
+    if (guardando) return false;
     if (carrito.length === 0) {
       setError("Agregá al menos un producto.");
-      return;
+      return false;
     }
     if (!aCredito && metodoPago === null) {
       setError("Elegí con qué se cobra.");
-      return;
+      return false;
     }
     if (aCredito && !creditoDisponible) {
       setError("El crédito requiere un cliente identificado.");
-      return;
+      return false;
     }
     if (moneda === "USD" && tipoCambioNum <= 0) {
       setError("Ingresá el tipo de cambio.");
-      return;
+      return false;
     }
     if (faltaElegirReparto) {
       setError("Elegí de qué camión sale la mercadería.");
-      return;
+      return false;
     }
 
     setGuardando(true);
@@ -458,7 +458,7 @@ export function useCajaVenta() {
 
     if (!res.success) {
       setError(res.error);
-      return;
+      return false;
     }
 
     setComprobante({
@@ -477,6 +477,7 @@ export function useCajaVenta() {
     limpiarVenta();
     setVentaCreada(res.venta);
     setPaso("listo");
+    return true;
   }, [
     carrito,
     limpiarVenta,
@@ -512,6 +513,7 @@ export function useCajaVenta() {
     paso,
     cliente,
     sinNombre,
+    clienteElegido,
     nombreCliente,
     carrito,
     lineas,

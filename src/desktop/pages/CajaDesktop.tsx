@@ -26,6 +26,7 @@ import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
+import ModalCaja from "@/shared/caja/ModalCaja";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
@@ -222,6 +223,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
 // ── Columna derecha: cliente, carrito, totales y pago ────────────────────────
 
 function PanelCobro({ caja }: { caja: CajaVenta }) {
+  const [cobrando, setCobrando] = useState(false);
   return (
     <aside className="lg:sticky lg:top-6 lg:self-start">
       {/* El panel se limita al alto de la pantalla para que el total quede
@@ -233,11 +235,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           entra todo, scrollea el panel entero en vez de tapar nada. */}
       <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
         <SelectorCliente caja={caja} />
-        <div className="border-b border-slate-100 px-5 py-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Tipo de venta
+        <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+          <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Precio
           </p>
-          <SelectorListaPrecio caja={caja} />
+          <div className="flex-1">
+            <SelectorListaPrecio caja={caja} />
+          </div>
         </div>
 
         <div className="min-h-[7rem] flex-1 overflow-y-auto px-5">
@@ -311,15 +315,77 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             </span>
           </div>
 
+          {caja.carrito.length > 0 && !caja.clienteElegido ? (
+            <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+              Elegí el cliente, o tocá «Sin nombre» para vender sin identificarlo.
+            </p>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => setCobrando(true)}
+            disabled={caja.carrito.length === 0 || !caja.clienteElegido}
+            className="mt-3 w-full rounded-xl py-3.5 text-base font-semibold text-white transition-opacity disabled:opacity-40"
+            style={{ backgroundColor: TEAL }}
+          >
+            Cobrar {formatGs(caja.totales.total)}
+          </button>
+        </div>
+      </div>
+
+      {cobrando ? (
+        <ModalCobro caja={caja} onCerrar={() => setCobrando(false)} />
+      ) : null}
+    </aside>
+  );
+}
+
+// ── Ventana de cobro: condición, comprobante y medio de pago ─────────────────
+
+/**
+ * El pago va aparte del panel: así el panel muestra lo que se está vendiendo
+ * sin tener que bajar, y las opciones de cobro aparecen recién al cobrar.
+ */
+function ModalCobro({ caja, onCerrar }: { caja: CajaVenta; onCerrar: () => void }) {
+  return (
+    <ModalCaja
+      titulo={`Cobrar ${formatGs(caja.totales.total)}`}
+      subtitulo={`${caja.nombreCliente} · ${caja.carrito.length} ${caja.carrito.length === 1 ? "producto" : "productos"}`}
+      onCerrar={onCerrar}
+      pie={
+        <>
+          <button
+            type="button"
+            onClick={onCerrar}
+            className="h-11 rounded-lg px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              // Registrada la venta, la ventana de cobro se cierra: queda el comprobante.
+              if (await caja.confirmar()) onCerrar();
+            }}
+            disabled={!caja.puedeConfirmar || caja.guardando}
+            className="h-11 rounded-lg px-5 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
+            style={{ backgroundColor: TEAL }}
+          >
+            {caja.guardando ? "Guardando…" : "Confirmar venta"}
+          </button>
+        </>
+      }
+    >
+      <div>
           {/* El crédito no es un medio de cobro: es una condición de la venta. */}
-          <div className="mt-4">
-            <SelectorCondicionVenta caja={caja} />
+          <div>
+            <SelectorCondicionVenta caja={caja} grande />
           </div>
 
           <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Comprobante
           </p>
-          <SelectorComprobante caja={caja} />
+          <SelectorComprobante caja={caja} grande />
 
           {!caja.aCredito ? (
             <>
@@ -335,13 +401,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                       key={m}
                       type="button"
                       onClick={() => caja.setMetodoPago(m)}
-                      className={`flex items-center justify-center gap-2 rounded-lg border-2 px-2.5 py-2 text-xs font-medium transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-xl border-2 px-2.5 py-3 text-sm font-semibold transition-colors ${
                         elegido
                           ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
                           : "border-slate-200 text-slate-600 hover:bg-slate-50"
                       }`}
                     >
-                      <Icono className="h-3.5 w-3.5 shrink-0" />
+                      <Icono className="h-4 w-4 shrink-0" />
                       <span className="truncate">{label}</span>
                     </button>
                   );
@@ -383,18 +449,8 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             </p>
           ) : null}
 
-          <button
-            type="button"
-            onClick={caja.confirmar}
-            disabled={!caja.puedeConfirmar || caja.guardando}
-            className="mt-3 w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: TEAL }}
-          >
-            {caja.guardando ? "Guardando…" : "Confirmar venta"}
-          </button>
-        </div>
       </div>
-    </aside>
+    </ModalCaja>
   );
 }
 
