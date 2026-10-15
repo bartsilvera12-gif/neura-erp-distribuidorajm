@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import ModalAnularVenta from "@/shared/ventas/ModalAnularVenta";
+import { estadoFactura } from "@/shared/ventas/ComprobanteVenta";
 import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import { useMemo, useState } from "react";
 import { Ban, Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
@@ -44,6 +45,8 @@ export default function VentasMobile() {
     return delDia.filter(
       (v) =>
         v.numero_control.toLowerCase().includes(q) ||
+        (v.cliente_nombre ?? "").toLowerCase().includes(q) ||
+        (v.factura_numero ?? "").toLowerCase().includes(q) ||
         String(v.total).includes(q) ||
         v.items.some((i) => i.producto_nombre.toLowerCase().includes(q))
     );
@@ -214,6 +217,7 @@ function VentaCard({
   const anulada = (venta.estado ?? "") === "anulada";
   const cantidadItems = venta.items.reduce((s, i) => s + i.cantidad, 0);
   const primerItem = venta.items[0];
+  const factura = estadoFactura(venta);
   const itemsExtra = venta.items.length - 1;
 
   return (
@@ -246,13 +250,24 @@ function VentaCard({
                 </span>
               ) : null}
             </div>
-            <p className={`mt-1 truncate text-sm font-medium ${anulada ? "text-slate-500 line-through" : "text-slate-900"}`}>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+              {venta.cliente_nombre ?? "Sin nombre"}
+            </p>
+            <p className={`truncate text-sm ${anulada ? "text-slate-500 line-through" : "text-slate-600"}`}>
               {primerItem ? primerItem.producto_nombre : "Sin productos"}
               {itemsExtra > 0 ? (
                 <span className="ml-1 text-slate-500">+{itemsExtra} más</span>
               ) : null}
             </p>
             <p className="mt-0.5 text-[11px] text-slate-500">{formatFecha(venta.fecha)}</p>
+            {factura ? (
+              <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600">
+                <span className="font-mono">Factura {venta.factura_numero ?? ""}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${factura.clase}`}>
+                  {factura.texto}
+                </span>
+              </p>
+            ) : null}
           </div>
           <div className="shrink-0 text-right">
             <p

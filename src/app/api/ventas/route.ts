@@ -25,6 +25,7 @@ interface VentaRow {
   cliente_id: string | null;
   reparto_id: string | null;
   lista_precio: string | null;
+  factura_id: string | null;
 }
 
 interface VentaItemRow {
@@ -83,11 +84,11 @@ export async function GET(request: NextRequest) {
     const colsQ = await queryWithRetry<{ c: string }>(pool,
       `SELECT column_name AS c FROM information_schema.columns
         WHERE table_schema = $1 AND table_name = 'ventas'
-          AND column_name IN ('metodo_pago', 'cliente_id', 'reparto_id', 'lista_precio')`,
+          AND column_name IN ('metodo_pago', 'cliente_id', 'reparto_id', 'lista_precio', 'factura_id')`,
       [schema]
     );
     const opc = new Set(colsQ.rows.map((r) => r.c));
-    const extra = ["metodo_pago", "cliente_id", "reparto_id", "lista_precio"]
+    const extra = ["metodo_pago", "cliente_id", "reparto_id", "lista_precio", "factura_id"]
       .map((c) => (opc.has(c) ? c : `NULL::text AS ${c}`))
       .join(", ");
 
@@ -178,6 +179,31 @@ export async function GET(request: NextRequest) {
         console.warn("[/api/ventas GET] repartos:", e instanceof Error ? e.message : e);
       }
     }
+    // Factura electrónica de cada venta (si se emitió por SIFEN desde la caja):
+    // número tal como lo ve la SET (sale del CDC) y en qué estado quedó.
+    const idsFactura = [...new Set(ventasQ.rows.map((r) => r.factura_id).filter(Boolean))] as string[];
+    const facturaDe = new Map<string, { numero: string; estado: string | null }>();
+    if (idsFactura.length > 0) {
+      try {
+        const q = await queryWithRetry<{ id: string; numero_factura: string; estado_sifen: string | null; cdc: string | null }>(pool,
+          `SELECT f.id, f.numero_factura, fe.estado_sifen, fe.cdc
+             FROM ${quoteSchemaTable(schema, "facturas")} f
+             LEFT JOIN ${quoteSchemaTable(schema, "factura_electronica")} fe ON fe.factura_id = f.id
+            WHERE f.id = ANY($1::uuid[])`,
+          [idsFactura]
+        );
+        for (const r of q.rows) {
+          const cdc = (r.cdc ?? "").replace(/\D/g, "");
+          const numero = cdc.length >= 24
+            ? `${cdc.slice(11, 14)}-${cdc.slice(14, 17)}-${cdc.slice(17, 24)}`
+            : r.numero_factura;
+          facturaDe.set(r.id, { numero, estado: r.estado_sifen ?? null });
+        }
+      } catch (e) {
+        console.warn("[/api/ventas GET] facturas:", e instanceof Error ? e.message : e);
+      }
+    }
+
     const itemsQ = await queryWithRetry<VentaItemRow>(pool,
       `SELECT venta_id, producto_id, producto_nombre, sku, cantidad,
               precio_venta_original, precio_venta, tipo_iva, subtotal, monto_iva, total_linea
@@ -229,6 +255,9 @@ export async function GET(request: NextRequest) {
         reparto_id: r.reparto_id ?? null,
         reparto_etiqueta: r.reparto_id ? etiquetaReparto.get(r.reparto_id) ?? null : null,
         lista_precio: r.lista_precio === "mayorista" ? "mayorista" : "minorista",
+        factura_id: r.factura_id ?? null,
+        factura_numero: r.factura_id ? facturaDe.get(r.factura_id)?.numero ?? null : null,
+        factura_estado_sifen: r.factura_id ? facturaDe.get(r.factura_id)?.estado ?? null : null,
       };
     });
 

@@ -46,6 +46,16 @@ export default function ModalAnularVenta({
           La mercadería vuelve al stock (al camión, si salió de un reparto) y el cobro sale del
           arqueo. La venta queda a la vista, marcada como anulada.
         </p>
+        {venta.factura_id && venta.factura_estado_sifen === "aprobado" ? (
+          <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+            Esta venta tiene la factura electrónica {venta.factura_numero ?? ""} aprobada por la SET.
+            Anular la venta no la cancela ante la SET: cancelala desde{" "}
+            <a href={`/facturas/${venta.factura_id}`} className="font-semibold underline">
+              Facturas
+            </a>{" "}
+            (o con nota de crédito si ya pasó el plazo).
+          </p>
+        ) : null}
 
         <label className="mt-4 block">
           <span className="mb-1 block text-xs font-medium text-slate-600">Motivo</span>

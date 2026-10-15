@@ -90,6 +90,12 @@ export interface Venta {
   /** RUC o documento del cliente y su dirección, para la factura. */
   cliente_ruc?: string | null;
   cliente_direccion?: string | null;
+  /** Factura electrónica (SIFEN) emitida desde la caja, si la hay. */
+  factura_id?: string | null;
+  /** Número como lo ve la SET: 001-002-0000005. */
+  factura_numero?: string | null;
+  /** borrador · generado · firmado · enviado · aprobado · rechazado · … */
+  factura_estado_sifen?: string | null;
   /** "Camion 1 · CAMION PRUEBA" si salió de un reparto. */
   reparto_etiqueta?: string | null;
 

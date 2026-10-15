@@ -3,6 +3,7 @@
 import Link from "next/link";
 import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import ModalAnularVenta from "@/shared/ventas/ModalAnularVenta";
+import ComprobanteVenta from "@/shared/ventas/ComprobanteVenta";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useEffect, useState } from "react";
 import { getVentas } from "@/lib/ventas/storage";
@@ -38,12 +39,6 @@ const tipoVentaBadge: Record<TipoVenta, string> = {
   CREDITO: "bg-orange-50 text-orange-700",
 };
 
-const ivaLabel: Record<TipoIvaVenta, string> = {
-  EXENTA: "Exenta",
-  "5%":   "IVA 5%",
-  "10%":  "IVA 10%",
-};
-
 // ── Helpers de fila ───────────────────────────────────────────────────────────
 
 /** Muestra el primer producto de la venta y un badge con el resto. */
@@ -70,13 +65,6 @@ function ResumenProductos({ v }: { v: Venta }) {
       </div>
     </div>
   );
-}
-
-/** Determina qué mostrar en la celda IVA cuando hay múltiples ítems. */
-function ivaResumen(v: Venta): string {
-  const tipos = [...new Set(v.items.map((i) => i.tipo_iva))];
-  if (tipos.length === 1) return ivaLabel[tipos[0]];
-  return "Mixto";
 }
 
 // ── Componente principal ───────────────────────────────────────────────────────
@@ -112,6 +100,8 @@ export default function VentasPage() {
       const t = busqueda.toLowerCase().trim();
       const coincide =
         v.numero_control.toLowerCase().includes(t) ||
+        (v.cliente_nombre ?? "").toLowerCase().includes(t) ||
+        (v.factura_numero ?? "").toLowerCase().includes(t) ||
         v.items.some(
           (i) =>
             i.producto_nombre.toLowerCase().includes(t) ||
@@ -192,7 +182,7 @@ export default function VentasPage() {
         <div className="flex flex-wrap items-center gap-3 mb-5 pb-5 border-b border-gray-100">
           <input
             type="text"
-            placeholder="Buscar por número, producto o SKU..."
+            placeholder="Buscar por número, cliente, factura o producto..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             className={`${inputFilterClass} min-w-64`}
@@ -234,14 +224,14 @@ export default function VentasPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="bg-slate-50 text-slate-600 text-sm font-semibold">
-                <th className="py-3 pr-4 font-medium">Número</th>
+                <th className="py-3 pl-3 pr-4 font-medium">Número</th>
+                <th className="py-3 pr-4 font-medium">Cliente</th>
                 <th className="py-3 pr-4 font-medium">Productos</th>
-                <th className="py-3 pr-4 font-medium text-center">Ítems</th>
-                <th className="py-3 pr-4 font-medium text-right">Cant. total</th>
-                <th className="py-3 pr-4 font-medium">IVA</th>
                 <th className="py-3 pr-4 font-medium text-right">Total</th>
-                <th className="py-3 pr-4 font-medium">Tipo</th>
-                <th className="py-3 font-medium">Fecha</th>
+                <th className="py-3 pr-4 font-medium">Condición</th>
+                <th className="py-3 pr-4 font-medium">Comprobante</th>
+                <th className="py-3 pr-4 font-medium">Fecha</th>
+                <th className="py-3 pr-3 font-medium text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -255,32 +245,34 @@ export default function VentasPage() {
                 </tr>
               ) : (
                 filtradas.map((v) => {
-                  const cantTotal = v.items.reduce((s, i) => s + i.cantidad, 0);
+                  const anulada = (v.estado ?? "").toLowerCase() === "anulada";
                   return (
                     <tr
                       key={v.id}
                       onClick={() => setViendo(v)}
                       title="Ver el detalle de la venta"
-                      className="cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors"
+                      className={`cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors ${
+                        anulada ? "opacity-60" : ""
+                      }`}
                     >
-                      <td className="py-4 pr-4 font-mono text-xs text-gray-500 align-middle">
-                        {v.numero_control}
+                      <td className="py-4 pl-3 pr-4 align-middle">
+                        <span className="whitespace-nowrap font-mono text-xs text-gray-500">{v.numero_control}</span>
+                        {anulada ? (
+                          <span className="mt-1 block w-fit rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                            Anulada
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="max-w-[220px] py-4 pr-4 align-middle">
+                        <span className="block truncate font-medium text-gray-800">
+                          {v.cliente_nombre ?? "Sin nombre"}
+                        </span>
+                        {v.reparto_etiqueta ? (
+                          <span className="block truncate text-xs text-gray-400">{v.reparto_etiqueta}</span>
+                        ) : null}
                       </td>
                       <td className="py-4 pr-4 align-middle">
                         <ResumenProductos v={v} />
-                      </td>
-                      <td className="py-4 pr-4 text-center align-middle">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
-                          {v.items.length}
-                        </span>
-                      </td>
-                      <td className="py-4 pr-4 text-right tabular-nums text-gray-700 align-middle">
-                        {cantTotal}
-                      </td>
-                      <td className="py-4 pr-4 align-middle">
-                        <span className="px-2 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">
-                          {ivaResumen(v)}
-                        </span>
                       </td>
                       <td className="py-4 pr-4 text-right tabular-nums font-semibold text-gray-800 align-middle">
                         {formatGs(v.total)}
@@ -292,8 +284,31 @@ export default function VentasPage() {
                             : `Crédito ${v.plazo_dias ?? ""}d`}
                         </span>
                       </td>
-                      <td className="py-4 text-gray-500 text-xs tabular-nums align-middle">
+                      <td className="py-4 pr-4 align-middle">
+                        <ComprobanteVenta venta={v} />
+                      </td>
+                      <td className="py-4 pr-4 text-gray-500 text-xs tabular-nums align-middle">
                         {formatFecha(v.fecha)}
+                      </td>
+                      <td className="py-4 pr-3 align-middle">
+                        <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setViendo(v)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Ver
+                          </button>
+                          {anulada ? null : (
+                            <button
+                              type="button"
+                              onClick={() => setAnulando(v)}
+                              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                            >
+                              Anular
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { FileText } from "lucide-react";
+import { VisorKude } from "@/shared/caja/FacturaSifen";
+import { estadoFactura } from "@/shared/ventas/ComprobanteVenta";
 import ModalCaja from "@/shared/caja/ModalCaja";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
@@ -63,7 +66,11 @@ export default function DetalleVenta({
 }) {
   const { emisor } = useEmisor();
   const [verComprobante, setVerComprobante] = useState(false);
+  const [verKude, setVerKude] = useState(false);
   const anulada = (venta.estado ?? "").toLowerCase() === "anulada";
+  // Factura electrónica (SIFEN): si existe, es el comprobante de la venta.
+  const factura = estadoFactura(venta);
+  const kudeListo = venta.factura_estado_sifen === "aprobado" && !!venta.factura_id;
 
   const iva5 = venta.items.filter((i) => i.tipo_iva === "5%").reduce((s, i) => s + i.monto_iva, 0);
   const iva10 = venta.items.filter((i) => i.tipo_iva === "10%").reduce((s, i) => s + i.monto_iva, 0);
@@ -80,6 +87,26 @@ export default function DetalleVenta({
       venta.items.filter((i) => i.unidad_medida).map((i) => [i.producto_id, i.unidad_medida as string])
     ),
   };
+
+  if (verKude && venta.factura_id) {
+    return (
+      <ModalCaja
+        titulo={`Factura ${venta.factura_numero ?? ""}`}
+        onCerrar={onCerrar}
+        pie={
+          <button
+            type="button"
+            onClick={() => setVerKude(false)}
+            className="h-11 rounded-lg px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Volver al detalle
+          </button>
+        }
+      >
+        <VisorKude facturaId={venta.factura_id} />
+      </ModalCaja>
+    );
+  }
 
   if (verComprobante) {
     return (
@@ -124,15 +151,34 @@ export default function DetalleVenta({
           >
             Cerrar
           </button>
-          <button
-            type="button"
-            onClick={() => setVerComprobante(true)}
-            className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#4FAEB2] px-3 text-sm font-semibold text-white hover:bg-[#3F8E91] sm:px-4"
-          >
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Ver comprobante</span>
-            <span className="sm:hidden">Comprobante</span>
-          </button>
+          {kudeListo ? (
+            <button
+              type="button"
+              onClick={() => setVerKude(true)}
+              className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#4FAEB2] px-3 text-sm font-semibold text-white hover:bg-[#3F8E91] sm:px-4"
+            >
+              <FileText className="h-4 w-4" />
+              Ver factura
+            </button>
+          ) : venta.factura_id ? (
+            <Link
+              href={`/facturas/${venta.factura_id}`}
+              className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#4FAEB2] px-3 text-sm font-semibold text-white hover:bg-[#3F8E91] sm:px-4"
+            >
+              <FileText className="h-4 w-4" />
+              Abrir factura
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setVerComprobante(true)}
+              className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#4FAEB2] px-3 text-sm font-semibold text-white hover:bg-[#3F8E91] sm:px-4"
+            >
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Ver comprobante</span>
+              <span className="sm:hidden">Comprobante</span>
+            </button>
+          )}
         </>
       }
     >
@@ -140,6 +186,13 @@ export default function DetalleVenta({
         {anulada ? (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
             Venta anulada: no cuenta en caja, stock ni reportes.
+          </p>
+        ) : null}
+        {venta.factura_id && !kudeListo ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {venta.factura_estado_sifen === "rechazado"
+              ? "La SET rechazó la factura de esta venta. Abrila para ver el motivo y reenviarla."
+              : "La factura de esta venta todavía no fue aprobada por la SET. Abrila para consultar o reenviar."}
           </p>
         ) : null}
 
@@ -166,6 +219,21 @@ export default function DetalleVenta({
           <Dato label="Forma de pago" valor={formaDePago(venta)} />
           <Dato label="Precio" valor={venta.lista_precio === "mayorista" ? "Mayorista (−10%)" : "Minorista"} />
           <Dato label="Salió de" valor={venta.reparto_etiqueta ?? "Mostrador"} />
+          <Dato
+            label="Comprobante"
+            valor={
+              factura ? (
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-xs">Factura {venta.factura_numero ?? ""}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${factura.clase}`}>
+                    {factura.texto}
+                  </span>
+                </span>
+              ) : (
+                "Interno (sin factura electrónica)"
+              )
+            }
+          />
           {venta.moneda === "USD" ? (
             <Dato label="Moneda" valor={`USD · cambio ${venta.tipo_cambio.toLocaleString("es-PY")}`} />
           ) : null}
