@@ -31,6 +31,7 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
+import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
@@ -773,11 +774,17 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const { emisor } = useEmisor();
   const [verFactura, setVerFactura] = useState(false);
   const [verRecibo, setVerRecibo] = useState(false);
+  const [verKude, setVerKude] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
   // El cliente, el cobro y las unidades salen de la copia tomada al confirmar:
   // la caja ya quedó limpia para la venta siguiente.
   const comp = caja.comprobante!;
+
+  // Factura: si la empresa factura por SIFEN, se emite la electrónica y lo que
+  // se imprime es el KuDE aprobado. Si no, sigue el comprobante de siempre.
+  const emision = useEmisionSifen(venta.id, comp.documento === "factura");
+  const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
 
   const datos: DatosComprobante = {
@@ -835,6 +842,17 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           <TicketVenta datos={datos} />
           <div className="no-imprimir px-4">{botonRecibo}</div>
         </>
+      ) : verKude && emision.facturaId ? (
+        <div className="px-4 py-4">
+          <VisorKude facturaId={emision.facturaId} />
+          <button
+            type="button"
+            onClick={() => setVerKude(false)}
+            className="mt-3 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
+          >
+            Volver al resumen
+          </button>
+        </div>
       ) : verFactura ? (
         <>
           <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
@@ -880,16 +898,25 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             </p>
           ) : null}
 
+          {conSifen ? (
+            <div className="mt-4">
+              <EstadoFacturaSifen emision={emision} onVerKude={() => setVerKude(true)} />
+            </div>
+          ) : null}
+
           <div className="mt-4 space-y-2">
-            <button
-              type="button"
-              onClick={() => setVerFactura(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white"
-              style={{ backgroundColor: TEAL }}
-            >
-              <FileText className="h-4 w-4" />
-              Ver factura
-            </button>
+            {/* Con SIFEN la factura es el KuDE de arriba: la hoja interna no se ofrece. */}
+            {conSifen ? null : (
+              <button
+                type="button"
+                onClick={() => setVerFactura(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white"
+                style={{ backgroundColor: TEAL }}
+              >
+                <FileText className="h-4 w-4" />
+                Ver factura
+              </button>
+            )}
             <button
               type="button"
               onClick={async () => setAviso(await compartirComprobante(datos))}

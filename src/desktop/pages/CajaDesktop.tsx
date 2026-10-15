@@ -28,6 +28,7 @@ import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
+import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
@@ -601,12 +602,18 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const { emisor } = useEmisor();
   const [verFactura, setVerFactura] = useState(false);
   const [verRecibo, setVerRecibo] = useState(false);
+  const [verKude, setVerKude] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const { fecha, hora } = fechaHora(venta.fecha);
 
   // El cliente, el cobro y las unidades salen de la copia tomada al confirmar:
   // la caja ya quedó limpia para la venta siguiente.
   const comp = caja.comprobante!;
+
+  // Factura: si la empresa factura por SIFEN, se emite la electrónica y lo que
+  // se imprime es el KuDE aprobado. Si no, sigue el comprobante de siempre.
+  const emision = useEmisionSifen(venta.id, comp.documento === "factura");
+  const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
 
   const cobro = comp.aCredito
@@ -679,6 +686,21 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     );
   }
 
+  if (verKude && emision.facturaId) {
+    return (
+      <div className="relative w-full max-w-[900px] rounded-2xl bg-[#F8FAFC] p-4 pt-16">
+        <button
+          type="button"
+          onClick={() => setVerKude(false)}
+          className="absolute left-4 top-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          ← Volver al resumen
+        </button>
+        <VisorKude facturaId={emision.facturaId} />
+      </div>
+    );
+  }
+
   if (verFactura) {
     return (
       <div className="relative w-full max-w-[880px] rounded-2xl bg-[#F8FAFC] pb-4">
@@ -729,16 +751,25 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
         {/* El comprobante no se abre solo: lo que el cajero necesita leer de un
             vistazo es el número y el total. Imprimirlo o mandárselo al cliente
             queda a un clic, dentro de la factura. */}
-        <div className="mt-6 flex gap-2">
-          <button
-            type="button"
-            onClick={() => setVerFactura(true)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white"
-            style={{ backgroundColor: TEAL }}
-          >
-            <FileText className="h-4 w-4" />
-            Ver factura
-          </button>
+        {conSifen ? (
+          <div className="mt-6">
+            <EstadoFacturaSifen emision={emision} onVerKude={() => setVerKude(true)} />
+          </div>
+        ) : null}
+
+        <div className={`flex gap-2 ${conSifen ? "mt-2" : "mt-6"}`}>
+          {/* Con SIFEN la factura es el KuDE de arriba: la hoja interna no se ofrece. */}
+          {conSifen ? null : (
+            <button
+              type="button"
+              onClick={() => setVerFactura(true)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white"
+              style={{ backgroundColor: TEAL }}
+            >
+              <FileText className="h-4 w-4" />
+              Ver factura
+            </button>
+          )}
           <button
             type="button"
             onClick={async () => setAviso(await compartirComprobante(datos))}
