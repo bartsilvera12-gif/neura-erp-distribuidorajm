@@ -101,6 +101,12 @@ export function useCajaVenta() {
   const [aCredito, setACredito] = useState(false);
   const [plazoDias, setPlazoDias] = useState("");
 
+  /**
+   * Qué comprobante sale al confirmar: factura A4 o ticket. Si nadie eligió,
+   * sigue al cliente: con cliente factura, sin nombre ticket.
+   */
+  const [documentoElegido, setDocumento] = useState<DocumentoVenta | null>(null);
+
   const { caja, disponible: cajasDisponibles, mutate: recargarCaja } = useCajaAbierta();
 
   // ── Reparto ────────────────────────────────────────────────────────────────
@@ -386,6 +392,8 @@ export function useCajaVenta() {
 
   // ── Confirmación ───────────────────────────────────────────────────────────
 
+  const documento: DocumentoVenta = documentoElegido ?? (cliente ? "factura" : "ticket");
+
   /** Deja la caja lista para la venta siguiente. El reparto no se toca: sigue siendo el mismo camión en la calle. */
   const limpiarVenta = useCallback(() => {
     setCliente(null);
@@ -397,6 +405,7 @@ export function useCajaVenta() {
     setMetodoPago(null);
     setACredito(false);
     setPlazoDias("");
+    setDocumento(null);
     setError(null);
   }, []);
 
@@ -455,6 +464,7 @@ export function useCajaVenta() {
     setComprobante({
       nombreCliente: cliente ? clienteNombre(cliente) : "Sin nombre",
       sinCliente: cliente === null,
+      documento,
       telefonoCliente: cliente?.telefono ?? null,
       rucCliente: cliente ? cliente.ruc_factura || cliente.ruc || cliente.documento || null : null,
       direccionCliente: cliente?.direccion || null,
@@ -470,6 +480,7 @@ export function useCajaVenta() {
   }, [
     carrito,
     limpiarVenta,
+    documento,
     guardando,
     carrito.length,
     metodoPago,
@@ -507,6 +518,7 @@ export function useCajaVenta() {
     totales,
     moneda,
     lista,
+    documento,
     tipoCambio,
     tipoCambioNum,
     metodoPago,
@@ -538,6 +550,7 @@ export function useCajaVenta() {
     cambiarIva,
     setMoneda,
     setLista,
+    setDocumento,
     setTipoCambio,
     setMetodoPago,
     setACredito,
@@ -554,7 +567,12 @@ export function useCajaVenta() {
 
 export type CajaVenta = ReturnType<typeof useCajaVenta>;
 
+/** El papel que sale al cobrar. */
+export type DocumentoVenta = "factura" | "ticket";
+
 export interface ComprobanteCaja {
+  /** Lo que se eligió en la caja: factura A4 o ticket. */
+  documento: DocumentoVenta;
   nombreCliente: string;
   /** Venta Sin nombre: sale ticket en vez de factura A4. */
   sinCliente: boolean;

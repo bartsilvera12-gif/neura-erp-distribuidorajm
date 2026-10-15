@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
+import SelectorComprobante from "@/shared/caja/SelectorComprobante";
 import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
@@ -313,6 +314,11 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           <div className="mt-4">
             <SelectorCondicionVenta caja={caja} />
           </div>
+
+          <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Comprobante
+          </p>
+          <SelectorComprobante caja={caja} />
 
           {!caja.aCredito ? (
             <>
@@ -647,8 +653,8 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     );
   }
 
-  // Sin nombre no hay a quién facturarle: sale directo el ticket.
-  if (comp.sinCliente) {
+  // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
+  if (comp.documento === "ticket") {
     return (
       <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl">
         <TicketVenta datos={datos} />

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
+import SelectorComprobante from "@/shared/caja/SelectorComprobante";
 import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
@@ -640,6 +641,13 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
         <SelectorCondicionVenta caja={caja} grande />
       </div>
 
+      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+        Comprobante
+      </p>
+      <div className="mb-5">
+        <SelectorComprobante caja={caja} grande />
+      </div>
+
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
         {caja.aCredito ? "Plazo" : "Con qué se cobra"}
       </p>
@@ -821,8 +829,8 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             </button>
           </div>
         </>
-      ) : comp.sinCliente ? (
-        // Sin nombre no hay a quién facturarle: sale directo el ticket.
+      ) : comp.documento === "ticket" ? (
+        // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
         <>
           <TicketVenta datos={datos} />
           <div className="no-imprimir px-4">{botonRecibo}</div>
