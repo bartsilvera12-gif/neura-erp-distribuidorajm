@@ -90,7 +90,7 @@ export default function CajaDesktop() {
         )}
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px] 2xl:grid-cols-[minmax(0,1fr)_540px]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
         <Catalogo caja={caja} />
         <PanelCobro caja={caja} />
       </div>
