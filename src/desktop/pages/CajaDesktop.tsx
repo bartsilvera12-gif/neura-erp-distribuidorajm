@@ -233,7 +233,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
       <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
         <SelectorCliente caja={caja} />
         <div className="border-b border-slate-100 px-5 py-4">
-          <p className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Tipo de venta
           </p>
           <SelectorListaPrecio caja={caja} />
@@ -251,7 +251,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                 return (
                   <li key={item.producto.id} className="py-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-900">
+                      <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-slate-900">
                         {item.producto.nombre}
                       </p>
                       <button
@@ -260,19 +260,19 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                         aria-label={`Quitar ${item.producto.nombre} de la venta`}
                         className="shrink-0 rounded p-1 text-slate-300 hover:text-red-500"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="text-sm text-slate-600">
+                      <span className="text-xs text-slate-500">
                         {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
                         {item.producto.unidad_medida} × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
                       </span>
-                      <span className="text-base font-bold tabular-nums text-slate-900">
+                      <span className="text-sm font-semibold tabular-nums text-slate-900">
                         {formatGs(linea?.total_linea ?? 0)}
                       </span>
                     </div>
-                    <label className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                    <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400">
                       IVA
                       <select
                         value={item.tipoIva}
@@ -280,7 +280,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                           caja.cambiarIva(item.producto.id, e.target.value as TipoIvaVenta)
                         }
                         aria-label={`IVA de ${item.producto.nombre}`}
-                        className="rounded border border-slate-200 bg-white px-1.5 py-1 text-xs"
+                        className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px]"
                       >
                         {IVAS.map((iva) => (
                           <option key={iva} value={iva}>
@@ -298,31 +298,31 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
 
         <div className="border-t border-slate-100 p-5">
           <div className="flex items-center justify-between py-0.5">
-            <span className="text-base text-slate-500">IVA incluido</span>
-            <span className="text-base tabular-nums text-slate-700">
+            <span className="text-sm text-slate-500">IVA incluido</span>
+            <span className="text-sm tabular-nums text-slate-700">
               {formatGs(caja.totales.montoIva)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="text-lg font-semibold text-slate-900">Total</span>
-            <span className="text-3xl font-bold tabular-nums text-slate-900">
+            <span className="text-sm font-semibold text-slate-900">Total</span>
+            <span className="text-2xl font-bold tabular-nums text-slate-900">
               {formatGs(caja.totales.total)}
             </span>
           </div>
 
           {/* El crédito no es un medio de cobro: es una condición de la venta. */}
           <div className="mt-4">
-            <SelectorCondicionVenta caja={caja} grande />
+            <SelectorCondicionVenta caja={caja} />
           </div>
 
-          <p className="mb-2 mt-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
+          <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Comprobante
           </p>
-          <SelectorComprobante caja={caja} grande />
+          <SelectorComprobante caja={caja} />
 
           {!caja.aCredito ? (
             <>
-              <p className="mb-2 mt-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
+              <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
                 Con qué se cobra
               </p>
               <div className="grid grid-cols-3 gap-2">
@@ -334,13 +334,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                       key={m}
                       type="button"
                       onClick={() => caja.setMetodoPago(m)}
-                      className={`flex items-center justify-center gap-2 rounded-xl border-2 px-2.5 py-3 text-sm font-semibold transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-lg border-2 px-2.5 py-2 text-xs font-medium transition-colors ${
                         elegido
                           ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
                           : "border-slate-200 text-slate-600 hover:bg-slate-50"
                       }`}
                     >
-                      <Icono className="h-4 w-4 shrink-0" />
+                      <Icono className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{label}</span>
                     </button>
                   );
@@ -351,13 +351,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
 
           {caja.aCredito ? (
             <label className="mt-3 block">
-              <span className="mb-1 block text-sm text-slate-600">Plazo en días</span>
+              <span className="mb-1 block text-xs text-slate-500">Plazo en días</span>
               <input
                 inputMode="numeric"
                 value={caja.plazoDias}
                 onChange={(e) => caja.setPlazoDias(e.target.value)}
                 placeholder="30"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
               />
             </label>
           ) : null}
@@ -371,13 +371,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           <OpcionesMoneda caja={caja} />
 
           {caja.error ? (
-            <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">
               {caja.error}
             </p>
           ) : null}
 
           {!caja.puedeConfirmar && caja.motivoNoConfirmar && !caja.error ? (
-            <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
               {caja.motivoNoConfirmar}
             </p>
           ) : null}
@@ -386,7 +386,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             type="button"
             onClick={caja.confirmar}
             disabled={!caja.puedeConfirmar || caja.guardando}
-            className="mt-4 w-full rounded-xl py-4 text-lg font-bold text-white transition-opacity disabled:opacity-40"
+            className="mt-3 w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
             {caja.guardando ? "Guardando…" : "Confirmar venta"}
@@ -405,7 +405,7 @@ function OpcionesMoneda({ caja }: { caja: CajaVenta }) {
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        className="text-sm font-medium text-slate-500 underline-offset-2 hover:underline"
+        className="text-xs font-medium text-slate-500 underline-offset-2 hover:underline"
       >
         {abierto ? "Ocultar moneda" : `Moneda: ${caja.moneda}`}
       </button>
@@ -468,7 +468,7 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
 
   return (
     <div className="border-b border-slate-100 p-5">
-      <p className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
         Cliente
       </p>
 
