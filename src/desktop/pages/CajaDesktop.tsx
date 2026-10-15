@@ -70,7 +70,7 @@ export default function CajaDesktop() {
   const listo = caja.paso === "listo" && caja.ventaCreada && caja.comprobante;
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6">
+    <div className="mx-auto max-w-[1600px] p-6">
       <header className="mb-5 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Caja</h1>
@@ -88,7 +88,7 @@ export default function CajaDesktop() {
         )}
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px] 2xl:grid-cols-[minmax(0,1fr)_540px]">
         <Catalogo caja={caja} />
         <PanelCobro caja={caja} />
       </div>
@@ -169,28 +169,28 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
               ) : null}
         </p>
       ) : (
-        <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
           {filtrados.map((p) => {
             const cantidad = caja.cantidadDe(p.id);
             return (
               <li
                 key={p.id}
-                className={`flex flex-col rounded-xl border p-3 transition-colors ${
+                className={`flex flex-col rounded-xl border p-2.5 transition-colors ${
                   cantidad > 0 ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
                 }`}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-2">
                   <MiniaturaProducto producto={p} />
-                  <p className="line-clamp-2 text-sm font-semibold text-slate-900">{p.nombre}</p>
+                  <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900">{p.nombre}</p>
                 </div>
-                <p className="mt-1.5 text-xs text-slate-500">
+                <p className="mt-1 text-[11px] text-slate-500">
                   Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
                 </p>
-                <p className="mt-1 text-base font-bold text-[#4FAEB2]">
+                <p className="mt-0.5 text-sm font-bold text-[#4FAEB2]">
                   {formatGs(precioSegunLista(p.precio_venta, caja.lista))}
                 </p>
 
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-2 flex items-center gap-2">
                   {cantidad > 0 || esPesable(p.unidad_medida) ? (
                     <SelectorCantidad
                       producto={p}
@@ -202,7 +202,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
                     <button
                       type="button"
                       onClick={() => caja.cambiarCantidad(p, 1)}
-                      className="flex-1 rounded-lg py-2 text-xs font-semibold text-white"
+                      className="flex-1 rounded-lg py-1.5 text-xs font-semibold text-white"
                       style={{ backgroundColor: TEAL }}
                     >
                       Agregar
@@ -233,7 +233,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
       <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
         <SelectorCliente caja={caja} />
         <div className="border-b border-slate-100 px-5 py-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+          <p className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
             Tipo de venta
           </p>
           <SelectorListaPrecio caja={caja} />
@@ -251,7 +251,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                 return (
                   <li key={item.producto.id} className="py-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
+                      <p className="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-900">
                         {item.producto.nombre}
                       </p>
                       <button
@@ -260,19 +260,19 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                         aria-label={`Quitar ${item.producto.nombre} de la venta`}
                         className="shrink-0 rounded p-1 text-slate-300 hover:text-red-500"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-500">
+                      <span className="text-sm text-slate-600">
                         {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
                         {item.producto.unidad_medida} × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
                       </span>
-                      <span className="text-sm font-semibold tabular-nums text-slate-900">
+                      <span className="text-base font-bold tabular-nums text-slate-900">
                         {formatGs(linea?.total_linea ?? 0)}
                       </span>
                     </div>
-                    <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                    <label className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
                       IVA
                       <select
                         value={item.tipoIva}
@@ -280,7 +280,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                           caja.cambiarIva(item.producto.id, e.target.value as TipoIvaVenta)
                         }
                         aria-label={`IVA de ${item.producto.nombre}`}
-                        className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px]"
+                        className="rounded border border-slate-200 bg-white px-1.5 py-1 text-xs"
                       >
                         {IVAS.map((iva) => (
                           <option key={iva} value={iva}>
@@ -298,31 +298,31 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
 
         <div className="border-t border-slate-100 p-5">
           <div className="flex items-center justify-between py-0.5">
-            <span className="text-sm text-slate-500">IVA incluido</span>
-            <span className="text-sm tabular-nums text-slate-700">
+            <span className="text-base text-slate-500">IVA incluido</span>
+            <span className="text-base tabular-nums text-slate-700">
               {formatGs(caja.totales.montoIva)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="text-sm font-semibold text-slate-900">Total</span>
-            <span className="text-2xl font-bold tabular-nums text-slate-900">
+            <span className="text-lg font-semibold text-slate-900">Total</span>
+            <span className="text-3xl font-bold tabular-nums text-slate-900">
               {formatGs(caja.totales.total)}
             </span>
           </div>
 
           {/* El crédito no es un medio de cobro: es una condición de la venta. */}
           <div className="mt-4">
-            <SelectorCondicionVenta caja={caja} />
+            <SelectorCondicionVenta caja={caja} grande />
           </div>
 
-          <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
+          <p className="mb-2 mt-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
             Comprobante
           </p>
-          <SelectorComprobante caja={caja} />
+          <SelectorComprobante caja={caja} grande />
 
           {!caja.aCredito ? (
             <>
-              <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
+              <p className="mb-2 mt-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
                 Con qué se cobra
               </p>
               <div className="grid grid-cols-3 gap-2">
@@ -334,13 +334,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                       key={m}
                       type="button"
                       onClick={() => caja.setMetodoPago(m)}
-                      className={`flex items-center gap-2 rounded-lg border-2 px-2.5 py-2 text-xs font-medium transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-xl border-2 px-2.5 py-3 text-sm font-semibold transition-colors ${
                         elegido
                           ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
                           : "border-slate-200 text-slate-600 hover:bg-slate-50"
                       }`}
                     >
-                      <Icono className="h-3.5 w-3.5 shrink-0" />
+                      <Icono className="h-4 w-4 shrink-0" />
                       <span className="truncate">{label}</span>
                     </button>
                   );
@@ -351,13 +351,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
 
           {caja.aCredito ? (
             <label className="mt-3 block">
-              <span className="mb-1 block text-xs text-slate-500">Plazo en días</span>
+              <span className="mb-1 block text-sm text-slate-600">Plazo en días</span>
               <input
                 inputMode="numeric"
                 value={caja.plazoDias}
                 onChange={(e) => caja.setPlazoDias(e.target.value)}
                 placeholder="30"
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-[#4FAEB2]"
               />
             </label>
           ) : null}
@@ -371,13 +371,13 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           <OpcionesMoneda caja={caja} />
 
           {caja.error ? (
-            <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">
+            <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
               {caja.error}
             </p>
           ) : null}
 
           {!caja.puedeConfirmar && caja.motivoNoConfirmar && !caja.error ? (
-            <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+            <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
               {caja.motivoNoConfirmar}
             </p>
           ) : null}
@@ -386,7 +386,7 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             type="button"
             onClick={caja.confirmar}
             disabled={!caja.puedeConfirmar || caja.guardando}
-            className="mt-3 w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
+            className="mt-4 w-full rounded-xl py-4 text-lg font-bold text-white transition-opacity disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
             {caja.guardando ? "Guardando…" : "Confirmar venta"}
@@ -405,7 +405,7 @@ function OpcionesMoneda({ caja }: { caja: CajaVenta }) {
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        className="text-xs font-medium text-slate-500 underline-offset-2 hover:underline"
+        className="text-sm font-medium text-slate-500 underline-offset-2 hover:underline"
       >
         {abierto ? "Ocultar moneda" : `Moneda: ${caja.moneda}`}
       </button>
@@ -468,7 +468,7 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
 
   return (
     <div className="border-b border-slate-100 p-5">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+      <p className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
         Cliente
       </p>
 
