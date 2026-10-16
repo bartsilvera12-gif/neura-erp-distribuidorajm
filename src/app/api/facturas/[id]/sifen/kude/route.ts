@@ -10,6 +10,7 @@ import {
 } from "@/lib/sifen/parse-kude-from-signed-xml";
 import type { SifenConsultaLoteUltimaPersistida } from "@/lib/sifen/types";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import QRCode from "qrcode";
 
 
 function filasDetalleConsulta(
@@ -99,6 +100,8 @@ async function loadKudeBranding(
  * GET /api/facturas/[id]/sifen/kude
  * PDF KuDE a partir del XML firmado. Solo si `estado_sifen` = aprobado.
  * Query: `download=1` → Content-Disposition attachment.
+ *        `formato=ticket` → JSON con los datos del KuDE y el QR (para el
+ *        ticket de 80 mm, que se arma en el navegador).
  */
 export async function GET(
   request: NextRequest,
@@ -195,6 +198,16 @@ export async function GET(
 
     const qrUrl = parsed.dCarQR ?? kudeFallbackQrUrl(parsed.cdc);
 
+    const numeroFactura = fac.numero_factura == null ? "" : String(fac.numero_factura);
+
+    if (request.nextUrl.searchParams.get("formato") === "ticket") {
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 0, width: 320 });
+      return NextResponse.json(
+        { success: true, data: { parsed, numeroFactura, dProtAut, qrUrl, qrDataUrl } },
+        { headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     /**
      * Branding opcional KuDE/PDF por empresa. SOLO afecta apariencia visual.
      * No participa de XML/firma/SET/CDC. Si la empresa no configuró nada o
@@ -211,7 +224,6 @@ export async function GET(
       return null;
     });
 
-    const numeroFactura = fac.numero_factura == null ? "" : String(fac.numero_factura);
     let pdf: Buffer;
     try {
       pdf = await buildKudePdfBuffer({

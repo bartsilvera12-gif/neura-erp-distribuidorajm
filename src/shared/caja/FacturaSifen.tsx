@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2, Printer, RefreshCw } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import KudeTicket from "@/shared/caja/KudeTicket";
 
 /**
  * Factura electrónica (SIFEN) de una venta de la caja.
@@ -235,11 +236,67 @@ export function EstadoFacturaSifen({
   );
 }
 
+type FormatoKude = "ticket" | "a4";
+const CLAVE_FORMATO = "kude:formato";
+
+function formatoGuardado(): FormatoKude {
+  try {
+    return localStorage.getItem(CLAVE_FORMATO) === "a4" ? "a4" : "ticket";
+  } catch {
+    return "ticket";
+  }
+}
+
+/**
+ * La factura electrónica aprobada, en ticket de 80 mm (para la impresora de
+ * la caja) o en hoja A4 (el PDF oficial). Se recuerda el último formato.
+ */
+export function VisorKude({ facturaId }: { facturaId: string }) {
+  const [formato, setFormato] = useState<FormatoKude>(formatoGuardado);
+
+  function elegir(f: FormatoKude) {
+    setFormato(f);
+    try {
+      localStorage.setItem(CLAVE_FORMATO, f);
+    } catch {
+      // Sin almacenamiento: vale solo para esta vez.
+    }
+  }
+
+  return (
+    <div>
+      <div className="no-imprimir mb-3 flex justify-center">
+        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+          {(
+            [
+              ["ticket", "Ticket 80mm"],
+              ["a4", "Hoja A4"],
+            ] as const
+          ).map(([f, texto]) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => elegir(f)}
+              aria-pressed={formato === f}
+              className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${
+                formato === f ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {texto}
+            </button>
+          ))}
+        </div>
+      </div>
+      {formato === "ticket" ? <KudeTicket facturaId={facturaId} /> : <KudePdf facturaId={facturaId} />}
+    </div>
+  );
+}
+
 /**
  * El KuDE (PDF oficial de la factura electrónica). Se baja con la sesión del
  * usuario y se muestra en la pantalla; Imprimir manda ese mismo PDF.
  */
-export function VisorKude({ facturaId }: { facturaId: string }) {
+function KudePdf({ facturaId }: { facturaId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
