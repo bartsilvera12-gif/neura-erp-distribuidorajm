@@ -144,7 +144,7 @@ export default function FinalizarVenta({
       valor: "credito" as Pago,
       texto: "Crédito",
       deshabilitado: !caja.cliente,
-      detalle: caja.cliente ? undefined : "con cliente",
+      ayuda: caja.cliente ? undefined : "El crédito es solo para clientes identificados (Factura con nombre).",
     },
   ];
 
@@ -292,6 +292,8 @@ type Opcion<T extends string> = {
   valor: T;
   texto: string;
   detalle?: string;
+  /** Texto al pasar el mouse (p. ej. por qué está deshabilitada). */
+  ayuda?: string;
   Icono: typeof Banknote;
   deshabilitado?: boolean;
 };
@@ -343,7 +345,7 @@ function FilaOpciones<T extends string>({
       onKeyDown={onKeyDown}
       className={`grid gap-2 ${columnas === 4 ? "grid-cols-4" : "grid-cols-2"}`}
     >
-      {opciones.map(({ valor: v, texto, detalle, Icono, deshabilitado }) => {
+      {opciones.map(({ valor: v, texto, detalle, ayuda, Icono, deshabilitado }) => {
         const elegido = v === valor;
         return (
           <button
@@ -355,15 +357,19 @@ function FilaOpciones<T extends string>({
             tabIndex={elegido ? 0 : -1}
             disabled={deshabilitado}
             onClick={() => onCambiar(v)}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 px-2 py-2.5 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#4FAEB2] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${
+            title={ayuda}
+            className={`flex min-w-0 flex-col items-center justify-center rounded-xl border-2 px-1.5 font-semibold outline-none ${
+              columnas === 4 ? "h-16 gap-1 text-[13px]" : "gap-0.5 py-2.5 text-sm"
+            } transition-colors focus-visible:ring-2 focus-visible:ring-[#4FAEB2] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${
               elegido
                 ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
             }`}
           >
-            <span className="flex items-center gap-1.5">
+            {/* En la fila de 4 el ícono va arriba: "Transferencia" no entra al lado. */}
+            <span className={`flex items-center ${columnas === 4 ? "flex-col gap-1" : "gap-1.5"}`}>
               <Icono className="h-4 w-4 shrink-0" />
-              {texto}
+              <span className="max-w-full truncate">{texto}</span>
             </span>
             {detalle ? <span className="text-[11px] font-normal text-slate-500">{detalle}</span> : null}
           </button>

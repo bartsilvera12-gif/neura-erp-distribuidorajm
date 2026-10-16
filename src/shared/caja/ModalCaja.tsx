@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 /**
@@ -33,9 +34,12 @@ export default function ModalCaja({
     return () => document.removeEventListener("keydown", alTeclear);
   }, [onCerrar]);
 
-  return (
+  // Por portal al <body>: dentro de la página, el encabezado de arriba (con
+  // su propio z-index) quedaba por encima y tapaba el título de la ventana.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={titulo}
@@ -66,6 +70,7 @@ export default function ModalCaja({
           {pie}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
