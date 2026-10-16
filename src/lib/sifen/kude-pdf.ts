@@ -74,10 +74,6 @@ function blendWithWhite(c: RGB, mix = 0.92): RGB {
   );
 }
 
-/** Contacto Neura en el KuDE (puede diferir del XML del emisor). */
-const NEURA_KUDE_TEL = "0973989068";
-const NEURA_KUDE_EMAIL = "neurautomations@gmail.com";
-
 /** Distancia desde el borde superior de la página hasta la línea base del texto (pt). */
 function baselineFromTop(page: PDFPage, fromTop: number): number {
   return page.getHeight() - fromTop;
@@ -334,9 +330,12 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
   const leftChunks: { lines: string[]; size: number; bold: boolean; col: RGB }[] = [
     { lines: wrapByChars(parsed.emisor.dNomEmi, leftMaxChars), size: 9, bold: true, col: BLACK },
     { lines: wrapByChars(parsed.emisor.dDirEmi, leftMaxChars), size: 7.5, bold: false, col: BLACK },
-    { lines: [`Tel.: ${NEURA_KUDE_TEL}`], size: 7.5, bold: false, col: BLACK },
-    { lines: [`Email: ${NEURA_KUDE_EMAIL}`], size: 7.5, bold: false, col: BLACK },
   ];
+  // Teléfono del emisor, tal como va en el XML; sin correo.
+  const telEmisor = parsed.emisor.dTelEmi.trim();
+  if (telEmisor) {
+    leftChunks.push({ lines: [`Tel.: ${telEmisor}`], size: 7.5, bold: false, col: BLACK });
+  }
 
   const rightLines = 6;
   const rightLineLead = 11;
