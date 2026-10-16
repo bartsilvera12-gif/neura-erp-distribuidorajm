@@ -19,7 +19,16 @@ function sugeridos(total: number): number[] {
  * Es una ayuda para el cajero: la venta se registra por el total igual, y no
  * frena la confirmación si queda vacío.
  */
-export default function CalculadoraVuelto({ caja, grande = false }: { caja: CajaVenta; grande?: boolean }) {
+export default function CalculadoraVuelto({
+  caja,
+  grande = false,
+  enfocar = false,
+}: {
+  caja: CajaVenta;
+  grande?: boolean;
+  /** Cursor en "Paga con" al abrir (escritorio: se escribe el monto y Enter). */
+  enfocar?: boolean;
+}) {
   const total = caja.totales.total;
   const entrega = caja.pagaConNum;
   const vuelto = entrega - total;
@@ -38,6 +47,7 @@ export default function CalculadoraVuelto({ caja, grande = false }: { caja: Caja
           Paga con
         </span>
         <input
+          autoFocus={enfocar}
           inputMode="numeric"
           value={caja.pagaCon}
           onChange={(e) => escribir(e.target.value)}

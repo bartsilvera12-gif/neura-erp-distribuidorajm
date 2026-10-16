@@ -5,7 +5,8 @@ import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
 import SelectorComprobante from "@/shared/caja/SelectorComprobante";
 import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Producto } from "@/lib/inventario/types";
 import {
   Banknote,
   CheckCircle2,
@@ -66,6 +67,17 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
   mixto: Wallet,
 };
 
+/** El buscador de productos: adonde vuelve el cursor después de cada paso. */
+function enfocarBuscador() {
+  document.getElementById("caja-buscar")?.focus();
+}
+
+/** Hace clic en un botón de la caja por su id, si existe y está habilitado. */
+function tocar(id: string) {
+  const b = document.getElementById(id);
+  if (b instanceof HTMLButtonElement && !b.disabled) b.click();
+}
+
 export default function CajaDesktop() {
   const caja = useCajaVenta();
   const soloCaja = useSoloCaja();
@@ -74,6 +86,31 @@ export default function CajaDesktop() {
   // una ventana encima, y "Nueva venta" la cierra.
   const listo = caja.paso === "listo" && caja.ventaCreada && caja.comprobante;
 
+  // Atajos de teclado: la caja se maneja sin soltar el teclado (ni el lector).
+  const { elegirSinNombre } = caja;
+  useEffect(() => {
+    if (listo) return;
+    function onKey(e: KeyboardEvent) {
+      if (document.querySelector('[role="dialog"]')) return;
+      const cobrar = e.key === "F9" || (e.key === "Enter" && (e.ctrlKey || e.metaKey));
+      if (e.key === "F2") enfocarBuscador();
+      else if (e.key === "F4") tocar("caja-cliente");
+      else if (e.key === "F8") {
+        elegirSinNombre();
+        enfocarBuscador();
+      } else if (cobrar) tocar("caja-cobrar");
+      else return;
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [listo, elegirSinNombre]);
+
+  // Cerrado el comprobante (Nueva venta), el cursor vuelve al buscador.
+  useEffect(() => {
+    if (!listo) enfocarBuscador();
+  }, [listo]);
+
   return (
     <div className="mx-auto max-w-[1600px] p-6">
       <header className="mb-5 flex items-center justify-between gap-4">
@@ -81,6 +118,14 @@ export default function CajaDesktop() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Caja</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             Cargá los productos y cobrá sin salir de esta pantalla.
+          </p>
+          <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <Atajo tecla="F2">buscar</Atajo>
+            <Atajo tecla="Enter">agregar</Atajo>
+            <Atajo tecla="3*">cantidad (3*arroz)</Atajo>
+            <Atajo tecla="F4">cliente</Atajo>
+            <Atajo tecla="F8">sin nombre</Atajo>
+            <Atajo tecla="F9">cobrar</Atajo>
           </p>
         </div>
         {soloCaja ? null : (
@@ -122,8 +167,11 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   );
   const ocultosSinStock = productos.length - conStock.length;
 
+  // "3*arroz" o "3*" + escaneo: la cantidad va adelante del asterisco.
+  const { cantidad: multiplicador, texto } = separarCantidad(query);
+
   const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = texto.trim().toLowerCase();
     if (!q) return conStock;
     return conStock.filter(
       (p) =>
@@ -131,32 +179,83 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
         p.sku.toLowerCase().includes(q) ||
         (p.codigo_barras ?? "").toLowerCase().includes(q)
     );
-  }, [conStock, query]);
+  }, [conStock, texto]);
+
+  // El producto marcado con las flechas: Enter agrega ese. Vuelve al primero
+  // cada vez que cambia la búsqueda.
+  const [resaltado, setResaltado] = useState(0);
+  const listaRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    listaRef.current
+      ?.querySelector(`[data-indice="${resaltado}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [resaltado]);
 
   // Lector de código de barras: el código exacto agrega el producto de una.
   // Si es por kilo no se puede agregar solo (falta el peso): queda filtrado.
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
-  function escaneado(codigo: string): boolean {
+  function agregar(p: Producto, cantidad: number | null): void {
+    if (p.stock_actual <= 0 && caja.cantidadDe(p.id) <= 0) {
+      setAviso({ ok: false, texto: `${p.nombre}: sin stock.` });
+      return;
+    }
+    if (esPesable(p.unidad_medida) && cantidad === null) {
+      setQuery(p.sku);
+      setAviso({
+        ok: true,
+        texto: `${p.nombre} se vende por ${p.unidad_medida}: cargá el peso en la tarjeta, o escribí 1,5*${p.sku}.`,
+      });
+      return;
+    }
+    const n = cantidad ?? 1;
+    const antes = caja.cantidadDe(p.id);
+    caja.cambiarCantidad(p, n);
+    setQuery("");
+    setResaltado(0);
+    const topeado = antes + n > p.stock_actual;
+    setAviso(
+      topeado
+        ? { ok: false, texto: `${p.nombre}: solo hay ${formatCantidad(p.stock_actual, p.unidad_medida)} en stock.` }
+        : { ok: true, texto: `Agregado: ${n === 1 ? "" : `${formatCantidad(n, p.unidad_medida)} × `}${p.nombre}` }
+    );
+  }
+
+  function escaneado(codigo: string, cantidad: number | null = null): boolean {
     const p = productoPorCodigo(productos, codigo);
     if (!p) {
       setAviso({ ok: false, texto: `No hay ningún producto con el código ${codigo}.` });
       return false;
     }
-    if (p.stock_actual <= 0 && caja.cantidadDe(p.id) <= 0) {
-      setAviso({ ok: false, texto: `${p.nombre}: sin stock.` });
-      return true;
-    }
-    if (esPesable(p.unidad_medida)) {
-      setQuery(codigo);
-      setAviso({ ok: true, texto: `${p.nombre} se vende por kilo: cargá el peso.` });
-      return true;
-    }
-    caja.cambiarCantidad(p, 1);
-    setQuery("");
-    setAviso({ ok: true, texto: `Agregado: ${p.nombre}` });
+    agregar(p, cantidad);
     return true;
   }
   useLectorGlobal(escaneado);
+
+  function alTeclear(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      setQuery("");
+      setResaltado(0);
+      setAviso(null);
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (filtrados.length === 0) return;
+      e.preventDefault();
+      setResaltado((i) =>
+        e.key === "ArrowDown" ? Math.min(i + 1, filtrados.length - 1) : Math.max(i - 1, 0)
+      );
+      return;
+    }
+    if (e.key !== "Enter" || e.ctrlKey || e.metaKey || !texto.trim()) return;
+    e.preventDefault();
+    // Primero el código exacto (lo que manda el lector); si no, el marcado.
+    if (productoPorCodigo(productos, texto)) {
+      escaneado(texto.trim(), multiplicador);
+      return;
+    }
+    const p = filtrados[Math.min(resaltado, filtrados.length - 1)];
+    if (p) agregar(p, multiplicador);
+  }
 
 
   return (
@@ -164,21 +263,17 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
+          id="caja-buscar"
           autoFocus
+          autoComplete="off"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
+            setResaltado(0);
             setAviso(null);
           }}
-          onKeyDown={(e) => {
-            // Enter con un código exacto (lo que manda el lector): se agrega.
-            if (e.key !== "Enter" || !query.trim()) return;
-            if (productoPorCodigo(productos, query)) {
-              e.preventDefault();
-              escaneado(query.trim());
-            }
-          }}
-          placeholder="Buscar por nombre, SKU o escaneá el código de barras…"
+          onKeyDown={alTeclear}
+          placeholder="Buscar por nombre, SKU o escaneá el código (F2)…"
           className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
         />
         <ScanBarcode
@@ -217,8 +312,8 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
         <p className="py-16 text-center text-sm text-slate-400">Cargando productos…</p>
       ) : errorCatalogo ? null : filtrados.length === 0 ? (
         <p className="py-16 text-center text-sm text-slate-400">
-          {query
-            ? `Ningún producto coincide con “${query}”.`
+          {texto.trim()
+            ? `Ningún producto coincide con “${texto.trim()}”.`
             : caja.repartoId
               ? "El camión está vacío. Cargalo desde Repartos antes de salir."
               : "No hay stock disponible para vender. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
@@ -227,15 +322,17 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
               ) : null}
         </p>
       ) : (
-        <ul className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-          {filtrados.map((p) => {
+        <ul ref={listaRef} className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+          {filtrados.map((p, i) => {
             const cantidad = caja.cantidadDe(p.id);
+            const marcado = texto.trim() !== "" && i === resaltado;
             return (
               <li
                 key={p.id}
+                data-indice={i}
                 className={`flex flex-col rounded-xl border p-2.5 transition-colors ${
                   cantidad > 0 ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
-                }`}
+                } ${marcado ? "ring-2 ring-[#4FAEB2] ring-offset-1" : ""}`}
               >
                 <div className="flex items-start gap-2">
                   <MiniaturaProducto producto={p} />
@@ -259,7 +356,11 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => caja.cambiarCantidad(p, 1)}
+                      tabIndex={-1}
+                      onClick={() => {
+                        caja.cambiarCantidad(p, 1);
+                        enfocarBuscador();
+                      }}
                       className="flex-1 rounded-lg py-1.5 text-xs font-semibold text-white"
                       style={{ backgroundColor: TEAL }}
                     >
@@ -280,6 +381,13 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
 
 function PanelCobro({ caja }: { caja: CajaVenta }) {
   const [cobrando, setCobrando] = useState(false);
+
+  // Casi todo el mostrador se cobra en efectivo: viene elegido, y se cambia
+  // con un clic si no.
+  function abrirCobro() {
+    if (!caja.aCredito && !caja.metodoPago) caja.setMetodoPago("efectivo");
+    setCobrando(true);
+  }
   return (
     <aside className="lg:sticky lg:top-6 lg:self-start">
       {/* El panel se limita al alto de la pantalla para que el total quede
@@ -324,10 +432,16 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-500">
-                        {formatCantidad(item.cantidad, item.producto.unidad_medida)}{" "}
-                        {item.producto.unidad_medida} × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <SelectorCantidad
+                        producto={item.producto}
+                        cantidad={item.cantidad}
+                        cambiarCantidad={caja.cambiarCantidad}
+                        fijarCantidad={caja.fijarCantidad}
+                        size="sm"
+                      />
+                      <span className="min-w-0 truncate text-[11px] text-slate-400">
+                        × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
                       </span>
                       <span className="text-sm font-semibold tabular-nums text-slate-900">
                         {formatGs(linea?.total_linea ?? 0)}
@@ -378,19 +492,27 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           ) : null}
 
           <button
+            id="caja-cobrar"
             type="button"
-            onClick={() => setCobrando(true)}
+            onClick={abrirCobro}
             disabled={caja.carrito.length === 0 || !caja.clienteElegido}
             className="mt-3 w-full rounded-xl py-3.5 text-base font-semibold text-white transition-opacity disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
             Cobrar {formatGs(caja.totales.total)}
+            <span className="ml-2 text-xs font-medium opacity-80">F9</span>
           </button>
         </div>
       </div>
 
       {cobrando ? (
-        <ModalCobro caja={caja} onCerrar={() => setCobrando(false)} />
+        <ModalCobro
+          caja={caja}
+          onCerrar={() => {
+            setCobrando(false);
+            enfocarBuscador();
+          }}
+        />
       ) : null}
     </aside>
   );
@@ -403,6 +525,21 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
  * sin tener que bajar, y las opciones de cobro aparecen recién al cobrar.
  */
 function ModalCobro({ caja, onCerrar }: { caja: CajaVenta; onCerrar: () => void }) {
+  // Enter confirma (también desde "Paga con"); en un botón, Enter es ese botón.
+  const { confirmar, puedeConfirmar, guardando } = caja;
+  useEffect(() => {
+    async function onKey(e: KeyboardEvent) {
+      if (e.key !== "Enter" || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "BUTTON" || t.tagName === "SELECT" || t.tagName === "A")) return;
+      if (!puedeConfirmar || guardando) return;
+      e.preventDefault();
+      if (await confirmar()) onCerrar();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmar, puedeConfirmar, guardando, onCerrar]);
+
   return (
     <ModalCaja
       titulo={`Cobrar ${formatGs(caja.totales.total)}`}
@@ -428,6 +565,7 @@ function ModalCobro({ caja, onCerrar }: { caja: CajaVenta; onCerrar: () => void 
             style={{ backgroundColor: TEAL }}
           >
             {caja.guardando ? "Guardando…" : "Confirmar venta"}
+            {caja.guardando ? null : <span className="ml-2 text-xs font-medium opacity-80">Enter</span>}
           </button>
         </>
       }
@@ -469,7 +607,7 @@ function ModalCobro({ caja, onCerrar }: { caja: CajaVenta; onCerrar: () => void 
                   );
                 })}
               </div>
-              {caja.metodoPago === "efectivo" ? <CalculadoraVuelto caja={caja} /> : null}
+              {caja.metodoPago === "efectivo" ? <CalculadoraVuelto caja={caja} enfocar /> : null}
             </>
           ) : null}
 
@@ -606,7 +744,21 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar cliente…"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setAbierto(false);
+                  setQuery("");
+                  enfocarBuscador();
+                } else if (e.key === "Enter" && filtrados[0]) {
+                  e.preventDefault();
+                  caja.elegirCliente(filtrados[0]);
+                  setAbierto(false);
+                  setQuery("");
+                  enfocarBuscador();
+                }
+              }}
+              placeholder="Buscar cliente… (Enter elige el primero)"
               className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-8 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
             />
             <button
@@ -645,6 +797,7 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
                     caja.elegirCliente(c);
                     setAbierto(false);
                     setQuery("");
+                    enfocarBuscador();
                   }}
                   className="w-full rounded-lg px-2 py-2 text-left hover:bg-slate-50"
                 >
@@ -671,6 +824,7 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
       ) : (
         <div className="flex items-center gap-2">
           <button
+            id="caja-cliente"
             type="button"
             onClick={() => setAbierto(true)}
             className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border-2 px-3 py-2 text-left transition-colors ${
@@ -693,7 +847,10 @@ function SelectorCliente({ caja }: { caja: CajaVenta }) {
           </button>
           <button
             type="button"
-            onClick={caja.elegirSinNombre}
+            onClick={() => {
+              caja.elegirSinNombre();
+              enfocarBuscador();
+            }}
             className={`shrink-0 rounded-lg border-2 px-3 py-2 text-xs font-medium transition-colors ${
               caja.sinNombre
                 ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
@@ -789,11 +946,12 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           </Link>
           <button
             type="button"
+            autoFocus
             onClick={caja.reiniciar}
             className="flex-1 rounded-xl py-3 text-sm font-semibold text-white"
             style={{ backgroundColor: TEAL }}
           >
-            Nueva venta
+            Nueva venta <span className="ml-1 text-xs font-medium opacity-80">Enter</span>
           </button>
         </div>
       </div>
@@ -906,10 +1064,11 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           </Link>
           <button
             type="button"
+            autoFocus
             onClick={caja.reiniciar}
             className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
           >
-            Nueva venta
+            Nueva venta <span className="ml-1 text-xs font-medium opacity-60">Enter</span>
           </button>
         </div>
       </div>
@@ -924,4 +1083,27 @@ function Dato({ label, valor }: { label: string; valor: string }) {
       <dd className="truncate text-sm font-medium text-slate-900">{valor}</dd>
     </div>
   );
+}
+
+/** Etiqueta de un atajo de teclado. */
+function Atajo({ tecla, children }: { tecla: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <kbd className="rounded border border-slate-300 bg-white px-1.5 py-px font-mono text-[10px] font-semibold text-slate-600">
+        {tecla}
+      </kbd>
+      {children}
+    </span>
+  );
+}
+
+/**
+ * "3*arroz" → 3 y "arroz"; "1,5*queso" → 1,5 y "queso". Sin asterisco no hay
+ * cantidad (se agrega 1) y el texto es la búsqueda entera.
+ */
+function separarCantidad(q: string): { cantidad: number | null; texto: string } {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/.exec(q);
+  if (!m) return { cantidad: null, texto: q };
+  const n = Number.parseFloat(m[1].replace(",", "."));
+  return { cantidad: n > 0 ? n : null, texto: m[2] };
 }
