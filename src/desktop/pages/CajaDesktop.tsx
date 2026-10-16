@@ -13,6 +13,7 @@ import {
   FileText,
   Landmark,
   Receipt,
+  ScanBarcode,
   Search,
   Share2,
   Trash2,
@@ -27,6 +28,7 @@ import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogo
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
 import ModalCaja from "@/shared/caja/ModalCaja";
+import { productoPorCodigo, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
@@ -124,9 +126,37 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
     const q = query.trim().toLowerCase();
     if (!q) return conStock;
     return conStock.filter(
-      (p) => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      (p) =>
+        p.nombre.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        (p.codigo_barras ?? "").toLowerCase().includes(q)
     );
   }, [conStock, query]);
+
+  // Lector de código de barras: el código exacto agrega el producto de una.
+  // Si es por kilo no se puede agregar solo (falta el peso): queda filtrado.
+  const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
+  function escaneado(codigo: string): boolean {
+    const p = productoPorCodigo(productos, codigo);
+    if (!p) {
+      setAviso({ ok: false, texto: `No hay ningún producto con el código ${codigo}.` });
+      return false;
+    }
+    if (p.stock_actual <= 0 && caja.cantidadDe(p.id) <= 0) {
+      setAviso({ ok: false, texto: `${p.nombre}: sin stock.` });
+      return true;
+    }
+    if (esPesable(p.unidad_medida)) {
+      setQuery(codigo);
+      setAviso({ ok: true, texto: `${p.nombre} se vende por kilo: cargá el peso.` });
+      return true;
+    }
+    caja.cambiarCantidad(p, 1);
+    setQuery("");
+    setAviso({ ok: true, texto: `Agregado: ${p.nombre}` });
+    return true;
+  }
+  useLectorGlobal(escaneado);
 
 
   return (
@@ -136,11 +166,36 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
         <input
           autoFocus
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar producto por nombre o SKU…"
-          className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setAviso(null);
+          }}
+          onKeyDown={(e) => {
+            // Enter con un código exacto (lo que manda el lector): se agrega.
+            if (e.key !== "Enter" || !query.trim()) return;
+            if (productoPorCodigo(productos, query)) {
+              e.preventDefault();
+              escaneado(query.trim());
+            }
+          }}
+          placeholder="Buscar por nombre, SKU o escaneá el código de barras…"
+          className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+        />
+        <ScanBarcode
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
         />
       </div>
+      {aviso ? (
+        <p
+          role="status"
+          className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+            aviso.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+          }`}
+        >
+          {aviso.texto}
+        </p>
+      ) : null}
 
       {errorCatalogo ? (
         <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
