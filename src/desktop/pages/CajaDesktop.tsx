@@ -27,6 +27,7 @@ import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogo
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
 import ModalCaja from "@/shared/caja/ModalCaja";
+import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
@@ -413,6 +414,7 @@ function ModalCobro({ caja, onCerrar }: { caja: CajaVenta; onCerrar: () => void 
                   );
                 })}
               </div>
+              {caja.metodoPago === "efectivo" ? <CalculadoraVuelto caja={caja} /> : null}
             </>
           ) : null}
 
@@ -682,6 +684,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     cliente: comp.nombreCliente,
     clienteRuc: comp.rucCliente,
     clienteDireccion: comp.direccionCliente,
+    pagaCon: comp.pagaCon,
     formaPago: cobro,
     unidades,
   };

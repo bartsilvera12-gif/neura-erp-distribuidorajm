@@ -31,6 +31,7 @@ import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
+import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
@@ -685,6 +686,8 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
         })}
       </ul>
 
+      {!caja.aCredito && caja.metodoPago === "efectivo" ? <CalculadoraVuelto caja={caja} grande /> : null}
+
       {caja.aCredito ? (
         <label className="block rounded-xl border border-slate-200 bg-white p-4">
           <span className="mb-1 block text-xs font-medium text-slate-600">Plazo en días</span>
@@ -793,6 +796,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     cliente: comp.nombreCliente,
     clienteRuc: comp.rucCliente,
     clienteDireccion: comp.direccionCliente,
+    pagaCon: comp.pagaCon,
     formaPago: etiquetaCobro(comp),
     unidades,
   };

@@ -130,6 +130,12 @@ export default function TicketVenta({ datos }: { datos: DatosComprobante }) {
           <div className="my-1 border-t border-black" />
           <Fila etiqueta="TOTAL" valor={gs(venta.total)} fuerte />
           <Fila etiqueta="Pago" valor={datos.formaPago} />
+          {datos.pagaCon && datos.pagaCon >= venta.total ? (
+            <>
+              <Fila etiqueta="Paga con" valor={gs(datos.pagaCon)} />
+              <Fila etiqueta="Vuelto" valor={gs(datos.pagaCon - venta.total)} />
+            </>
+          ) : null}
 
           <Linea />
 

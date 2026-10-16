@@ -97,6 +97,8 @@ export interface DatosComprobante {
   /** RUC o documento del cliente, si lo tiene. */
   clienteRuc?: string | null;
   clienteDireccion?: string | null;
+  /** Efectivo entregado por el cliente, para imprimir el vuelto en el ticket. */
+  pagaCon?: number | null;
   /** "Efectivo", "A crédito", … tal como se cobró. */
   formaPago: string;
   /** Unidad de medida por producto, para que 1,5 no se lea como 1,5 unidades. */

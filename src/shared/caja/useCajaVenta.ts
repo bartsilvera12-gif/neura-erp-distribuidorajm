@@ -96,6 +96,8 @@ export function useCajaVenta() {
   const [lista, setLista] = useState<ListaPrecio>("minorista");
   const [tipoCambio, setTipoCambio] = useState("");
   const [metodoPago, setMetodoPago] = useState<MetodoPagoVenta | null>(null);
+  /** Lo que entrega el cliente en efectivo, para calcular el vuelto. Solo informativo: no se guarda en la venta. */
+  const [pagaCon, setPagaCon] = useState("");
   // El crédito es una condición de la venta (`tipo_venta`), no un medio de
   // cobro: a crédito no entra plata hoy y no hay con qué cobrarla.
   const [aCredito, setACredito] = useState(false);
@@ -155,6 +157,9 @@ export function useCajaVenta() {
   const [comprobante, setComprobante] = useState<ComprobanteCaja | null>(null);
 
   const tipoCambioNum = moneda === "USD" ? parseFloat(tipoCambio) || 0 : 1;
+
+  /** Efectivo entregado y vuelto (en guaraníes; los puntos de miles se ignoran). */
+  const pagaConNum = Number(pagaCon.replace(/\D/g, "")) || 0;
 
   // ── Acciones de carrito ────────────────────────────────────────────────────
 
@@ -403,6 +408,7 @@ export function useCajaVenta() {
     setLista("minorista");
     setTipoCambio("");
     setMetodoPago(null);
+    setPagaCon("");
     setACredito(false);
     setPlazoDias("");
     setDocumento(null);
@@ -470,6 +476,7 @@ export function useCajaVenta() {
       direccionCliente: cliente?.direccion || null,
       aCredito,
       metodoPago: aCredito ? null : metodoPago,
+      pagaCon: !aCredito && metodoPago === "efectivo" && pagaConNum >= totales.total ? pagaConNum : null,
       unidades: Object.fromEntries(
         carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
       ),
@@ -482,6 +489,7 @@ export function useCajaVenta() {
     carrito,
     limpiarVenta,
     documento,
+    pagaConNum,
     guardando,
     carrito.length,
     metodoPago,
@@ -524,6 +532,8 @@ export function useCajaVenta() {
     tipoCambio,
     tipoCambioNum,
     metodoPago,
+    pagaCon,
+    pagaConNum,
     aCredito,
     plazoDias,
     caja,
@@ -555,6 +565,7 @@ export function useCajaVenta() {
     setDocumento,
     setTipoCambio,
     setMetodoPago,
+    setPagaCon,
     setACredito,
     setPlazoDias,
     setRepartoId,
@@ -583,6 +594,8 @@ export interface ComprobanteCaja {
   direccionCliente: string | null;
   aCredito: boolean;
   metodoPago: MetodoPagoVenta | null;
+  /** Efectivo entregado por el cliente (si se cargó): con él se imprime el vuelto. */
+  pagaCon: number | null;
   /** Unidad de cada producto: no viaja en la venta y sin ella 1,5 KG se lee 1,5 a secas. */
   unidades: Record<string, string>;
 }
