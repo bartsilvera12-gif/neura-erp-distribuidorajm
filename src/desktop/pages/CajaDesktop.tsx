@@ -1,36 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
-import SelectorComprobante from "@/shared/caja/SelectorComprobante";
 import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Producto } from "@/lib/inventario/types";
 import {
-  Banknote,
   CheckCircle2,
-  CreditCard,
   FileText,
-  Landmark,
   Receipt,
   ScanBarcode,
   Search,
   Share2,
   Trash2,
-  User,
-  UserPlus,
-  Wallet,
-  X,
 } from "lucide-react";
-import { useClientes } from "@/shared/hooks/useClientes";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
-import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
-import ModalCaja from "@/shared/caja/ModalCaja";
 import { productoPorCodigo, useLectorGlobal } from "@/shared/caja/lector-codigo";
-import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
+import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
@@ -39,13 +27,12 @@ import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
 import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
-import { clienteNombre } from "@/lib/clientes/storage";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
-import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
+import { METODOS_PAGO, type TipoIvaVenta } from "@/lib/ventas/types";
 
 /**
  * Caja desktop. Misma lógica que la mobile (`useCajaVenta`), otro layout.
@@ -59,13 +46,6 @@ import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } 
 const TEAL = "#4FAEB2";
 const IVAS: TipoIvaVenta[] = ["10%", "5%", "EXENTA"];
 
-const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: string }>> = {
-  efectivo: Banknote,
-  tarjeta: CreditCard,
-  transferencia: Landmark,
-  cheque: Receipt,
-  mixto: Wallet,
-};
 
 /** El buscador de productos: adonde vuelve el cursor después de cada paso. */
 function enfocarBuscador() {
@@ -86,25 +66,39 @@ export default function CajaDesktop() {
   // una ventana encima, y "Nueva venta" la cierra.
   const listo = caja.paso === "listo" && caja.ventaCreada && caja.comprobante;
 
+  // Imprimir al cobrar: se recuerda en esta computadora.
+  const [imprimir, setImprimirEstado] = useState(() => {
+    try {
+      return localStorage.getItem("caja:imprimir") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  function setImprimir(v: boolean) {
+    setImprimirEstado(v);
+    try {
+      localStorage.setItem("caja:imprimir", v ? "1" : "0");
+    } catch {
+      // Sin almacenamiento: vale para esta sesión.
+    }
+  }
+
   // Atajos de teclado: la caja se maneja sin soltar el teclado (ni el lector).
-  const { elegirSinNombre } = caja;
   useEffect(() => {
     if (listo) return;
     function onKey(e: KeyboardEvent) {
       if (document.querySelector('[role="dialog"]')) return;
-      const cobrar = e.key === "F9" || (e.key === "Enter" && (e.ctrlKey || e.metaKey));
+      // Enter suelto (el cursor fuera de todo campo y botón) también finaliza.
+      const suelto = e.key === "Enter" && (e.target === document.body || e.target === null);
+      const finalizar = e.key === "F9" || (e.key === "Enter" && (e.ctrlKey || e.metaKey)) || suelto;
       if (e.key === "F2") enfocarBuscador();
-      else if (e.key === "F4") tocar("caja-cliente");
-      else if (e.key === "F8") {
-        elegirSinNombre();
-        enfocarBuscador();
-      } else if (cobrar) tocar("caja-cobrar");
+      else if (finalizar) tocar("caja-cobrar");
       else return;
       e.preventDefault();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [listo, elegirSinNombre]);
+  }, [listo]);
 
   // Cerrado el comprobante (Nueva venta), el cursor vuelve al buscador.
   useEffect(() => {
@@ -121,11 +115,9 @@ export default function CajaDesktop() {
           </p>
           <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
             <Atajo tecla="F2">buscar</Atajo>
-            <Atajo tecla="Enter">agregar</Atajo>
+            <Atajo tecla="Enter">agregar · con el buscador vacío, finalizar</Atajo>
             <Atajo tecla="3*">cantidad (3*arroz)</Atajo>
-            <Atajo tecla="F4">cliente</Atajo>
-            <Atajo tecla="F8">sin nombre</Atajo>
-            <Atajo tecla="F9">cobrar</Atajo>
+            <Atajo tecla="F9">finalizar</Atajo>
           </p>
         </div>
         {soloCaja ? null : (
@@ -140,12 +132,12 @@ export default function CajaDesktop() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
         <Catalogo caja={caja} />
-        <PanelCobro caja={caja} />
+        <PanelCobro caja={caja} imprimir={imprimir} setImprimir={setImprimir} />
       </div>
 
       {listo ? (
         <ModalComprobante>
-          <Comprobante caja={caja} />
+          <Comprobante caja={caja} imprimir={imprimir} />
         </ModalComprobante>
       ) : null}
     </div>
@@ -246,8 +238,13 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       );
       return;
     }
-    if (e.key !== "Enter" || e.ctrlKey || e.metaKey || !texto.trim()) return;
+    if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
     e.preventDefault();
+    // Buscador vacío: ya está todo cargado, se pasa a finalizar la venta.
+    if (!texto.trim()) {
+      if (caja.carrito.length > 0) tocar("caja-cobrar");
+      return;
+    }
     // Primero el código exacto (lo que manda el lector); si no, el marcado.
     if (productoPorCodigo(productos, texto)) {
       escaneado(texto.trim(), multiplicador);
@@ -379,12 +376,25 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
 
 // ── Columna derecha: cliente, carrito, totales y pago ────────────────────────
 
-function PanelCobro({ caja }: { caja: CajaVenta }) {
+function PanelCobro({
+  caja,
+  imprimir,
+  setImprimir,
+}: {
+  caja: CajaVenta;
+  imprimir: boolean;
+  setImprimir: (v: boolean) => void;
+}) {
   const [cobrando, setCobrando] = useState(false);
 
-  // Casi todo el mostrador se cobra en efectivo: viene elegido, y se cambia
-  // con un clic si no.
+  // El cliente y el comprobante se eligen al finalizar. Si todavía no hay
+  // cliente arranca como ticket sin nombre, y casi todo el mostrador se cobra
+  // en efectivo: viene elegido, y se cambia con una flecha si no.
   function abrirCobro() {
+    if (!caja.cliente) {
+      caja.elegirSinNombre();
+      caja.setDocumento("ticket");
+    }
     if (!caja.aCredito && !caja.metodoPago) caja.setMetodoPago("efectivo");
     setCobrando(true);
   }
@@ -398,7 +408,6 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
           medio—. Con un alto mínimo la lista ya no se aplasta, y si aun así no
           entra todo, scrollea el panel entero en vez de tapar nada. */}
       <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
-        <SelectorCliente caja={caja} />
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
           <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Precio
@@ -485,167 +494,43 @@ function PanelCobro({ caja }: { caja: CajaVenta }) {
             </span>
           </div>
 
-          {caja.carrito.length > 0 && !caja.clienteElegido ? (
-            <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
-              Elegí el cliente, o tocá «Sin nombre» para vender sin identificarlo.
-            </p>
-          ) : null}
-
           <button
             id="caja-cobrar"
             type="button"
             onClick={abrirCobro}
-            disabled={caja.carrito.length === 0 || !caja.clienteElegido}
+            disabled={caja.carrito.length === 0}
             className="mt-3 w-full rounded-xl py-3.5 text-base font-semibold text-white transition-opacity disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
-            Cobrar {formatGs(caja.totales.total)}
-            <span className="ml-2 text-xs font-medium opacity-80">F9</span>
+            Finalizar venta · {formatGs(caja.totales.total)}
+            <span className="ml-2 text-xs font-medium opacity-80">Enter</span>
           </button>
         </div>
       </div>
 
       {cobrando ? (
-        <ModalCobro
+        <FinalizarVenta
           caja={caja}
+          imprimir={imprimir}
+          setImprimir={setImprimir}
+          extras={
+            <>
+              {caja.repartosAbiertos.length > 0 ? (
+                <div className="mt-3">
+                  <SelectorReparto caja={caja} />
+                </div>
+              ) : null}
+              <OpcionesMoneda caja={caja} />
+            </>
+          }
           onCerrar={() => {
             setCobrando(false);
             enfocarBuscador();
           }}
+          onConfirmada={() => setCobrando(false)}
         />
       ) : null}
     </aside>
-  );
-}
-
-// ── Ventana de cobro: condición, comprobante y medio de pago ─────────────────
-
-/**
- * El pago va aparte del panel: así el panel muestra lo que se está vendiendo
- * sin tener que bajar, y las opciones de cobro aparecen recién al cobrar.
- */
-function ModalCobro({ caja, onCerrar }: { caja: CajaVenta; onCerrar: () => void }) {
-  // Enter confirma (también desde "Paga con"); en un botón, Enter es ese botón.
-  const { confirmar, puedeConfirmar, guardando } = caja;
-  useEffect(() => {
-    async function onKey(e: KeyboardEvent) {
-      if (e.key !== "Enter" || e.repeat) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "BUTTON" || t.tagName === "SELECT" || t.tagName === "A")) return;
-      if (!puedeConfirmar || guardando) return;
-      e.preventDefault();
-      if (await confirmar()) onCerrar();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [confirmar, puedeConfirmar, guardando, onCerrar]);
-
-  return (
-    <ModalCaja
-      titulo={`Cobrar ${formatGs(caja.totales.total)}`}
-      subtitulo={`${caja.nombreCliente} · ${caja.carrito.length} ${caja.carrito.length === 1 ? "producto" : "productos"}`}
-      onCerrar={onCerrar}
-      pie={
-        <>
-          <button
-            type="button"
-            onClick={onCerrar}
-            className="h-11 rounded-lg px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"
-          >
-            Volver
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              // Registrada la venta, la ventana de cobro se cierra: queda el comprobante.
-              if (await caja.confirmar()) onCerrar();
-            }}
-            disabled={!caja.puedeConfirmar || caja.guardando}
-            className="h-11 rounded-lg px-5 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: TEAL }}
-          >
-            {caja.guardando ? "Guardando…" : "Confirmar venta"}
-            {caja.guardando ? null : <span className="ml-2 text-xs font-medium opacity-80">Enter</span>}
-          </button>
-        </>
-      }
-    >
-      <div>
-          {/* El crédito no es un medio de cobro: es una condición de la venta. */}
-          <div>
-            <SelectorCondicionVenta caja={caja} grande />
-          </div>
-
-          <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Comprobante
-          </p>
-          <SelectorComprobante caja={caja} grande />
-
-          {!caja.aCredito ? (
-            <>
-              <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Con qué se cobra
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {METODOS_COBRO.map(({ value: m, label }) => {
-                  const Icono = ICONOS_PAGO[m];
-                  const elegido = caja.metodoPago === m;
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => caja.setMetodoPago(m)}
-                      className={`flex items-center justify-center gap-2 rounded-xl border-2 px-2.5 py-3 text-sm font-semibold transition-colors ${
-                        elegido
-                          ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
-                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <Icono className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {caja.metodoPago === "efectivo" ? <CalculadoraVuelto caja={caja} enfocar /> : null}
-            </>
-          ) : null}
-
-          {caja.aCredito ? (
-            <label className="mt-3 block">
-              <span className="mb-1 block text-xs text-slate-500">Plazo en días</span>
-              <input
-                inputMode="numeric"
-                value={caja.plazoDias}
-                onChange={(e) => caja.setPlazoDias(e.target.value)}
-                placeholder="30"
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-              />
-            </label>
-          ) : null}
-
-          {caja.repartosAbiertos.length > 0 ? (
-            <div className="mt-3">
-              <SelectorReparto caja={caja} />
-            </div>
-          ) : null}
-
-          <OpcionesMoneda caja={caja} />
-
-          {caja.error ? (
-            <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">
-              {caja.error}
-            </p>
-          ) : null}
-
-          {!caja.puedeConfirmar && caja.motivoNoConfirmar && !caja.error ? (
-            <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
-              {caja.motivoNoConfirmar}
-            </p>
-          ) : null}
-
-      </div>
-    </ModalCaja>
   );
 }
 
@@ -694,185 +579,16 @@ function OpcionesMoneda({ caja }: { caja: CajaVenta }) {
   );
 }
 
-// ── Cliente ──────────────────────────────────────────────────────────────────
-
-function SelectorCliente({ caja }: { caja: CajaVenta }) {
-  const { clientes, error: errorClientes, mutate } = useClientes();
-  const [abierto, setAbierto] = useState(false);
-  const [registrando, setRegistrando] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return clientes.slice(0, 30);
-    return clientes
-      .filter((c) => {
-        const nombre = clienteNombre(c).toLowerCase();
-        return (
-          nombre.includes(q) ||
-          (c.ruc ?? "").toLowerCase().includes(q) ||
-          (c.documento ?? "").toLowerCase().includes(q) ||
-          c.codigo_cliente.toLowerCase().includes(q)
-        );
-      })
-      .slice(0, 30);
-  }, [clientes, query]);
-
-  return (
-    <div className="border-b border-slate-100 p-5">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
-        Cliente
-      </p>
-
-      {registrando ? (
-        <NuevoClienteRapido
-          mostrarTitulo={false}
-          onCancelar={() => setRegistrando(false)}
-          onCreado={(c) => {
-            // Queda elegido para esta venta y además entra en la lista, así el
-            // buscador de al lado lo encuentra como a cualquier otro.
-            caja.elegirCliente(c);
-            void mutate();
-            setRegistrando(false);
-          }}
-        />
-      ) : abierto ? (
-        <div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.stopPropagation();
-                  setAbierto(false);
-                  setQuery("");
-                  enfocarBuscador();
-                } else if (e.key === "Enter" && filtrados[0]) {
-                  e.preventDefault();
-                  caja.elegirCliente(filtrados[0]);
-                  setAbierto(false);
-                  setQuery("");
-                  enfocarBuscador();
-                }
-              }}
-              placeholder="Buscar cliente… (Enter elige el primero)"
-              className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-8 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-            />
-            <button
-              type="button"
-              onClick={() => setAbierto(false)}
-              aria-label="Cerrar buscador de clientes"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {errorClientes ? (
-            // La lista no se pudo cargar: decirlo, en vez de que parezca vacía.
-            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2">
-              <p className="text-xs font-medium text-rose-700">No se pudo cargar la lista de clientes.</p>
-              <p className="mt-0.5 text-[11px] text-rose-600">{errorClientes.message}</p>
-              <button
-                type="button"
-                onClick={() => mutate()}
-                className="mt-1.5 rounded-md border border-rose-300 px-2 py-1 text-[11px] font-medium text-rose-700"
-              >
-                Reintentar
-              </button>
-            </div>
-          ) : filtrados.length === 0 ? (
-            <p className="mt-3 text-center text-xs text-slate-400">
-              {query ? `Ningún cliente coincide con “${query}”.` : "Todavía no hay clientes cargados."}
-            </p>
-          ) : null}
-          <ul className="mt-2 max-h-56 overflow-y-auto">
-            {filtrados.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    caja.elegirCliente(c);
-                    setAbierto(false);
-                    setQuery("");
-                    enfocarBuscador();
-                  }}
-                  className="w-full rounded-lg px-2 py-2 text-left hover:bg-slate-50"
-                >
-                  <span className="block truncate text-sm text-slate-900">{clienteNombre(c)}</span>
-                  <span className="block truncate text-xs text-slate-500">
-                    {c.ruc || c.documento || c.codigo_cliente}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            onClick={() => {
-              setAbierto(false);
-              setRegistrando(true);
-            }}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-            Registrar nuevo cliente
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
-          <button
-            id="caja-cliente"
-            type="button"
-            onClick={() => setAbierto(true)}
-            className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border-2 px-3 py-2 text-left transition-colors ${
-              caja.cliente ? "border-[#4FAEB2]" : "border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            <User className="h-4 w-4 shrink-0 text-slate-400" />
-            <span className="truncate text-sm text-slate-900">
-              {caja.cliente ? clienteNombre(caja.cliente) : "Identificar cliente"}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setRegistrando(true)}
-            aria-label="Registrar nuevo cliente"
-            title="Registrar nuevo cliente"
-            className="shrink-0 rounded-lg border-2 border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-50"
-          >
-            <UserPlus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              caja.elegirSinNombre();
-              enfocarBuscador();
-            }}
-            className={`shrink-0 rounded-lg border-2 px-3 py-2 text-xs font-medium transition-colors ${
-              caja.sinNombre
-                ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
-                : "border-slate-200 text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            Sin nombre
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Comprobante ──────────────────────────────────────────────────────────────
 
-function Comprobante({ caja }: { caja: CajaVenta }) {
+function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean }) {
   const venta = caja.ventaCreada!;
   const { emisor } = useEmisor();
-  const [verFactura, setVerFactura] = useState(false);
+  // `null`: todavía nadie la abrió ni la cerró; con "imprimir al cobrar" se
+  // abre sola en cuanto está lista.
+  const [verFactura, setVerFactura] = useState<boolean | null>(null);
   const [verRecibo, setVerRecibo] = useState(false);
-  const [verKude, setVerKude] = useState(false);
+  const [verKude, setVerKude] = useState<boolean | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const { fecha, hora } = fechaHora(venta.fecha);
 
@@ -885,6 +601,14 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const emision = useEmisionSifen(venta.id, comp.documento === "factura");
   const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
+
+  const mostrarKude =
+    Boolean(emision.facturaId) && (verKude ?? (imprimir && emision.estado === "aprobado"));
+  const mostrarFactura =
+    verFactura ?? (imprimir && comp.documento === "factura" && emision.estado === "inactivo");
+  const objetivo =
+    comp.documento === "ticket" ? "ticket" : mostrarKude ? "kude" : mostrarFactura ? "factura" : null;
+  useImprimirAlAbrir(imprimir ? objetivo : null);
 
   const cobro = comp.aCredito
     ? "A crédito"
@@ -958,7 +682,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
     );
   }
 
-  if (verKude && emision.facturaId) {
+  if (mostrarKude && emision.facturaId) {
     return (
       <div className="relative w-full max-w-[900px] rounded-2xl bg-[#F8FAFC] p-4 pt-16">
         <button
@@ -968,12 +692,13 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
         >
           ← Volver al resumen
         </button>
+        <BotonNuevaVenta caja={caja} />
         <VisorKude facturaId={emision.facturaId} />
       </div>
     );
   }
 
-  if (verFactura) {
+  if (mostrarFactura) {
     return (
       <div className="relative w-full max-w-[880px] rounded-2xl bg-[#F8FAFC] pb-4">
         <button
@@ -983,6 +708,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
         >
           ← Volver al resumen
         </button>
+        <BotonNuevaVenta caja={caja} />
         <FacturaVenta datos={datos} telefonoCliente={comp.telefonoCliente} />
       </div>
     );
@@ -1106,4 +832,45 @@ function separarCantidad(q: string): { cantidad: number | null; texto: string } 
   if (!m) return { cantidad: null, texto: q };
   const n = Number.parseFloat(m[1].replace(",", "."));
   return { cantidad: n > 0 ? n : null, texto: m[2] };
+}
+
+/** "Nueva venta" arriba a la derecha de la factura abierta: Enter arranca la siguiente. */
+function BotonNuevaVenta({ caja }: { caja: CajaVenta }) {
+  return (
+    <button
+      type="button"
+      autoFocus
+      onClick={caja.reiniciar}
+      className="no-imprimir absolute right-4 top-4 z-10 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+      style={{ backgroundColor: TEAL }}
+    >
+      Nueva venta <span className="ml-1 text-xs font-medium opacity-80">Enter</span>
+    </button>
+  );
+}
+
+/**
+ * Imprime una vez el comprobante que se abrió, cuando ya está dibujado (con
+ * el logo y el QR cargados). Si no aparece algo imprimible —el KuDE en A4 es
+ * un PDF—, no hace nada y queda el botón Imprimir.
+ */
+function useImprimirAlAbrir(objetivo: string | null) {
+  const hecho = useRef(false);
+  useEffect(() => {
+    if (!objetivo || hecho.current) return;
+    let intentos = 0;
+    const t = window.setInterval(() => {
+      intentos += 1;
+      const hoja = document.querySelector(".factura-imprimible");
+      const imagenes = hoja ? Array.from(hoja.querySelectorAll("img")) : [];
+      if (hoja && imagenes.every((i) => i.complete)) {
+        window.clearInterval(t);
+        hecho.current = true;
+        window.print();
+      } else if (intentos > 75) {
+        window.clearInterval(t);
+      }
+    }, 200);
+    return () => window.clearInterval(t);
+  }, [objetivo]);
 }

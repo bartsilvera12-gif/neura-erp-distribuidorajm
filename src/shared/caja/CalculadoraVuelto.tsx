@@ -23,11 +23,13 @@ export default function CalculadoraVuelto({
   caja,
   grande = false,
   enfocar = false,
+  inputId,
 }: {
   caja: CajaVenta;
   grande?: boolean;
   /** Cursor en "Paga con" al abrir (escritorio: se escribe el monto y Enter). */
   enfocar?: boolean;
+  inputId?: string;
 }) {
   const total = caja.totales.total;
   const entrega = caja.pagaConNum;
@@ -47,6 +49,7 @@ export default function CalculadoraVuelto({
           Paga con
         </span>
         <input
+          id={inputId}
           autoFocus={enfocar}
           inputMode="numeric"
           value={caja.pagaCon}
