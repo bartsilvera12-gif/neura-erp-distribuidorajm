@@ -10,6 +10,9 @@ import type {
 } from "@/lib/sifen/types";
 import { decodeXmlNumericEntities } from "@/lib/sifen/decode-xml-entities";
 import { SifenEstadoBadge } from "./SifenEstadoBadge";
+import { Printer } from "lucide-react";
+import ModalCaja from "@/shared/caja/ModalCaja";
+import { VisorKude } from "@/shared/caja/FacturaSifen";
 import { FacturaCorreccionFiscalNC } from "@/components/facturas/FacturaCorreccionFiscalNC";
 
 type Resumen = {
@@ -188,6 +191,7 @@ export function FacturaElectronicaPanel({
   >(null);
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [cancelModal, setCancelModal] = useState<"cancelar" | "reemitir" | null>(null);
+  const [verKude, setVerKude] = useState(false);
   const [motivoCancel, setMotivoCancel] = useState("");
 
   const refresh = useCallback(async (): Promise<Resumen | null> => {
@@ -669,6 +673,36 @@ export function FacturaElectronicaPanel({
               ) : null}
 
               <div className="space-y-3 text-sm">
+            {/* Aprobada: el KuDE (PDF oficial con CDC y QR) es lo que se imprime. */}
+            {fe && estado === "aprobado" ? (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setVerKude(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#3F8E91]"
+                >
+                  <Printer className="h-4 w-4" />
+                  Ver e imprimir factura (KuDE)
+                </button>
+              </div>
+            ) : null}
+            {verKude ? (
+              <ModalCaja
+                titulo="Factura electrónica (KuDE)"
+                onCerrar={() => setVerKude(false)}
+                pie={
+                  <button
+                    type="button"
+                    onClick={() => setVerKude(false)}
+                    className="h-11 rounded-lg px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Cerrar
+                  </button>
+                }
+              >
+                <VisorKude facturaId={facturaId} />
+              </ModalCaja>
+            ) : null}
             {fe && resumen.cancelacion && estado === "aprobado" && (
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {resumen.cancelacion.puede_cancelar ? (
