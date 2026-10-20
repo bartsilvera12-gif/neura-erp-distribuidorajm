@@ -9,7 +9,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
-import { ubicacionDelCamionDe } from "@/lib/camiones/server/camion-del-usuario";
+import { listaDelCamion, ubicacionDelCamionDe } from "@/lib/camiones/server/camion-del-usuario";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import type { Venta, LineaVenta } from "@/lib/ventas/types";
 
@@ -226,6 +226,11 @@ export async function POST(request: NextRequest) {
       });
       ubicacionCamion = await ubicacionDelCamionDe({ schema, empresaId: auth.empresa_id, usuario: yo });
     }
+    // El camión vende con su lista (se elige en la compra), no con la que
+    // mande la pantalla.
+    const listaFinal: ListaPrecio = ubicacionCamion
+      ? ((await listaDelCamion({ schema, empresaId: auth.empresa_id, ubicacionId: ubicacionCamion })) ?? listaPrecio)
+      : listaPrecio;
 
     const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
       schema,
@@ -239,7 +244,7 @@ export async function POST(request: NextRequest) {
       cajaId: cajaFinal,
       repartoId,
       ubicacionId: ubicacionCamion,
-      listaPrecio,
+      listaPrecio: listaFinal,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,

@@ -18,6 +18,7 @@ import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
 import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
+import { listaDelCamion } from "@/lib/camiones/server/camion-del-usuario";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
@@ -251,10 +252,16 @@ export async function GET(request: NextRequest) {
     // De dónde sale la lista. Viaja en la respuesta porque hasta ahora cada
     // pantalla lo suponía por su cuenta y podía decir "salón" mostrando el
     // camión, o al revés.
+    // La lista de precio del camión (se elige en la compra): la caja la usa
+    // sin preguntar.
+    const listaCamion =
+      paraVenta && ubicacionId
+        ? await listaDelCamion({ schema, empresaId, ubicacionId }).catch(() => null)
+        : null;
     const origen = camionSinUbicacion
       ? { tipo: "camion_sin_ubicacion" as const, camion: camion.camion }
       : ubicacionId
-        ? { tipo: "camion" as const, camion: camion.camion }
+        ? { tipo: "camion" as const, camion: camion.camion, lista_precio: listaCamion }
         : paraVenta
           ? {
               tipo: "salon" as const,

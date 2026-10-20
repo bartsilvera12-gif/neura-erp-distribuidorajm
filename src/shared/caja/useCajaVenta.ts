@@ -9,6 +9,7 @@ import type { Cliente } from "@/lib/clientes/types";
 import type { Producto } from "@/lib/inventario/types";
 import { esPesable, normalizarCantidad } from "@/lib/inventario/unidades";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
+import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import type {
   LineaVenta,
   MetodoPagoVenta,
@@ -91,7 +92,16 @@ export function useCajaVenta() {
    * están en el carrito también—, porque es una decisión sobre la venta entera,
    * no sobre cada producto.
    */
-  const [lista, setLista] = useState<ListaPrecio>("minorista");
+  const [listaElegida, setLista] = useState<ListaPrecio>("minorista");
+  // Quien vende de un camión vende con la lista de ese camión (se elige en la
+  // compra): no se elige acá. Misma clave de SWR que el catálogo de la caja,
+  // así que no hay una consulta de más.
+  const { origen: origenCatalogo } = useCatalogoVenta(null);
+  const listaCamion =
+    origenCatalogo?.tipo === "camion" ? (origenCatalogo.lista_precio ?? null) : null;
+  const lista: ListaPrecio = listaCamion ?? listaElegida;
+  /** La lista la fija el camión: la caja no la deja cambiar. */
+  const listaFija = listaCamion !== null;
   const [tipoCambio, setTipoCambio] = useState("");
   const [metodoPago, setMetodoPago] = useState<MetodoPagoVenta | null>(null);
   /** Lo que entrega el cliente en efectivo, para calcular el vuelto. Solo informativo: no se guarda en la venta. */
@@ -502,6 +512,7 @@ export function useCajaVenta() {
     totales,
     moneda,
     lista,
+    listaFija,
     documento,
     tipoCambio,
     tipoCambioNum,

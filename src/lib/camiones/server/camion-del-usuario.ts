@@ -1,5 +1,6 @@
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
+import { esListaPrecio, type ListaPrecio } from "@/lib/ventas/listas-precio";
 
 /**
  * La ubicación de inventario del camión asignado a un usuario, si vende de un
@@ -32,4 +33,31 @@ export async function ubicacionDelCamionDe(opts: {
     [empresaId, usuario.id]
   );
   return q.rows[0]?.ubicacion_id ?? null;
+}
+
+/**
+ * Lista de precio del camión de esa ubicación (SQL 47): minorista o mayorista.
+ * Se elige en la compra con destino al camión; el camionero vende con ella.
+ * `null` si el camión no la tiene (columna todavía sin crear).
+ */
+export async function listaDelCamion(opts: {
+  schema: string;
+  empresaId: string;
+  ubicacionId: string;
+}): Promise<ListaPrecio | null> {
+  const pool = getChatPostgresPool();
+  if (!pool) return null;
+  const col = await pool.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'lista_precio'`,
+    [opts.schema]
+  );
+  if (col.rows.length === 0) return null;
+  const q = await pool.query<{ lista_precio: string | null }>(
+    `SELECT lista_precio FROM ${quoteSchemaTable(opts.schema, "camiones")}
+      WHERE empresa_id = $1::uuid AND ubicacion_id = $2::uuid LIMIT 1`,
+    [opts.empresaId, opts.ubicacionId]
+  );
+  const l = q.rows[0]?.lista_precio;
+  return esListaPrecio(l) ? l : null;
 }

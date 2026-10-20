@@ -90,12 +90,19 @@ function Titulo({ children }: { children: React.ReactNode }) {
 export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
-  const { camiones } = useCamiones();
+  const { camiones, mutate: recargarCamiones } = useCamiones();
   const [idempotencyKey] = useState(genIdemKey);
 
   const [proveedorId, setProveedorId] = useState("");
   /** "" = salón; si no, el id del camión. */
   const [destino, setDestino] = useState("");
+  /** Lista con la que va a vender el camión de destino. */
+  const [listaCamion, setListaCamion] = useState<"minorista" | "mayorista">("minorista");
+  function elegirDestino(id: string) {
+    setDestino(id);
+    const c = camiones.find((x) => x.id === id);
+    setListaCamion(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
+  }
   const [numeroComprobante, setNumeroComprobante] = useState("");
   const [tipoPago, setTipoPago] = useState<TipoPago>("contado");
   const [plazoDias, setPlazoDias] = useState("");
@@ -199,6 +206,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
           proveedor_id: String(proveedor.id),
           proveedor_nombre: proveedor.nombre,
           destino_camion_id: destino || null,
+          lista_precio_camion: destino ? listaCamion : null,
           moneda: "PYG",
           tipo_cambio: 1,
           tipo_pago: tipoPago,
@@ -221,6 +229,9 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
         setErrorSubmit(j.error ?? `No se pudo guardar la compra (${r.status}).`);
         return;
       }
+
+      // La lista del camión pudo cambiar con esta compra.
+      if (destino) void recargarCamiones();
 
       // Foto/PDF de la factura (best-effort: la compra ya quedó guardada).
       if (archivo) {
@@ -352,13 +363,24 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
             <div>
               <label className={LABEL}>¿A dónde va la mercadería?</label>
               <div className="flex flex-wrap gap-2">
-                <DestinoBoton activo={destino === ""} onClick={() => setDestino("")}
+                <DestinoBoton activo={destino === ""} onClick={() => elegirDestino("")}
                   icono={<Store className="h-4 w-4" />} titulo="Salón" sub="Inventario del salón" />
                 {camiones.map((c) => (
-                  <DestinoBoton key={c.id} activo={destino === c.id} onClick={() => setDestino(c.id)}
+                  <DestinoBoton key={c.id} activo={destino === c.id} onClick={() => elegirDestino(c.id)}
                     icono={<Truck className="h-4 w-4" />} titulo={`Camión ${c.alias}`} sub={c.repartidor ?? "Sin asignar"} />
                 ))}
               </div>
+              {destino ? (
+                <div className="mt-3 max-w-sm">
+                  <label className={SUBLABEL}>El camión vende con precio</label>
+                  <Seg<"minorista" | "mayorista"> value={listaCamion}
+                    options={[{ value: "minorista", label: "Minorista" }, { value: "mayorista", label: "Mayorista (−10%)" }]}
+                    onChange={setListaCamion} />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    El camionero vende con esta lista; no la elige al vender.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </section>
 

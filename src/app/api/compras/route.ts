@@ -83,6 +83,11 @@ async function postMultilinea(
     }
     destinoUbicacionId = cam.ubicacion_id;
   }
+  // Lista con la que va a vender ese camión (SQL 47): se elige en la compra.
+  const listaCamion =
+    body.lista_precio_camion === "mayorista" || body.lista_precio_camion === "minorista"
+      ? body.lista_precio_camion
+      : null;
 
   const items: CompraItemInput[] = [];
   for (const [i, raw] of (body.items as unknown[]).entries()) {
@@ -138,6 +143,23 @@ async function postMultilinea(
       sin_asiento: sinAsiento,
       destino_ubicacion_id: destinoUbicacionId,
     });
+    if (destinoUbicacionId && listaCamion) {
+      const pool = getChatPostgresPool();
+      const col = pool
+        ? await pool.query(
+            `SELECT 1 FROM information_schema.columns
+              WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'lista_precio'`,
+            [schema]
+          )
+        : null;
+      if (pool && col && col.rows.length > 0) {
+        await pool.query(
+          `UPDATE ${quoteSchemaTable(schema, "camiones")} SET lista_precio = $1, updated_at = now()
+            WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+          [listaCamion, camionId, empresaId]
+        );
+      }
+    }
     return NextResponse.json(successResponse({ compra: out.compra, movimiento_id: out.movimiento_id }));
   } catch (e) {
     if (e instanceof ContabilidadError) {

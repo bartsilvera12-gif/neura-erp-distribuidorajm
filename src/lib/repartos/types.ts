@@ -56,6 +56,8 @@ export interface Camion {
   repartidor_id: string | null;
   /** Nombre del vendedor asignado, para mostrar. */
   repartidor: string | null;
+  /** Lista con la que vende el camión (SQL 47). Se elige en la compra. */
+  lista_precio?: "minorista" | "mayorista" | null;
 }
 
 /** Una ubicación de inventario: salón, depósito o camión. */

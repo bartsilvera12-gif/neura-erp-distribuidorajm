@@ -100,6 +100,8 @@ export type OrigenCatalogo = {
   /** `empresa` = maestro de inventario, sin acotar a camión ni salón. */
   tipo: "camion" | "salon" | "camion_sin_ubicacion" | "empresa";
   camion: string | null;
+  /** Lista de precio con la que vende ese camión (se elige en la compra). */
+  lista_precio?: "minorista" | "mayorista" | null;
   /**
    * Por qué la lista salió del salón y no de un camión. Solo para diagnosticar
    * el caso en que el vendedor tiene el camión cargado y la caja igual le

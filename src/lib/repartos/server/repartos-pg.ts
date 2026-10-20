@@ -222,15 +222,17 @@ export async function listarCamiones(opts: {
   const colsQ = await queryWithRetry<{ columna: string }>(
     pool,
     `SELECT column_name AS columna FROM information_schema.columns
-      WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'repartidor_id'`,
+      WHERE table_schema = $1 AND table_name = 'camiones' AND column_name IN ('repartidor_id', 'lista_precio')`,
     [opts.schema]
   );
-  const hayDueno = colsQ.rows.length > 0;
+  const hayDueno = colsQ.rows.some((r) => r.columna === "repartidor_id");
+  const hayLista = colsQ.rows.some((r) => r.columna === "lista_precio");
   const tU = quoteSchemaTable(opts.schema, "usuarios");
 
   const q = await queryWithRetry<Camion>(
     pool,
-    `SELECT c.id, c.alias, c.patente, c.activo, c.ubicacion_id
+    `SELECT c.id, c.alias, c.patente, c.activo, c.ubicacion_id,
+            ${hayLista ? "c.lista_precio" : "NULL::text AS lista_precio"}
             ${hayDueno ? ", c.repartidor_id, COALESCE(u.nombre, u.email) AS repartidor" : ", NULL::uuid AS repartidor_id, NULL::text AS repartidor"}
        FROM ${tC} c
        ${hayDueno ? `LEFT JOIN ${tU} u ON u.id = c.repartidor_id` : ""}
