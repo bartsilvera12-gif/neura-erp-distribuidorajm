@@ -112,7 +112,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     setLista(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
   }
   const camionOpts: ComboOption[] = useMemo(
-    () => camiones.map((c) => ({ id: c.id, label: `Camión ${c.alias}`, sub: c.repartidor ?? "Sin asignar" })),
+    () => camiones.map((c) => ({ id: c.id, label: nombreCamion(c.alias), sub: c.repartidor ?? "Sin usuario asignado" })),
     [camiones]
   );
   const [numeroComprobante, setNumeroComprobante] = useState("");
@@ -421,22 +421,23 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
 
             <div>
               <label className={LABEL}>¿A dónde va la mercadería?</label>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="flex gap-2">
+              {/* items-start: el buscador abierto crece hacia abajo sin estirar
+                  los botones de al lado. */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <div className="flex shrink-0 gap-2">
                   <DestinoBoton activo={tipoDestino === "salon"}
                     onClick={() => { setTipoDestino("salon"); elegirDestino(""); }}
-                    icono={<Store className="h-4 w-4" />} titulo="Salón" sub="Inventario del salón" />
+                    icono={<Store className="h-4 w-4" />} titulo="Salón" />
                   <DestinoBoton activo={tipoDestino === "camion"}
                     onClick={() => setTipoDestino("camion")}
-                    icono={<Truck className="h-4 w-4" />} titulo="Camión"
-                    sub={destino ? (camiones.find((c) => c.id === destino)?.alias ?? "") : "Elegí cuál"} />
+                    icono={<Truck className="h-4 w-4" />} titulo="Camión" />
                 </div>
                 {tipoDestino === "camion" ? (
-                  <div>
+                  <div className="min-w-0 flex-1">
                     {/* Buscador: con muchos camiones, un botón por camión no entra. */}
-                    <SmartCombobox options={camionOpts} value={destino || null}
+                    <SmartCombobox options={camionOpts} value={destino || null} allowClear={false}
                       onChange={(id) => elegirDestino(id ?? "")}
-                      placeholder={camiones.length === 0 ? "No hay camiones activos" : "Buscar camión o repartidor…"} />
+                      placeholder={camiones.length === 0 ? "No hay camiones activos" : "Elegí el camión…"} />
                   </div>
                 ) : null}
               </div>
@@ -612,20 +613,23 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   );
 }
 
-function DestinoBoton({ activo, onClick, icono, titulo, sub }: {
-  activo: boolean; onClick: () => void; icono: React.ReactNode; titulo: string; sub: string;
+function DestinoBoton({ activo, onClick, icono, titulo }: {
+  activo: boolean; onClick: () => void; icono: React.ReactNode; titulo: string;
 }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={activo}
-      className={`flex min-w-[9rem] items-center gap-2.5 rounded-xl border-2 px-3 py-2 text-left transition-colors ${
-        activo ? "border-[#4FAEB2] bg-[#4FAEB2]/10" : "border-slate-200 hover:bg-slate-50"}`}>
+      className={`flex h-10 items-center gap-2 rounded-lg border-2 px-4 text-sm font-semibold transition-colors ${
+        activo ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
       <span className={activo ? "text-[#3F8E91]" : "text-slate-400"}>{icono}</span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-slate-900">{titulo}</span>
-        <span className="block truncate text-[11px] text-slate-500">{sub}</span>
-      </span>
+      {titulo}
     </button>
   );
+}
+
+/** "Camion 1" ya dice camión; "01" no: se le agrega para que se entienda. */
+function nombreCamion(alias: string): string {
+  const sinTilde = alias.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return sinTilde.startsWith("camion") ? alias : `Camión ${alias}`;
 }
 
 /**
