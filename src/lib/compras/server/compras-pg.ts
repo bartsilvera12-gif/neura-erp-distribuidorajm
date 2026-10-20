@@ -456,7 +456,7 @@ export async function insertCompraMultilinea(
           `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
              costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id
              ${destino ? ", ubicacion_id" : ""})
-           SELECT $1::uuid,$2::uuid,$3,COALESCE(p.sku,''),'ENTRADA',$4::numeric,$5::numeric,
+           SELECT $1::uuid,$2::uuid,$3,COALESCE(p.sku::text,''),'ENTRADA',$4::numeric,$5::numeric,
                   'compra',$6,now(),$7::uuid,$8,'compra',$9::uuid
                   ${destino ? ", $10::uuid" : ""}
              FROM ${tP} p WHERE p.id = $2::uuid AND p.empresa_id = $1::uuid

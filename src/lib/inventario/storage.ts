@@ -57,14 +57,16 @@ function rowToProducto(row: ProductoRow): Producto {
   return {
     id: row.id,
     nombre: row.nombre,
-    sku: row.sku,
+    // En esta base el SKU puede venir como número (1082): se pasa a texto
+    // porque la caja y las búsquedas lo tratan como texto.
+    sku: row.sku == null ? "" : String(row.sku),
     costo_promedio: Number(row.costo_promedio),
     precio_venta: Number(row.precio_venta),
     stock_actual: Number(row.stock_actual),
     stock_minimo: Number(row.stock_minimo),
     unidad_medida: row.unidad_medida,
     metodo_valuacion: row.metodo_valuacion as MetodoValuacion,
-    codigo_barras: row.codigo_barras ?? null,
+    codigo_barras: row.codigo_barras == null ? null : String(row.codigo_barras),
     codigo_barras_interno: row.codigo_barras_interno ?? false,
     imagen_path: row.imagen_path ?? null,
     imagen_url: row.imagen_url ?? null,

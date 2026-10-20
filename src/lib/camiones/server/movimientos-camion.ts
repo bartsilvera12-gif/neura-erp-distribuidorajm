@@ -49,7 +49,7 @@ async function stockDelCamion(
   ids: string[]
 ): Promise<Map<string, Fila>> {
   const q = await client.query(
-    `SELECT p.id AS producto_id, p.nombre, COALESCE(p.sku, '') AS sku,
+    `SELECT p.id AS producto_id, p.nombre, COALESCE(p.sku::text, '') AS sku,
             COALESCE(su.stock_actual, 0)::text AS actual
        FROM ${quoteSchemaTable(schema, "productos")} p
        LEFT JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su

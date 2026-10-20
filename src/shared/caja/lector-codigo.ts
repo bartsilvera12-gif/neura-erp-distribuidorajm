@@ -13,9 +13,9 @@ export function coincideBusqueda(p: Producto, q: string): boolean {
   const t = q.trim().toLowerCase();
   if (!t) return true;
   return (
-    p.nombre.toLowerCase().includes(t) ||
-    p.sku.toLowerCase().includes(t) ||
-    (p.codigo_barras ?? "").toLowerCase().includes(t)
+    String(p.nombre ?? "").toLowerCase().includes(t) ||
+    String(p.sku ?? "").toLowerCase().includes(t) ||
+    String(p.codigo_barras ?? "").toLowerCase().includes(t)
   );
 }
 
@@ -36,10 +36,10 @@ export function textoSinResultado(productos: Producto[], q: string): string {
 export function productoPorCodigo(productos: Producto[], codigo: string): Producto | null {
   const c = codigo.trim();
   if (!c) return null;
-  const porBarras = productos.find((p) => (p.codigo_barras ?? "").trim() === c);
+  const porBarras = productos.find((p) => String(p.codigo_barras ?? "").trim() === c);
   if (porBarras) return porBarras;
   const cl = c.toLowerCase();
-  return productos.find((p) => p.sku.trim().toLowerCase() === cl) ?? null;
+  return productos.find((p) => String(p.sku ?? "").trim().toLowerCase() === cl) ?? null;
 }
 
 /**
