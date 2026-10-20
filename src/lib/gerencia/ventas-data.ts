@@ -41,7 +41,17 @@ export type ReporteVentas = {
     mejor_dia: { dia: string; total: number } | null;
   };
   por_dia: { dia: string; total: number; ventas: number }[];
-  por_camion: { camion: string; total: number; ventas: number; participacion: number }[];
+  /** Solo camiones: las ventas de mostrador van en `salon`. */
+  por_camion: {
+    camion: string;
+    total: number;
+    ventas: number;
+    participacion: number;
+    /** Lo más vendido de ese camión en el mes (hasta 5). */
+    productos: { producto: string; unidad: string; cantidad: number; total: number }[];
+  }[];
+  /** Ventas de mostrador (sin camión). */
+  salon: { total: number; ventas: number; participacion: number };
   por_producto: {
     producto: string;
     unidad: string;
@@ -77,6 +87,7 @@ function vacio(period: string, disponible: boolean): ReporteVentas {
     },
     por_dia: [],
     por_camion: [],
+    salon: { total: 0, ventas: 0, participacion: 0 },
     por_producto: [],
   };
 }
@@ -162,21 +173,77 @@ export async function getReporteVentas(
     ),
   ]);
 
-  const camionQ = hayReparto
-    ? await queryWithRetry<{ camion: string; total: string; ventas: string }>(
+  // De qué camión salió cada venta. Las nuevas no tienen reparto: el camión
+  // sale de la ubicación de su movimiento de stock (la venta descuenta del
+  // camión de quien vende). Las viejas, del reparto. Sin ninguna de las dos,
+  // es una venta de mostrador (salón).
+  const movCols = await queryWithRetry<{ c: string }>(
+    pool,
+    `SELECT column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'movimientos_inventario'
+        AND column_name IN ('venta_id', 'ubicacion_id')`,
+    [schema]
+  );
+  const hayCamiones =
+    (await queryWithRetry<{ c: string | null }>(pool, `SELECT to_regclass($1)::text AS c`, [
+      `${schema}.camiones`,
+    ])).rows[0]?.c !== null;
+  const porMovimiento = hayCamiones && movCols.rows.length === 2;
+  const tM = quoteSchemaTable(schema, "movimientos_inventario");
+  const CAMION_DE_VENTA = `
+    WITH por_mov AS (
+      ${porMovimiento
+        ? `SELECT DISTINCT ON (m.venta_id) m.venta_id, c.alias
+             FROM ${tM} m JOIN ${tC} c ON c.ubicacion_id = m.ubicacion_id
+            WHERE m.empresa_id = $1::uuid AND m.tipo = 'SALIDA' AND m.venta_id IS NOT NULL
+            ORDER BY m.venta_id`
+        : `SELECT NULL::uuid AS venta_id, NULL::text AS alias WHERE false`}
+    ),
+    venta_camion AS (
+      SELECT v.id, v.total,
+             COALESCE(pm.alias, ${hayReparto ? "cr.alias" : "NULL::text"}) AS camion
+        FROM ${tV} v
+        LEFT JOIN por_mov pm ON pm.venta_id = v.id
+        ${hayReparto ? `LEFT JOIN ${tR} r ON r.id = v.reparto_id LEFT JOIN ${tC} cr ON cr.id = r.camion_id` : ""}
+       WHERE ${VIVA} AND ${DEL_MES}
+    )`;
+
+  const camionQ = hayCamiones
+    ? await queryWithRetry<{ camion: string | null; total: string; ventas: string }>(
         pool,
-        `SELECT COALESCE(c.alias, '— sin camión —') AS camion,
-                COALESCE(sum(v.total), 0)::text AS total,
-                count(*)::text AS ventas
-           FROM ${tV} v
-           LEFT JOIN ${tR} r ON r.id = v.reparto_id
-           LEFT JOIN ${tC} c ON c.id = r.camion_id
-          WHERE ${VIVA} AND ${DEL_MES}
+        `${CAMION_DE_VENTA}
+         SELECT camion, COALESCE(sum(total), 0)::text AS total, count(*)::text AS ventas
+           FROM venta_camion
           GROUP BY 1
-          ORDER BY sum(v.total) DESC NULLS LAST`,
+          ORDER BY sum(total) DESC NULLS LAST`,
         [empresaId, ref]
       )
-    : { rows: [] as { camion: string; total: string; ventas: string }[] };
+    : { rows: [] as { camion: string | null; total: string; ventas: string }[] };
+
+  // Lo más vendido de cada camión: los 5 primeros por importe.
+  const topCamionQ = hayCamiones && hayItems
+    ? await queryWithRetry<{ camion: string; producto: string; unidad: string; cantidad: string; total: string }>(
+        pool,
+        `${CAMION_DE_VENTA},
+         agg AS (
+           SELECT vc.camion,
+                  COALESCE(NULLIF(btrim(vi.producto_nombre), ''), 'Sin nombre') AS producto,
+                  COALESCE(NULLIF(btrim(p.unidad_medida), ''), '') AS unidad,
+                  sum(vi.cantidad) AS cantidad,
+                  sum(vi.total_linea) AS total
+             FROM venta_camion vc
+             JOIN ${tVI} vi ON vi.venta_id = vc.id
+             LEFT JOIN ${tP} p ON p.id = vi.producto_id
+            WHERE vc.camion IS NOT NULL
+            GROUP BY 1, 2, 3
+         )
+         SELECT camion, producto, unidad, cantidad::text, total::text
+           FROM (SELECT agg.*, row_number() OVER (PARTITION BY camion ORDER BY total DESC NULLS LAST) AS n FROM agg) x
+          WHERE n <= 5
+          ORDER BY camion, n`,
+        [empresaId, ref]
+      )
+    : { rows: [] as { camion: string; producto: string; unidad: string; cantidad: string; total: string }[] };
 
   const productoQ = hayItems
     ? await queryWithRetry<{
@@ -243,8 +310,22 @@ export async function getReporteVentas(
     },
     por_dia: porDia,
     por_camion: conParticipacion(
-      camionQ.rows.map((r) => ({ camion: r.camion, total: num(r.total), ventas: num(r.ventas) }))
+      camionQ.rows
+        .filter((r) => r.camion !== null)
+        .map((r) => ({
+          camion: r.camion as string,
+          total: num(r.total),
+          ventas: num(r.ventas),
+          productos: topCamionQ.rows
+            .filter((t) => t.camion === r.camion)
+            .map((t) => ({ producto: t.producto, unidad: t.unidad, cantidad: num(t.cantidad), total: num(t.total) })),
+        }))
     ),
+    salon: (() => {
+      const s0 = camionQ.rows.find((r) => r.camion === null);
+      const t = num(s0?.total);
+      return { total: t, ventas: num(s0?.ventas), participacion: total > 0 ? t / total : 0 };
+    })(),
     por_producto: conParticipacion(
       productoQ.rows.map((r) => ({
         producto: r.producto,
