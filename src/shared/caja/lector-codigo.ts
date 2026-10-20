@@ -32,6 +32,35 @@ export function textoSinResultado(productos: Producto[], q: string): string {
   return `${nombres}${sinStock.length > 3 ? ` y ${sinStock.length - 3} más` : ""}: sin stock para vender acá (stock 0).`;
 }
 
+/** Dígito de control EAN-13 de los primeros 12 dígitos. */
+function digitoEan13(doce: string): number {
+  let suma = 0;
+  for (let i = 0; i < 12; i++) suma += Number(doce[i]) * (i % 2 === 0 ? 1 : 3);
+  return (10 - (suma % 10)) % 10;
+}
+
+/**
+ * Etiqueta de balanza (EAN-13 de peso variable): 2 + código del producto en la
+ * balanza (6 dígitos) + peso en gramos (5) + control. Ej.: 2 000073 00220 6 =
+ * producto 73, 0,220 kg. El código de la balanza es el SKU del producto.
+ */
+export function leerEtiquetaBalanza(
+  productos: Producto[],
+  codigo: string
+): { producto: Producto; cantidad: number } | null {
+  const c = codigo.trim();
+  if (!/^2\d{12}$/.test(c)) return null;
+  if (digitoEan13(c.slice(0, 12)) !== Number(c[12])) return null;
+  const plu = String(Number(c.slice(1, 7)));
+  const gramos = Number(c.slice(7, 12));
+  if (!(gramos > 0)) return null;
+  const producto =
+    productos.find((p) => String(p.sku ?? "").trim() === plu) ??
+    productos.find((p) => String(Number(String(p.sku ?? "").trim())) === plu) ??
+    null;
+  return producto ? { producto, cantidad: gramos / 1000 } : null;
+}
+
 /** El producto de un código: por código de barras exacto, o por SKU. */
 export function productoPorCodigo(productos: Producto[], codigo: string): Producto | null {
   const c = codigo.trim();

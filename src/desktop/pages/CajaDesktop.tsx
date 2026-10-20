@@ -17,7 +17,7 @@ import {
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
-import { coincideBusqueda, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
+import { coincideBusqueda, leerEtiquetaBalanza, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
@@ -210,6 +210,12 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   function escaneado(codigo: string, cantidad: number | null = null): boolean {
     const p = productoPorCodigo(productos, codigo);
     if (!p) {
+      // Etiqueta de la balanza: trae el producto y el peso.
+      const etiqueta = leerEtiquetaBalanza(productos, codigo);
+      if (etiqueta) {
+        agregar(etiqueta.producto, etiqueta.cantidad);
+        return true;
+      }
       setAviso({ ok: false, texto: `No hay ningún producto con el código ${codigo}.` });
       return false;
     }
@@ -241,7 +247,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       return;
     }
     // Primero el código exacto (lo que manda el lector); si no, el marcado.
-    if (productoPorCodigo(productos, texto)) {
+    if (productoPorCodigo(productos, texto) || leerEtiquetaBalanza(productos, texto)) {
       escaneado(texto.trim(), multiplicador);
       return;
     }
