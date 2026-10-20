@@ -7,6 +7,29 @@ import { listCompras, insertCompraConImpacto, insertCompraMultilinea, type Compr
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { guardarListaDestino } from "@/lib/camiones/server/camion-del-usuario";
+import { setCategoriaPrincipal } from "@/lib/inventario/server/catalogos-pg";
+
+/** Pone la categoría principal de cada producto (solo categorías de la empresa). */
+async function asignarCategorias(schema: string, empresaId: string, porProducto: Map<string, string>) {
+  const pool = getChatPostgresPool();
+  if (!pool) return;
+  const ids = [...new Set(porProducto.values())];
+  const validas = await pool.query<{ id: string }>(
+    `SELECT id FROM ${quoteSchemaTable(schema, "categorias_productos")}
+      WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
+    [empresaId, ids]
+  );
+  const ok = new Set(validas.rows.map((r) => r.id));
+  for (const [productoId, categoriaId] of porProducto) {
+    if (!ok.has(categoriaId)) continue;
+    await pool.query(
+      `UPDATE ${quoteSchemaTable(schema, "productos")} SET categoria_principal_id = $1::uuid, updated_at = now()
+        WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+      [categoriaId, productoId, empresaId]
+    );
+    await setCategoriaPrincipal(schema, empresaId, productoId, categoriaId);
+  }
+}
 
 type TenantCtx = Awaited<ReturnType<typeof getTenantSupabaseFromAuth>>;
 
@@ -94,8 +117,14 @@ async function postMultilinea(
         : null;
 
   const items: CompraItemInput[] = [];
+  // Categoría elegida para cada producto en la compra: queda como su
+  // categoría principal en Inventario.
+  const categorias = new Map<string, string>();
   for (const [i, raw] of (body.items as unknown[]).entries()) {
     const o = (raw ?? {}) as Record<string, unknown>;
+    if (UUID_RE.test(s(o.producto_id)) && UUID_RE.test(s(o.categoria_id))) {
+      categorias.set(s(o.producto_id), s(o.categoria_id));
+    }
     const iva = s(o.iva_tipo);
     if (!["exenta", "5", "10"].includes(iva)) {
       return NextResponse.json(errorResponse(`Línea ${i + 1}: tipo de IVA inválido.`), { status: 400 });
@@ -147,6 +176,11 @@ async function postMultilinea(
       sin_asiento: sinAsiento,
       destino_ubicacion_id: destinoUbicacionId,
     });
+    if (categorias.size > 0) {
+      await asignarCategorias(schema, empresaId, categorias).catch((e) =>
+        console.error("[/api/compras] categorías:", e)
+      );
+    }
     if (origen === "directa" && listaDestino) {
       await guardarListaDestino({
         schema,

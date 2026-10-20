@@ -61,7 +61,12 @@ type Linea = {
   costo: string;
   iva: TipoIva;
   precio: string;
+  /** Categoría principal del producto ("" = sin categoría). */
+  categoria: string;
 };
+
+type Categoria = { id: string; nombre: string };
+const NUEVA_CATEGORIA = "__nueva__";
 
 function Seg<T extends string>({ value, options, onChange }: {
   value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
@@ -152,7 +157,37 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   const [errRuc, setErrRuc] = useState<string | null>(null);
   // Inline: producto
   const [nvProd, setNvProd] = useState(false);
-  const [fProd, setFProd] = useState({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0" });
+  const [fProd, setFProd] = useState({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0", categoria: "" });
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+
+  async function recargarCategorias() {
+    try {
+      const r = await fetch("/api/inventario/categorias", { credentials: "include", cache: "no-store" });
+      const j = (await r.json().catch(() => ({}))) as { data?: { categorias?: Categoria[] } };
+      setCategorias(j.data?.categorias ?? []);
+    } catch {
+      // Sin categorías la compra igual se puede cargar.
+    }
+  }
+
+  /** Crea una categoría desde la compra y la devuelve (o null si se canceló). */
+  async function crearCategoria(): Promise<string | null> {
+    const nombre = window.prompt("Nombre de la nueva categoría:")?.trim();
+    if (!nombre) return null;
+    const r = await fetch("/api/inventario/categorias", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre }),
+    });
+    const j = (await r.json().catch(() => ({}))) as { data?: { categoria?: Categoria }; error?: string };
+    if (!r.ok || !j.data?.categoria) {
+      setErrorSubmit(j.error ?? "No se pudo crear la categoría.");
+      return null;
+    }
+    await recargarCategorias();
+    return j.data.categoria.id;
+  }
   const [errSku, setErrSku] = useState<string | null>(null);
 
   async function recargarProveedores() {
@@ -164,6 +199,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   useEffect(() => {
     recargarProveedores();
     recargarProductos();
+    recargarCategorias();
     // Con qué lista vende hoy el salón: es el destino que viene elegido.
     fetch("/api/compras/lista-salon", { credentials: "include", cache: "no-store" })
       .then((r) => r.json())
@@ -194,6 +230,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
           costo: p.costo_promedio > 0 ? String(Math.round(p.costo_promedio)) : "",
           iva: ivaDe(p),
           precio: p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
+          categoria: p.categoria_principal_id ?? "",
         },
       ]);
     }
@@ -262,6 +299,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
             costo_unitario: calc[i].costo,
             iva_tipo: l.iva,
             precio_venta: calc[i].precio > 0 ? calc[i].precio : null,
+            categoria_id: l.categoria || null,
           })),
         }),
       });
@@ -322,13 +360,14 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
       nombre: fProd.nombre.trim().toUpperCase(), sku: fProd.sku.trim().toUpperCase(),
       unidad_medida: fProd.unidad_medida.toUpperCase(), metodo_valuacion: "CPP",
       stock_actual: 0, stock_minimo: parseInt(fProd.stock_minimo) || 0,
+      categoria_principal_id: fProd.categoria || null,
       costo_promedio: 0, precio_venta: 0,
     });
     if (!creado) return;
     await recargarProductos();
     agregar(creado);
     setNvProd(false);
-    setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0" });
+    setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0", categoria: "" });
   }
 
   const destinoTexto = destino
@@ -484,6 +523,15 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   <div><label className={SUBLABEL}>Stock mínimo</label>
                     <input type="number" min={0} value={fProd.stock_minimo}
                       onChange={(e) => setFProd((p) => ({ ...p, stock_minimo: e.target.value }))} placeholder="Ej: 5" className={INPUT} /></div>
+                  <div><label className={SUBLABEL}>Categoría</label>
+                    <SelectorCategoria value={fProd.categoria} categorias={categorias}
+                      onChange={async (v) => {
+                        if (v === NUEVA_CATEGORIA) {
+                          const id = await crearCategoria();
+                          if (id) setFProd((p) => ({ ...p, categoria: id }));
+                        } else setFProd((p) => ({ ...p, categoria: v }));
+                      }}
+                      className={INPUT} /></div>
                 </div>
                 <p className="text-[11px] text-slate-400">Se agrega a la lista; el costo y el precio se cargan ahí.</p>
               </InlineBox>
@@ -495,13 +543,14 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               </p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[640px] text-sm">
+                <table className="w-full min-w-[760px] text-sm">
                   <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-3 py-2 text-left">Producto</th>
                       <th className="w-24 px-2 py-2 text-right">Cantidad</th>
                       <th className="w-32 px-2 py-2 text-right">Costo unit.</th>
                       <th className="w-32 px-2 py-2 text-right">Precio venta</th>
+                      <th className="w-40 px-2 py-2 text-left">Categoría</th>
                       <th className="w-28 px-3 py-2 text-right">Total</th>
                       <th className="w-10" />
                     </tr>
@@ -526,6 +575,17 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                           <MontoInput value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
                             decimals={false} placeholder="—" aria-label={`Precio de venta de ${l.nombre}`} className={CELDA} />
                         </td>
+                        <td className="px-2 py-2">
+                          <SelectorCategoria value={l.categoria} categorias={categorias}
+                            onChange={async (v) => {
+                              if (v === NUEVA_CATEGORIA) {
+                                const id = await crearCategoria();
+                                if (id) cambiar(i, { categoria: id });
+                              } else cambiar(i, { categoria: v });
+                            }}
+                            aria-label={`Categoría de ${l.nombre}`}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-sm" />
+                        </td>
                         <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
                           {fmt(calc[i].total)}
                         </td>
@@ -542,7 +602,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               </div>
             )}
             <p className="text-[11px] text-slate-400">
-              El costo es con IVA incluido (el IVA es el del producto). El precio de venta, si lo ponés, actualiza el del producto.
+              El costo es con IVA incluido (el IVA es el del producto). El precio de venta y la categoría, si los ponés, quedan en el producto (Inventario).
             </p>
           </section>
 
@@ -727,5 +787,22 @@ function InlineBox({ titulo, children, onSave, onCancel, saveDisabled }: {
         </button>
       </div>
     </div>
+  );
+}
+
+/** Categorías de producto, con "sin categoría" y "+ nueva" al final. */
+function SelectorCategoria({ value, categorias, onChange, className, ...rest }: {
+  value: string;
+  categorias: Categoria[];
+  onChange: (v: string) => void;
+  className: string;
+  "aria-label"?: string;
+}) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className} {...rest}>
+      <option value="">Sin categoría</option>
+      {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      <option value={NUEVA_CATEGORIA}>+ Nueva categoría…</option>
+    </select>
   );
 }
