@@ -338,8 +338,8 @@ function CompraDetalleModal({ compra, onClose }: { compra: Compra; onClose: () =
             </div>
             {compra.numero_comprobante ? (
               <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-400">N° de factura</dt>
-                <dd className="text-slate-700">{compra.numero_comprobante}</dd>
+                <dt className="text-xs uppercase tracking-wide text-slate-400">Comprobante</dt>
+                <dd className="text-slate-700">{[compra.tipo_comprobante, compra.numero_comprobante].filter(Boolean).join(" ")}</dd>
               </div>
             ) : null}
           </dl>

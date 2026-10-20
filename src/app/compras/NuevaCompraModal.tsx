@@ -11,6 +11,7 @@ import { getProductos, productoExiste, saveProducto } from "@/lib/inventario/sto
 import { useCamiones } from "@/shared/hooks/useRepartos";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import type { TipoIva, TipoPago } from "@/lib/compras/types";
+import { TIPOS_COMPROBANTE_COMPRA, type TipoComprobanteCompra } from "@/lib/compras/comprobantes";
 import type { Proveedor } from "@/lib/proveedores/types";
 import type { Producto } from "@/lib/inventario/types";
 
@@ -104,6 +105,24 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     setListaCamion(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
   }
   const [numeroComprobante, setNumeroComprobante] = useState("");
+  const [tipoComprobante, setTipoComprobante] = useState<TipoComprobanteCompra>("Factura");
+  const [generando, setGenerando] = useState(false);
+
+  /** Número interno para este tipo (REM-000001…), cuando el proveedor no da uno. */
+  async function generarNumero() {
+    setGenerando(true);
+    try {
+      const r = await fetch(`/api/compras/siguiente-numero?tipo=${encodeURIComponent(tipoComprobante)}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const j = (await r.json().catch(() => ({}))) as { data?: { numero?: string }; error?: string };
+      if (j.data?.numero) setNumeroComprobante(j.data.numero);
+      else setErrorSubmit(j.error ?? "No se pudo generar el número.");
+    } finally {
+      setGenerando(false);
+    }
+  }
   const [tipoPago, setTipoPago] = useState<TipoPago>("contado");
   const [plazoDias, setPlazoDias] = useState("");
   const [lineas, setLineas] = useState<Linea[]>([]);
@@ -213,7 +232,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
           plazo_dias: tipoPago === "credito" && plazoDias ? parseInt(plazoDias, 10) : null,
           cuotas: tipoPago === "credito" ? 1 : null,
           numero_comprobante: numeroComprobante.trim() || null,
-          tipo_comprobante: "Factura",
+          tipo_comprobante: tipoComprobante,
           items: lineas.map((l, i) => ({
             producto_id: l.producto_id,
             producto_nombre: l.nombre,
@@ -332,10 +351,28 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                 ) : null}
               </div>
               <div>
-                <label className={LABEL}>N° de factura (opcional)</label>
-                <input value={numeroComprobante} inputMode="numeric"
-                  onChange={(e) => setNumeroComprobante(formatComprobante(e.target.value))}
-                  placeholder="Ej: 001-001-0000001" className={INPUT} />
+                <label className={LABEL}>Comprobante (opcional)</label>
+                <div className="flex gap-2">
+                  <select value={tipoComprobante}
+                    onChange={(e) => { setTipoComprobante(e.target.value as TipoComprobanteCompra); setNumeroComprobante(""); }}
+                    aria-label="Tipo de comprobante"
+                    className="w-32 shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40">
+                    {TIPOS_COMPROBANTE_COMPRA.map((t) => <option key={t.valor} value={t.valor}>{t.valor}</option>)}
+                  </select>
+                  <input value={numeroComprobante}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // La máscara 001-001-0000001 solo para una factura tipeada a mano.
+                      setNumeroComprobante(tipoComprobante === "Factura" && !/[a-z]/i.test(v) ? formatComprobante(v) : v.toUpperCase());
+                    }}
+                    placeholder={tipoComprobante === "Factura" ? "001-001-0000001" : "N°"}
+                    aria-label={`N° de ${tipoComprobante.toLowerCase()}`}
+                    className={`${INPUT} min-w-0`} />
+                  <button type="button" onClick={generarNumero} disabled={generando}
+                    className="shrink-0 rounded-lg border border-[#4FAEB2] px-3 text-xs font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/10 disabled:opacity-40">
+                    {generando ? "…" : "Generar"}
+                  </button>
+                </div>
               </div>
             </div>
 
