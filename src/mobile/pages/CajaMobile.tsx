@@ -33,6 +33,7 @@ import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
+import { coincideBusqueda, textoSinResultado } from "@/shared/caja/lector-codigo";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
@@ -386,9 +387,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return conStock;
-    return conStock.filter(
-      (p) => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-    );
+    return conStock.filter((p) => coincideBusqueda(p, q));
   }, [conStock, query]);
 
 
@@ -419,7 +418,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar producto…"
+          placeholder="Buscar por nombre, SKU o código de barras…"
           className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
         />
       </div>
@@ -445,7 +444,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
       ) : errorCatalogo ? null : filtrados.length === 0 ? (
         <p className="mt-6 text-center text-sm text-slate-400">
           {query
-            ? `Ningún producto coincide con “${query}”.`
+            ? textoSinResultado(productos, query)
             : origen?.tipo === "camion_sin_ubicacion"
               ? "No se puede vender desde este camión hasta que tenga ubicación de inventario."
               : origen?.tipo === "camion"

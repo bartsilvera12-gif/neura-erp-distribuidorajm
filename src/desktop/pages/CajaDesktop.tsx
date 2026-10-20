@@ -17,7 +17,7 @@ import {
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
-import { productoPorCodigo, useLectorGlobal } from "@/shared/caja/lector-codigo";
+import { coincideBusqueda, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
@@ -165,12 +165,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   const filtrados = useMemo(() => {
     const q = texto.trim().toLowerCase();
     if (!q) return conStock;
-    return conStock.filter(
-      (p) =>
-        p.nombre.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        (p.codigo_barras ?? "").toLowerCase().includes(q)
-    );
+    return conStock.filter((p) => coincideBusqueda(p, q));
   }, [conStock, texto]);
 
   // El producto marcado con las flechas: Enter agrega ese. Vuelve al primero
@@ -310,7 +305,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       ) : errorCatalogo ? null : filtrados.length === 0 ? (
         <p className="py-16 text-center text-sm text-slate-400">
           {texto.trim()
-            ? `Ningún producto coincide con “${texto.trim()}”.`
+            ? textoSinResultado(productos, texto)
             : caja.repartoId
               ? "El camión está vacío. Se carga con una compra que tenga este camión como destino."
               : "No hay stock disponible para vender en el salón. Cargalo con una compra con destino Salón, o pasá mercadería de un camión al salón desde Camiones."}

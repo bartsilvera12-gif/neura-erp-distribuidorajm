@@ -8,6 +8,30 @@ import type { Producto } from "@/lib/inventario/types";
  * como si fuera un teclado, muy rápido, y termina con Enter.
  */
 
+/** Si el producto coincide con lo buscado: por nombre, SKU o código de barras. */
+export function coincideBusqueda(p: Producto, q: string): boolean {
+  const t = q.trim().toLowerCase();
+  if (!t) return true;
+  return (
+    p.nombre.toLowerCase().includes(t) ||
+    p.sku.toLowerCase().includes(t) ||
+    (p.codigo_barras ?? "").toLowerCase().includes(t)
+  );
+}
+
+/**
+ * Cuando la búsqueda no encuentra nada con stock: si el producto existe pero
+ * está en cero, decirlo. "Ningún producto coincide" hacía creer que la caja
+ * no buscaba por código.
+ */
+export function textoSinResultado(productos: Producto[], q: string): string {
+  const t = q.trim();
+  const sinStock = productos.filter((p) => p.stock_actual <= 0 && coincideBusqueda(p, t));
+  if (sinStock.length === 0) return `Ningún producto coincide con “${t}”.`;
+  const nombres = sinStock.slice(0, 3).map((p) => p.nombre).join(", ");
+  return `${nombres}${sinStock.length > 3 ? ` y ${sinStock.length - 3} más` : ""}: sin stock para vender acá (stock 0).`;
+}
+
 /** El producto de un código: por código de barras exacto, o por SKU. */
 export function productoPorCodigo(productos: Producto[], codigo: string): Producto | null {
   const c = codigo.trim();
