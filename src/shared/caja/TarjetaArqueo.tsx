@@ -1,6 +1,8 @@
 "use client";
 
-import { Check, Lock, Unlock } from "lucide-react";
+import { useState } from "react";
+import { Check, Coins, Lock, Unlock } from "lucide-react";
+import { guardarSencillo } from "@/lib/cajas/storage";
 import { formatGs } from "@/shared/caja/useCajaVenta";
 import { fechaLarga, horaCorta, iconoMedio } from "@/shared/caja/arqueo-ui";
 import type { ArqueoCaja } from "@/lib/cajas/arqueo";
@@ -13,7 +15,14 @@ import type { ArqueoCaja } from "@/lib/cajas/arqueo";
  * transferencia no está en el cajón, así que contarlo ahí haría que nunca
  * cuadre.
  */
-export default function TarjetaArqueo({ caja }: { caja: ArqueoCaja }) {
+export default function TarjetaArqueo({
+  caja,
+  onCambio,
+}: {
+  caja: ArqueoCaja;
+  /** Para recargar el arqueo después de cargar el sencillo. */
+  onCambio?: () => void;
+}) {
   const abierta = caja.estado === "abierta";
   const dif = caja.efectivo.diferencia;
 
@@ -47,6 +56,7 @@ export default function TarjetaArqueo({ caja }: { caja: ArqueoCaja }) {
 
       <div className="p-4">
         <Fila label="Monto de apertura" valor={formatGs(caja.monto_apertura)} />
+        <FilaSencillo caja={caja} abierta={abierta} onCambio={onCambio} />
 
         {caja.ingresos.por_medio.length > 0 ? (
           <>
@@ -142,3 +152,102 @@ function Fila({ label, valor }: { label: string; valor: string }) {
 }
 
 export { fechaLarga };
+
+/**
+ * Sencillo y monedas: el cambio que el cajero tiene en el cajón y que no
+ * entra por ventas. Suma al esperado; con la caja abierta se puede cargar.
+ */
+function FilaSencillo({
+  caja,
+  abierta,
+  onCambio,
+}: {
+  caja: ArqueoCaja;
+  abierta: boolean;
+  onCambio?: () => void;
+}) {
+  const actual = caja.sencillo ?? 0;
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function guardar() {
+    const n = Number(valor.replace(/\D/g, "") || "0");
+    setGuardando(true);
+    setError(null);
+    const res = await guardarSencillo(caja.id, n);
+    setGuardando(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setEditando(false);
+    onCambio?.();
+  }
+
+  if (editando) {
+    return (
+      <div className="py-1.5">
+        <span className="mb-1 flex items-center gap-1.5 text-sm text-slate-500">
+          <Coins className="h-3.5 w-3.5 text-slate-400" />
+          Sencillo y monedas (cambio)
+        </span>
+        <div className="flex gap-2">
+          <input
+            autoFocus
+            inputMode="numeric"
+            value={valor ? Number(valor.replace(/\D/g, "") || "0").toLocaleString("es-PY") : ""}
+            onChange={(e) => setValor(e.target.value.replace(/\D/g, ""))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void guardar();
+              if (e.key === "Escape") setEditando(false);
+            }}
+            placeholder="0"
+            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-right text-base font-semibold tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+          />
+          <button
+            type="button"
+            onClick={guardar}
+            disabled={guardando}
+            className="h-10 rounded-lg bg-[#4FAEB2] px-4 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            {guardando ? "…" : "Guardar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditando(false)}
+            className="h-10 rounded-lg px-3 text-sm text-slate-500 hover:bg-slate-100"
+          >
+            Cancelar
+          </button>
+        </div>
+        {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <span className="flex items-center gap-1.5 text-sm text-slate-500">
+        <Coins className="h-3.5 w-3.5 text-slate-400" />
+        Sencillo y monedas (cambio)
+      </span>
+      <span className="flex items-center gap-2">
+        <span className="text-sm font-medium tabular-nums text-slate-900">{formatGs(actual)}</span>
+        {abierta ? (
+          <button
+            type="button"
+            onClick={() => {
+              setValor(actual > 0 ? String(Math.round(actual)) : "");
+              setEditando(true);
+            }}
+            className="rounded-md px-2 py-0.5 text-xs font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/10"
+          >
+            {actual > 0 ? "Editar" : "Cargar"}
+          </button>
+        ) : null}
+      </span>
+    </div>
+  );
+}

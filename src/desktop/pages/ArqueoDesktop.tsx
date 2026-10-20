@@ -107,7 +107,7 @@ export default function ArqueoDesktop() {
           <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
           <div className="grid gap-4 lg:grid-cols-2">
             {(arqueo?.cajas ?? []).map((c) => (
-              <TarjetaArqueo key={c.id} caja={c} />
+              <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />
             ))}
           </div>
         </div>

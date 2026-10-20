@@ -84,7 +84,7 @@ export default function ArqueoMobile() {
             {/* El detalle caja por caja es del que controla el negocio, no del
                 vendedor: acá alcanza con lo cobrado del día. */}
             {todas
-              ? (arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} />)
+              ? (arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />)
               : null}
           </>
         )}

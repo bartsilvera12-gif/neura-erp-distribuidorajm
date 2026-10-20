@@ -161,6 +161,7 @@ export async function GET(request: NextRequest) {
       monto_cierre_contado: string | null;
       monto_esperado_efectivo: string | null;
       diferencia: string | null;
+      sencillo: string;
     }>(
       pool,
       `SELECT id, numero_caja, estado,
@@ -169,7 +170,8 @@ export async function GET(request: NextRequest) {
               monto_apertura::text AS monto_apertura,
               monto_cierre_contado::text    AS monto_cierre_contado,
               monto_esperado_efectivo::text AS monto_esperado_efectivo,
-              diferencia::text              AS diferencia
+              diferencia::text              AS diferencia,
+              ${cols.has("sencillo") ? "sencillo::text" : "'0'"} AS sencillo
          FROM ${tC}
         WHERE empresa_id = $1::uuid
           AND ( (fecha_apertura AT TIME ZONE $2)::date = $3::date
@@ -319,8 +321,11 @@ export async function GET(request: NextRequest) {
           .reduce((acc, m) => acc + num(m.total), 0);
 
       // `monto` se guarda siempre positivo y el signo lo da `tipo`.
+      // El sencillo (cambio del cajero) está en el cajón aunque no entró por
+      // una venta: suma al esperado.
+      const sencillo = num(c.sencillo);
       const esperadoEfectivo =
-        apertura + sumar(ingresos, true) - sumar(salidas, true) + sumar(ajustes, true);
+        apertura + sencillo + sumar(ingresos, true) - sumar(salidas, true) + sumar(ajustes, true);
 
       // Desglose de lo que entró, por medio. Es lo que se compara al cerrar.
       const porMedio = new Map<string, { cantidad: number; total: number }>();
@@ -340,6 +345,7 @@ export async function GET(request: NextRequest) {
         fecha_apertura: c.fecha_apertura,
         fecha_cierre: c.fecha_cierre,
         monto_apertura: apertura,
+        sencillo,
         ingresos: {
           total: sumar(ingresos, false),
           por_medio: [...porMedio.entries()]
