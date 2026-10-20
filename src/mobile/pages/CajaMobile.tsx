@@ -449,8 +449,8 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
             : origen?.tipo === "camion_sin_ubicacion"
               ? "No se puede vender desde este camión hasta que tenga ubicación de inventario."
               : origen?.tipo === "camion"
-                ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-                : "No hay stock en el salón. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
+                ? "El camión está vacío. Se carga con una compra que tenga este camión como destino."
+                : "No hay stock en el salón. Cargalo con una compra con destino Salón, o pasá mercadería de un camión al salón desde Camiones."}
         {textoMotivoSalon(origen) ? (
           <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
         ) : null}

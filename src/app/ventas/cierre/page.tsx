@@ -1,8 +1,6 @@
-import DeviceRouter from "@/shared/device/DeviceRouter";
-import CierreRepartoDesktop from "@/desktop/pages/CierreRepartoDesktop";
-import CierreRepartoMobile from "@/mobile/pages/CierreRepartoMobile";
+import { redirect } from "next/navigation";
 
-/** Cierre de reparto: lo vendido y lo cobrado en el día. */
+/** Sin repartos no hay cierre de reparto: el conteo del camión está en Camiones. */
 export default function Page() {
-  return <DeviceRouter desktop={<CierreRepartoDesktop />} mobile={<CierreRepartoMobile />} />;
+  redirect("/camiones");
 }

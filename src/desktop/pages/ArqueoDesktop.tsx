@@ -53,10 +53,10 @@ export default function ArqueoDesktop() {
           </button>
           {soloCaja ? null : (
             <Link
-              href="/ventas/cierre"
+              href="/camiones"
               className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
             >
-              Cierre de reparto
+              Camiones
             </Link>
           )}
           <Link

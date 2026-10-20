@@ -30,6 +30,11 @@ export interface CreateVentaPgParams {
   cajaId: string | null;
   /** Reparto del que sale la mercadería. */
   repartoId: string | null;
+  /**
+   * Ubicación del camión de quien vende, cuando la venta no trae reparto: la
+   * mercadería sale de ahí.
+   */
+  ubicacionId?: string | null;
   /** Lista de precio: minorista (precio de venta) o mayorista (−10%). */
   listaPrecio: ListaPrecio;
   items: CreateVentaItemInput[];
@@ -299,7 +304,7 @@ export async function createVentaTransaccionalPg(
     // dos, la venta descontaba del stock general y el camión seguía con la
     // misma cantidad que antes de vender. Esas dos columnas deciden qué se
     // puede GUARDAR en cada tabla, no de dónde salió la mercadería.
-    let ubicacionId: string | null = null;
+    let ubicacionId: string | null = params.ubicacionId ?? null;
     if (params.repartoId !== null) {
       const camT = quoteSchemaTable(params.schema, "camiones");
       const repT = quoteSchemaTable(params.schema, "repartos");
@@ -333,7 +338,7 @@ export async function createVentaTransaccionalPg(
           const nombre = stockMap.get(pid)?.nombre ?? "ese producto";
           throw new Error(
             hay <= 0
-              ? `"${nombre}" no está cargado en el camión. Cargalo desde Repartos antes de venderlo.`
+              ? `"${nombre}" no está cargado en el camión. Cargalo con una compra a ese camión antes de venderlo.`
               : `El camión tiene ${hay} de "${nombre}" y la venta pide ${need}.`
           );
         }

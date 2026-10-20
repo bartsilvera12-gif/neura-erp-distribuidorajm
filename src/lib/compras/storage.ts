@@ -193,3 +193,26 @@ export async function getCompraComprobante(compraId: string): Promise<{ url: str
     return { url: null, mime: null };
   }
 }
+
+export interface CompraItemDetalle {
+  producto_id: string | null;
+  producto_nombre: string;
+  cantidad: number;
+  costo_unitario: number;
+  iva_tipo: string | null;
+  total_linea: number;
+}
+
+/** Los productos de una compra y a dónde entró la mercadería (salón o camión). */
+export async function getCompraDetalle(
+  compraId: string
+): Promise<{ items: CompraItemDetalle[]; destino: string } | null> {
+  try {
+    const r = await fetch(`/api/compras/${compraId}`, { credentials: "include", cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) return null;
+    return j.data as { items: CompraItemDetalle[]; destino: string };
+  } catch {
+    return null;
+  }
+}

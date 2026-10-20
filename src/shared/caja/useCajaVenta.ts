@@ -2,9 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
-import { useRepartos } from "@/shared/hooks/useRepartos";
-import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
-import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
+import type { Reparto } from "@/lib/repartos/types";
 import { saveVenta } from "@/lib/ventas/storage";
 import { clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
@@ -111,39 +109,15 @@ export function useCajaVenta() {
 
   const { caja, disponible: cajasDisponibles, mutate: recargarCaja } = useCajaAbierta();
 
-  // ── Reparto ────────────────────────────────────────────────────────────────
-  // La venta sale de donde está parado el que vende: el repartidor vende de su
-  // camión, el mostrador vende del salón.
-  //
-  // Antes, con un solo reparto abierto la caja lo elegía sola para cualquiera.
-  // Eso convertía una venta de mostrador en una venta del camión: le descontaba
-  // el stock y le aparecía como faltante en el cierre. El descuadre que la regla
-  // decía evitar lo producía ella misma.
-  //
-  // El vendedor móvil solo ve sus propios repartos (`alcanceRepartos`), así que
-  // para él el único abierto es el suyo y elegirlo solo es correcto. Para quien
-  // ve los de todos —el administrador, el cajero del salón— no se elige
-  // ninguno: vende del salón, salvo que elija un camión a propósito.
-  const { repartos: repartosAbiertos, disponible: repartosDisponibles } = useRepartos({
-    abiertos: true,
-  });
-  const { usuario } = useUsuarioActual();
-  const vendeDeSuCamion = alcanceRepartos(usuario?.rol) === "propios";
-  const [repartoElegido, setRepartoId] = useState<string | null>(null);
-
-  // Derivado y no estado sincronizado: si el reparto elegido se cierra desde
-  // otro lado, la venta no queda apuntando a un camión que ya volvió.
-  const repartoId = useMemo(() => {
-    if (repartoElegido && repartosAbiertos.some((r) => r.id === repartoElegido)) {
-      return repartoElegido;
-    }
-    if (vendeDeSuCamion && repartosAbiertos.length === 1) return repartosAbiertos[0].id;
-    return null;
-  }, [repartoElegido, repartosAbiertos, vendeDeSuCamion]);
-
-  /** El repartidor con varios camiones abiertos todavía no eligió de cuál sale. */
-  const faltaElegirReparto =
-    vendeDeSuCamion && repartosAbiertos.length > 1 && repartoId === null;
+  // ── Camión ─────────────────────────────────────────────────────────────────
+  // Ya no hay repartos que elegir: si quien vende tiene un camión asignado
+  // (Camiones), el servidor descuenta de ese camión; si no, del salón. La caja
+  // no manda reparto, y lo que queda de la API vieja va vacío.
+  const repartosAbiertos = useMemo<Reparto[]>(() => [], []);
+  const repartosDisponibles = true;
+  const repartoId: string | null = null;
+  const setRepartoId = useCallback((id: string | null) => void id, []);
+  const faltaElegirReparto = false;
 
   // ── Envío ──────────────────────────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false);

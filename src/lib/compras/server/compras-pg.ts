@@ -204,7 +204,8 @@ export interface CompraItemInput {
   cantidad: number;
   costo_unitario: number;
   iva_tipo: IvaTipo;
-  cuenta_contable_id: string;
+  /** Obligatoria salvo en una compra `sin_asiento`. */
+  cuenta_contable_id: string | null;
   /** Si viene de una recepción: la línea NO impacta inventario (ya entró con la recepción). */
   recepcion_item_id: string | null;
   /** Solo para compra directa: actualiza el precio de venta del producto. */
@@ -222,7 +223,7 @@ export interface CompraMultilineaInput {
   tipo_pago: string;
   plazo_dias: number | null;
   cuotas: number | null;
-  nro_timbrado: string;
+  nro_timbrado: string | null;
   numero_comprobante: string | null;
   tipo_comprobante: string | null;
   cuenta_contrapartida_id: string | null;
@@ -230,6 +231,18 @@ export interface CompraMultilineaInput {
   idempotency_key: string | null;
   created_by: string | null;
   usuario_nombre: string | null;
+  /**
+   * Compra sin contabilidad: no pide cuentas ni genera asiento. Queda el stock
+   * y, si es a crédito, la deuda con el proveedor (cuentas por pagar sale de
+   * la propia compra).
+   */
+  sin_asiento?: boolean;
+  /**
+   * Adónde entra la mercadería de una compra directa: la ubicación de un
+   * camión. `null` = salón (el salón no lleva filas propias: es el total de la
+   * empresa menos lo que está arriba de los camiones).
+   */
+  destino_ubicacion_id?: string | null;
 }
 
 /** IVA INCLUIDO: el costo cargado es el total con IVA; el IVA se DEDUCE. */
@@ -279,6 +292,8 @@ export async function insertCompraMultilinea(
   const tP = quoteSchemaTable(schema, "productos");
   const tRI = quoteSchemaTable(schema, "recepcion_items");
   const tOCI = quoteSchemaTable(schema, "orden_compra_items");
+  const tSU = quoteSchemaTable(schema, "inventario_stock_ubicacion");
+  const destino = d.origen_compra === "directa" ? (d.destino_ubicacion_id ?? null) : null;
 
   if (!Array.isArray(d.items) || d.items.length === 0) {
     throw new ContabilidadError("La compra requiere al menos una línea.");
@@ -287,7 +302,7 @@ export async function insertCompraMultilinea(
     if (!(Number(it.cantidad) > 0)) throw new ContabilidadError(`Línea ${i + 1}: la cantidad debe ser mayor a 0.`);
     if (!(Number(it.costo_unitario) > 0)) throw new ContabilidadError(`Línea ${i + 1}: el costo unitario debe ser mayor a 0.`);
     if (!["exenta", "5", "10"].includes(it.iva_tipo)) throw new ContabilidadError(`Línea ${i + 1}: tipo de IVA inválido.`);
-    if (!it.cuenta_contable_id) throw new ContabilidadError(`Línea ${i + 1}: falta la cuenta contable.`);
+    if (!d.sin_asiento && !it.cuenta_contable_id) throw new ContabilidadError(`Línea ${i + 1}: falta la cuenta contable.`);
   }
   const desdeRecepcion = d.origen_compra === "recepcion";
   const afectaStock = !desdeRecepcion;
@@ -439,12 +454,15 @@ export async function insertCompraMultilinea(
         const costoUnit = agg.cantidad > 0 ? agg.costoPonderado / agg.cantidad : 0;
         const { rows: mov } = await client.query<{ id: string }>(
           `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
-             costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id)
+             costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id
+             ${destino ? ", ubicacion_id" : ""})
            SELECT $1::uuid,$2::uuid,$3,COALESCE(p.sku,''),'ENTRADA',$4::numeric,$5::numeric,
                   'compra',$6,now(),$7::uuid,$8,'compra',$9::uuid
+                  ${destino ? ", $10::uuid" : ""}
              FROM ${tP} p WHERE p.id = $2::uuid AND p.empresa_id = $1::uuid
            RETURNING id`,
-          [empresaId, productoId, agg.nombre, agg.cantidad, costoUnit, numero, d.created_by, d.usuario_nombre, compra.id]
+          [empresaId, productoId, agg.nombre, agg.cantidad, costoUnit, numero, d.created_by, d.usuario_nombre, compra.id,
+           ...(destino ? [destino] : [])]
         );
         if (!mov[0]?.id) throw new Error("No se pudo registrar el movimiento de inventario (producto inexistente).");
         movimientoId = movimientoId ?? mov[0].id;
@@ -459,40 +477,55 @@ export async function insertCompraMultilinea(
           [agg.cantidad, costoUnit, agg.precioVenta, productoId, empresaId]
         );
         if (upd.rowCount === 0) throw new Error("No se pudo actualizar el stock del producto.");
+
+        // Compra a un camión: la mercadería entra arriba de ese camión. El total
+        // de la empresa ya subió arriba; acá se dice dónde está.
+        if (destino) {
+          await client.query(
+            `INSERT INTO ${tSU} (empresa_id, producto_id, ubicacion_id, stock_actual)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::numeric)
+             ON CONFLICT (empresa_id, producto_id, ubicacion_id)
+             DO UPDATE SET stock_actual = ${tSU}.stock_actual + EXCLUDED.stock_actual, updated_at = now()`,
+            [empresaId, productoId, destino, agg.cantidad]
+          );
+        }
       }
     }
 
     // ── Contabilidad: cuenta de CADA línea al Debe + IVA Crédito; Haber caja/banco o proveedores ──
-    const config = await getConfigContable(schema, empresaId);
-    const lineasAsiento = construirLineasDocumento({
-      config,
-      lineasFiscales: calculadas.map((l) => ({
-        cuenta_contable_id: l.cuenta_contable_id,
-        descripcion: l.descripcion || l.producto_nombre,
-        subtotal: l.subtotal,
-        iva_tipo: l.iva_tipo,
-        monto_iva: l.monto_iva,
-      })),
-      total,
-      esContado: d.tipo_pago !== "credito",
-      contrapartidaContado: d.cuenta_contrapartida_id,
-      proveedorId: d.proveedor_id,
-      documento_tipo: "compra",
-      documento_id: compra.id,
-    });
-    const now = new Date();
-    const fechaContable = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const asiento = await generarAsientoEnTx(client, schema, empresaId, {
-      origen_tipo: "compra", origen_id: compra.id, evento_origen: "confirmacion",
-      fecha_contable: fechaContable, glosa: `Compra ${compra.numero_control}`,
-      moneda: d.moneda === "USD" ? "USD" : "PYG", tipo_cambio: d.tipo_cambio ?? 1,
-      lineas: lineasAsiento, createdBy: d.created_by,
-    });
-    await client.query(
-      `UPDATE ${tC} SET estado_contable='contabilizado', asiento_contable_id=$3::uuid
-        WHERE id=$1::uuid AND empresa_id=$2::uuid`,
-      [compra.id, empresaId, asiento.id]
-    );
+    // Una compra sin asiento termina acá (más los estados de recepción/orden).
+    if (!d.sin_asiento) {
+      const config = await getConfigContable(schema, empresaId);
+      const lineasAsiento = construirLineasDocumento({
+        config,
+        lineasFiscales: calculadas.map((l) => ({
+          cuenta_contable_id: l.cuenta_contable_id as string,
+          descripcion: l.descripcion || l.producto_nombre,
+          subtotal: l.subtotal,
+          iva_tipo: l.iva_tipo,
+          monto_iva: l.monto_iva,
+        })),
+        total,
+        esContado: d.tipo_pago !== "credito",
+        contrapartidaContado: d.cuenta_contrapartida_id,
+        proveedorId: d.proveedor_id,
+        documento_tipo: "compra",
+        documento_id: compra.id,
+      });
+      const now = new Date();
+      const fechaContable = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const asiento = await generarAsientoEnTx(client, schema, empresaId, {
+        origen_tipo: "compra", origen_id: compra.id, evento_origen: "confirmacion",
+        fecha_contable: fechaContable, glosa: `Compra ${compra.numero_control}`,
+        moneda: d.moneda === "USD" ? "USD" : "PYG", tipo_cambio: d.tipo_cambio ?? 1,
+        lineas: lineasAsiento, createdBy: d.created_by,
+      });
+      await client.query(
+        `UPDATE ${tC} SET estado_contable='contabilizado', asiento_contable_id=$3::uuid
+          WHERE id=$1::uuid AND empresa_id=$2::uuid`,
+        [compra.id, empresaId, asiento.id]
+      );
+    }
 
     // ── Estados aguas arriba (recepciones y orden) ──
     for (const recepcionId of recepcionesTocadas) {
@@ -588,4 +621,59 @@ export async function updateCompraDocumento(
     [documentoPath, documentoMime, compraId, empresaId]
   );
   return rows[0] ?? null;
+}
+
+export interface CompraItemDetalle {
+  producto_id: string | null;
+  producto_nombre: string;
+  cantidad: number;
+  costo_unitario: number;
+  iva_tipo: string | null;
+  total_linea: number;
+}
+
+/**
+ * Renglones de una compra y a dónde entró la mercadería: el camión (por la
+ * ubicación de sus movimientos de inventario) o el salón.
+ */
+export async function getCompraDetalle(
+  schemaRaw: string,
+  empresaId: string,
+  compraId: string
+): Promise<{ items: CompraItemDetalle[]; destino: string }> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tCI = quoteSchemaTable(schema, "compra_items");
+  const { rows } = await pool().query<{
+    producto_id: string | null; producto_nombre: string | null; cantidad: string;
+    costo_unitario: string; iva_tipo: string | null; total_linea: string;
+  }>(
+    `SELECT producto_id, producto_nombre, cantidad::text, costo_unitario::text, iva_tipo, total_linea::text
+       FROM ${tCI} WHERE compra_id = $1::uuid AND empresa_id = $2::uuid
+      ORDER BY orden_linea NULLS LAST, created_at`,
+    [compraId, empresaId]
+  );
+  const items = rows.map((r) => ({
+    producto_id: r.producto_id,
+    producto_nombre: r.producto_nombre ?? "",
+    cantidad: Number(r.cantidad),
+    costo_unitario: Number(r.costo_unitario),
+    iva_tipo: r.iva_tipo,
+    total_linea: Number(r.total_linea),
+  }));
+
+  let destino = "Salón";
+  try {
+    const d = await pool().query<{ alias: string }>(
+      `SELECT c.alias
+         FROM ${quoteSchemaTable(schema, "movimientos_inventario")} m
+         JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.ubicacion_id = m.ubicacion_id
+        WHERE m.empresa_id = $1::uuid AND m.documento_tipo = 'compra' AND m.documento_id = $2::uuid
+        LIMIT 1`,
+      [empresaId, compraId]
+    );
+    if (d.rows[0]) destino = `Camión ${d.rows[0].alias}`;
+  } catch {
+    // Sin camiones o sin ubicación en los movimientos: queda "Salón".
+  }
+  return { items, destino };
 }

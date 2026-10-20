@@ -16,10 +16,8 @@ import { isErpRolVendedorMovil } from "@/lib/usuarios/erp-rol-normalize";
  * del reparto se rechaza con "ese repartidor no existe en esta empresa" aunque
  * la persona esté en pantalla.
  *
- * Solo los de rol vendedor móvil: es el rol de quien sale con el camión, y el
- * único al que el sistema le acota los repartos a los suyos. Si la lista sale
- * vacía, lo que falta es asignarle ese rol a alguien en Usuarios, y la pantalla
- * lo dice en vez de dejar un select mudo.
+ * Todos los usuarios activos, con los vendedores móviles primero: en el módulo
+ * Camiones se le asigna un camión a cualquiera, y quien lo tiene vende de ahí.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -81,7 +79,11 @@ export async function GET(request: NextRequest) {
     // El filtro por rol se hace acá y no en SQL porque `rol` viene con casing y
     // acentos distintos según cómo se haya cargado el usuario ("vendedor_movil",
     // "Vendedor Móvil"), y el normalizador ya sabe leer las tres formas.
-    const repartidores = q.rows.filter((u) => isErpRolVendedorMovil(u.rol));
+    // Cualquier usuario activo puede tener un camión asignado (Camiones): el
+    // que tiene camión vende de ese camión. Los vendedores móviles van primero.
+    const repartidores = [...q.rows].sort(
+      (a, b) => Number(isErpRolVendedorMovil(b.rol)) - Number(isErpRolVendedorMovil(a.rol))
+    );
 
     return NextResponse.json(successResponse({ repartidores }));
   } catch (err) {

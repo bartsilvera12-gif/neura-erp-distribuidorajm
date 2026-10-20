@@ -48,7 +48,7 @@ const TILES: Tile[] = [
   { href: "/ventas/stock-camion", label: "Stock del camión", icon: Package, fondo: "#4F6D9E" },
   { href: "/notas-credito", label: "Devoluciones", icon: ArrowLeftRight, fondo: "#B04B4B" },
   { href: "/ventas/arqueo", label: "Arqueo de caja", icon: ClipboardCheck, fondo: "#4FAEB2" },
-  { href: "/ventas/cierre", label: "Cierre de reparto", icon: Truck, fondo: "#5B6B7A" },
+  { href: "/camiones", label: "Camiones", icon: Truck, fondo: "#5B6B7A" },
 ];
 
 const FECHA = new Intl.DateTimeFormat("es-PY", {

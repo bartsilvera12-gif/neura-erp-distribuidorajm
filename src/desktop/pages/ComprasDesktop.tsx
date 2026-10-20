@@ -4,10 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getCompras,
-  getCuentasContablesOpciones,
-  updateCompraCuentaContable,
   getCompraComprobante,
-  type CuentaContableOpcion,
+  getCompraDetalle,
+  type CompraItemDetalle,
 } from "@/lib/compras/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import NuevaCompraModal from "@/app/compras/NuevaCompraModal";
@@ -49,7 +48,6 @@ export default function ComprasPage() {
   const [todas, setTodas] = useState<Compra[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroTipoPago, setFiltroTipoPago] = useState<TipoPago | "">("");
-  const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
   const [detalle, setDetalle] = useState<Compra | null>(null);
   const [modalNueva, setModalNueva] = useState(false);
   /** Null mientras carga; string si el servidor no pudo devolver la lista. */
@@ -78,9 +76,6 @@ export default function ComprasPage() {
       .finally(() => {
         if (!cancel) setCargando(false);
       });
-    getCuentasContablesOpciones().then((c) => {
-      if (!cancel) setCuentas(c);
-    });
     return () => { cancel = true; };
   }, []);
 
@@ -185,7 +180,6 @@ export default function ComprasPage() {
                 <th className="py-3 pr-4 font-medium">N° Control</th>
                 <th className="py-3 pr-4 font-medium">Proveedor</th>
                 <th className="py-3 pr-4 font-medium">Producto</th>
-                <th className="py-3 pr-4 font-medium">Cuenta contable</th>
                 <th className="py-3 pr-4 font-medium text-right">Cant.</th>
                 <th className="py-3 pr-4 font-medium text-right">Costo unit.</th>
                 <th className="py-3 pr-4 font-medium">IVA</th>
@@ -198,7 +192,7 @@ export default function ComprasPage() {
             <tbody>
               {filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-gray-400">
+                  <td colSpan={10} className="py-12 text-center text-gray-400">
                     {cargando
                       ? "Cargando compras…"
                       : errorCarga
@@ -232,13 +226,6 @@ export default function ComprasPage() {
                       {c.proveedor_nombre}
                     </td>
                     <td className="py-4 pr-4 text-gray-600">{c.producto_nombre}</td>
-                    <td className="py-4 pr-4 text-xs">
-                      {c.cuenta_contable_label ? (
-                        <span className="text-gray-600">{c.cuenta_contable_label}</span>
-                      ) : (
-                        <span className="italic text-gray-400">Sin cuenta asignada</span>
-                      )}
-                    </td>
                     <td className="py-4 pr-4 text-right tabular-nums text-gray-700">
                       {c.cantidad}
                     </td>
@@ -280,15 +267,7 @@ export default function ComprasPage() {
       </section>
 
       {detalle && (
-        <CompraDetalleModal
-          compra={detalle}
-          cuentas={cuentas}
-          onClose={() => setDetalle(null)}
-          onSaved={() => {
-            setDetalle(null);
-            recargar();
-          }}
-        />
+        <CompraDetalleModal compra={detalle} onClose={() => setDetalle(null)} />
       )}
 
       {modalNueva && (
@@ -302,23 +281,11 @@ export default function ComprasPage() {
   );
 }
 
-function CompraDetalleModal({
-  compra,
-  cuentas,
-  onClose,
-  onSaved,
-}: {
-  compra: Compra;
-  cuentas: CuentaContableOpcion[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [cuentaId, setCuentaId] = useState<string>(compra.cuenta_contable_id ?? "");
-  const [search, setSearch] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function CompraDetalleModal({ compra, onClose }: { compra: Compra; onClose: () => void }) {
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [docLoading, setDocLoading] = useState(false);
+  const [detalle, setDetalle] = useState<{ items: CompraItemDetalle[]; destino: string } | null>(null);
+  const [cargandoItems, setCargandoItems] = useState(true);
 
   useEffect(() => {
     let cancel = false;
@@ -328,31 +295,11 @@ function CompraDetalleModal({
         .then((d) => { if (!cancel) setDocUrl(d.url); })
         .finally(() => { if (!cancel) setDocLoading(false); });
     }
+    getCompraDetalle(compra.id)
+      .then((d) => { if (!cancel) setDetalle(d); })
+      .finally(() => { if (!cancel) setCargandoItems(false); });
     return () => { cancel = true; };
   }, [compra.id, compra.documento_path]);
-
-  const q = search.trim().toLowerCase();
-  const filtradas = cuentas.filter(
-    (c) => q === "" || c.cuenta.toLowerCase().includes(q) || c.denominacion.toLowerCase().includes(q)
-  );
-  const seleccionada = cuentas.find((c) => c.id === cuentaId);
-  const opciones =
-    seleccionada && !filtradas.some((c) => c.id === seleccionada.id) ? [seleccionada, ...filtradas] : filtradas;
-
-  async function guardar() {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await updateCompraCuentaContable(compra.id, cuentaId || null);
-      if (!res.success) {
-        setError(res.error);
-        return;
-      }
-      onSaved();
-    } finally {
-      setSaving(false);
-    }
-  }
 
   return (
     <div
@@ -360,7 +307,7 @@ function CompraDetalleModal({
       onClick={onClose}
     >
       <div
-        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[85dvh] sm:rounded-2xl sm:border sm:border-slate-200"
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[85dvh] sm:rounded-2xl sm:border sm:border-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b p-5">
@@ -374,36 +321,68 @@ function CompraDetalleModal({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Proveedor</dt>
               <dd className="font-medium text-slate-800">{compra.proveedor_nombre}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">Producto</dt>
-              <dd className="text-slate-700">{compra.producto_nombre}</dd>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Destino</dt>
+              <dd className="text-slate-700">{detalle?.destino ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">Cantidad</dt>
-              <dd className="text-slate-700">{compra.cantidad}</dd>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Pago</dt>
+              <dd className="text-slate-700">
+                {compra.tipo_pago === "credito" ? `Crédito ${compra.plazo_dias ?? ""}${compra.plazo_dias ? " días" : ""}` : "Contado"}
+              </dd>
             </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">Total</dt>
-              <dd className="font-semibold text-slate-800">Gs. {compra.total.toLocaleString("es-PY")}</dd>
-            </div>
-            {(compra.numero_comprobante || compra.tipo_comprobante) && (
+            {compra.numero_comprobante ? (
               <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-400">Comprobante</dt>
-                <dd className="text-slate-700">{[compra.tipo_comprobante, compra.numero_comprobante].filter(Boolean).join(" ")}</dd>
+                <dt className="text-xs uppercase tracking-wide text-slate-400">N° de factura</dt>
+                <dd className="text-slate-700">{compra.numero_comprobante}</dd>
               </div>
-            )}
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">Timbrado</dt>
-              <dd className="text-slate-700">{compra.nro_timbrado || "—"}</dd>
-            </div>
+            ) : null}
           </dl>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Producto</th>
+                  <th className="px-3 py-2 text-right">Cant.</th>
+                  <th className="px-3 py-2 text-right">Costo</th>
+                  <th className="px-3 py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {cargandoItems ? (
+                  <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">Cargando…</td></tr>
+                ) : (detalle?.items ?? []).length === 0 ? (
+                  <tr>
+                    <td className="px-3 py-2 text-slate-800">{compra.producto_nombre}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{compra.cantidad}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatGs(compra.costo_unitario)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatGs(compra.total)}</td>
+                  </tr>
+                ) : (
+                  detalle!.items.map((it, i) => (
+                    <tr key={`${it.producto_id}-${i}`}>
+                      <td className="px-3 py-2 text-slate-800">{it.producto_nombre}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{it.cantidad.toLocaleString("es-PY")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatGs(it.costo_unitario)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatGs(it.total_linea)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-200">
+                  <td colSpan={3} className="px-3 py-2 text-right font-semibold text-slate-600">Total</td>
+                  <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900">{formatGs(compra.total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
           {compra.documento_path && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
@@ -418,44 +397,11 @@ function CompraDetalleModal({
               )}
             </div>
           )}
-
-          <div className="border-t pt-4">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Cuenta contable
-            </label>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por código o denominación..."
-              className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
-            />
-            <select
-              value={cuentaId}
-              onChange={(e) => setCuentaId(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
-            >
-              <option value="">Sin cuenta asignada</option>
-              {opciones.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.cuenta} — {c.denominacion}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-400">Solo cuentas activas e imputables (asentables).</p>
-          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t p-5">
           <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">
             Cerrar
-          </button>
-          <button
-            onClick={guardar}
-            disabled={saving || (cuentaId || "") === (compra.cuenta_contable_id ?? "")}
-            className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50"
-          >
-            {saving ? "Guardando…" : "Guardar cuenta contable"}
           </button>
         </div>
       </div>
