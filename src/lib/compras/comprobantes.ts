@@ -4,9 +4,12 @@
  */
 export const TIPOS_COMPROBANTE_COMPRA = [
   { valor: "Factura", prefijo: "FAC" },
-  { valor: "Remisión", prefijo: "REM" },
+  { valor: "Factura Electrónica", prefijo: "FEL" },
+  { valor: "Factura Virtual", prefijo: "FVI" },
+  { valor: "Factura de Exportación", prefijo: "FEX" },
+  { valor: "Autofactura", prefijo: "AUT" },
   { valor: "Boleta", prefijo: "BOL" },
-  { valor: "Ticket", prefijo: "TIC" },
+  { valor: "Remisión", prefijo: "REM" },
   { valor: "Otro", prefijo: "OTR" },
 ] as const;
 

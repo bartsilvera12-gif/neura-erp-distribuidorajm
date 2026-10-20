@@ -378,16 +378,16 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   <select value={tipoComprobante}
                     onChange={(e) => { setTipoComprobante(e.target.value as TipoComprobanteCompra); setNumeroComprobante(""); }}
                     aria-label="Tipo de comprobante"
-                    className="w-32 shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40">
+                    className="w-40 shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40">
                     {TIPOS_COMPROBANTE_COMPRA.map((t) => <option key={t.valor} value={t.valor}>{t.valor}</option>)}
                   </select>
                   <input value={numeroComprobante}
                     onChange={(e) => {
                       const v = e.target.value;
                       // La máscara 001-001-0000001 solo para una factura tipeada a mano.
-                      setNumeroComprobante(tipoComprobante === "Factura" && !/[a-z]/i.test(v) ? formatComprobante(v) : v.toUpperCase());
+                      setNumeroComprobante(/factura/i.test(tipoComprobante) && !/[a-z]/i.test(v) ? formatComprobante(v) : v.toUpperCase());
                     }}
-                    placeholder={tipoComprobante === "Factura" ? "001-001-0000001" : "N°"}
+                    placeholder={/factura/i.test(tipoComprobante) ? "001-001-0000001" : "N°"}
                     aria-label={`N° de ${tipoComprobante.toLowerCase()}`}
                     className={`${INPUT} min-w-0`} />
                   <button type="button" onClick={generarNumero} disabled={generando}
