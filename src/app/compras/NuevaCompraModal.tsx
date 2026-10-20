@@ -97,13 +97,24 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   const [proveedorId, setProveedorId] = useState("");
   /** "" = salón; si no, el id del camión. */
   const [destino, setDestino] = useState("");
-  /** Lista con la que va a vender el camión de destino. */
-  const [listaCamion, setListaCamion] = useState<"minorista" | "mayorista">("minorista");
+  /** "camion" sin camión elegido todavía: se muestra el buscador de camiones. */
+  const [tipoDestino, setTipoDestino] = useState<"salon" | "camion">("salon");
+  /** Lista con la que va a vender el destino (salón o camión). */
+  const [lista, setLista] = useState<"minorista" | "mayorista">("minorista");
+  const [listaSalon, setListaSalon] = useState<"minorista" | "mayorista">("minorista");
   function elegirDestino(id: string) {
     setDestino(id);
+    if (!id) {
+      setLista(listaSalon);
+      return;
+    }
     const c = camiones.find((x) => x.id === id);
-    setListaCamion(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
+    setLista(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
   }
+  const camionOpts: ComboOption[] = useMemo(
+    () => camiones.map((c) => ({ id: c.id, label: `Camión ${c.alias}`, sub: c.repartidor ?? "Sin asignar" })),
+    [camiones]
+  );
   const [numeroComprobante, setNumeroComprobante] = useState("");
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobanteCompra>("Factura");
   const [generando, setGenerando] = useState(false);
@@ -153,6 +164,16 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   useEffect(() => {
     recargarProveedores();
     recargarProductos();
+    // Con qué lista vende hoy el salón: es el destino que viene elegido.
+    fetch("/api/compras/lista-salon", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { data?: { lista?: string } }) => {
+        const l = j.data?.lista === "mayorista" ? "mayorista" : "minorista";
+        setListaSalon(l);
+        setLista((prev) => (destino ? prev : l));
+      })
+      .catch(() => null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const provOpts: ComboOption[] = useMemo(
@@ -206,6 +227,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     setErrorSubmit(null);
     const proveedor = proveedores.find((p) => String(p.id) === proveedorId);
     if (!proveedor) return setErrorSubmit("Elegí el proveedor.");
+    if (tipoDestino === "camion" && !destino) return setErrorSubmit("Elegí a qué camión va la mercadería.");
     if (lineas.length === 0) return setErrorSubmit("Agregá al menos un producto.");
     for (const [i, c] of calc.entries()) {
       if (c.cantidad <= 0) return setErrorSubmit(`${lineas[i].nombre}: la cantidad tiene que ser mayor a 0.`);
@@ -225,7 +247,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
           proveedor_id: String(proveedor.id),
           proveedor_nombre: proveedor.nombre,
           destino_camion_id: destino || null,
-          lista_precio_camion: destino ? listaCamion : null,
+          lista_precio: lista,
           moneda: "PYG",
           tipo_cambio: 1,
           tipo_pago: tipoPago,
@@ -399,25 +421,36 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
 
             <div>
               <label className={LABEL}>¿A dónde va la mercadería?</label>
-              <div className="flex flex-wrap gap-2">
-                <DestinoBoton activo={destino === ""} onClick={() => elegirDestino("")}
-                  icono={<Store className="h-4 w-4" />} titulo="Salón" sub="Inventario del salón" />
-                {camiones.map((c) => (
-                  <DestinoBoton key={c.id} activo={destino === c.id} onClick={() => elegirDestino(c.id)}
-                    icono={<Truck className="h-4 w-4" />} titulo={`Camión ${c.alias}`} sub={c.repartidor ?? "Sin asignar"} />
-                ))}
-              </div>
-              {destino ? (
-                <div className="mt-3 max-w-sm">
-                  <label className={SUBLABEL}>El camión vende con precio</label>
-                  <Seg<"minorista" | "mayorista"> value={listaCamion}
-                    options={[{ value: "minorista", label: "Minorista" }, { value: "mayorista", label: "Mayorista (−10%)" }]}
-                    onChange={setListaCamion} />
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    El camionero vende con esta lista; no la elige al vender.
-                  </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex gap-2">
+                  <DestinoBoton activo={tipoDestino === "salon"}
+                    onClick={() => { setTipoDestino("salon"); elegirDestino(""); }}
+                    icono={<Store className="h-4 w-4" />} titulo="Salón" sub="Inventario del salón" />
+                  <DestinoBoton activo={tipoDestino === "camion"}
+                    onClick={() => setTipoDestino("camion")}
+                    icono={<Truck className="h-4 w-4" />} titulo="Camión"
+                    sub={destino ? (camiones.find((c) => c.id === destino)?.alias ?? "") : "Elegí cuál"} />
                 </div>
-              ) : null}
+                {tipoDestino === "camion" ? (
+                  <div>
+                    {/* Buscador: con muchos camiones, un botón por camión no entra. */}
+                    <SmartCombobox options={camionOpts} value={destino || null}
+                      onChange={(id) => elegirDestino(id ?? "")}
+                      placeholder={camiones.length === 0 ? "No hay camiones activos" : "Buscar camión o repartidor…"} />
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-3 max-w-sm">
+                <label className={SUBLABEL}>
+                  {tipoDestino === "camion" ? "El camión vende con precio" : "El salón vende con precio"}
+                </label>
+                <Seg<"minorista" | "mayorista"> value={lista}
+                  options={[{ value: "minorista", label: "Minorista" }, { value: "mayorista", label: "Mayorista (−10%)" }]}
+                  onChange={setLista} />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  La caja vende con esta lista; no se elige al vender.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -467,7 +500,6 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                       <th className="px-3 py-2 text-left">Producto</th>
                       <th className="w-24 px-2 py-2 text-right">Cantidad</th>
                       <th className="w-32 px-2 py-2 text-right">Costo unit.</th>
-                      <th className="w-24 px-2 py-2 text-left">IVA</th>
                       <th className="w-32 px-2 py-2 text-right">Precio venta</th>
                       <th className="w-28 px-3 py-2 text-right">Total</th>
                       <th className="w-10" />
@@ -490,15 +522,6 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                             decimals={false} placeholder="0" aria-label={`Costo de ${l.nombre}`} className={CELDA} />
                         </td>
                         <td className="px-2 py-2">
-                          <select value={l.iva} onChange={(e) => cambiar(i, { iva: e.target.value as TipoIva })}
-                            aria-label={`IVA de ${l.nombre}`}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-sm">
-                            <option value="10">10%</option>
-                            <option value="5">5%</option>
-                            <option value="exenta">Exenta</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-2">
                           <MontoInput value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
                             decimals={false} placeholder="—" aria-label={`Precio de venta de ${l.nombre}`} className={CELDA} />
                         </td>
@@ -518,7 +541,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               </div>
             )}
             <p className="text-[11px] text-slate-400">
-              El costo es con IVA incluido. El precio de venta, si lo ponés, actualiza el del producto.
+              El costo es con IVA incluido (el IVA es el del producto). El precio de venta, si lo ponés, actualiza el del producto.
             </p>
           </section>
 

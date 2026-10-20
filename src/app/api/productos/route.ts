@@ -18,7 +18,7 @@ import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
 import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
-import { listaDelCamion } from "@/lib/camiones/server/camion-del-usuario";
+import { listaDelCamion, listaDelSalon } from "@/lib/camiones/server/camion-del-usuario";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
@@ -268,6 +268,7 @@ export async function GET(request: NextRequest) {
               camion: null,
               motivo_salon: motivoSalon,
               error_camion: errorCamion,
+              lista_precio: await listaDelSalon({ schema, empresaId }).catch(() => null),
             }
           : { tipo: "empresa" as const, camion: null };
 

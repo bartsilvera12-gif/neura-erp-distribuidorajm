@@ -6,6 +6,7 @@ import { API_ERRORS } from "@/lib/api/errors";
 import { listCompras, insertCompraConImpacto, insertCompraMultilinea, type CompraItemInput, type IvaTipo } from "@/lib/compras/server/compras-pg";
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { guardarListaDestino } from "@/lib/camiones/server/camion-del-usuario";
 
 type TenantCtx = Awaited<ReturnType<typeof getTenantSupabaseFromAuth>>;
 
@@ -83,11 +84,14 @@ async function postMultilinea(
     }
     destinoUbicacionId = cam.ubicacion_id;
   }
-  // Lista con la que va a vender ese camión (SQL 47): se elige en la compra.
-  const listaCamion =
-    body.lista_precio_camion === "mayorista" || body.lista_precio_camion === "minorista"
-      ? body.lista_precio_camion
-      : null;
+  // Lista con la que va a vender el destino (camión o salón): se elige en la
+  // compra (SQL 47 y 50).
+  const listaDestino =
+    body.lista_precio === "mayorista" || body.lista_precio === "minorista"
+      ? body.lista_precio
+      : body.lista_precio_camion === "mayorista" || body.lista_precio_camion === "minorista"
+        ? body.lista_precio_camion
+        : null;
 
   const items: CompraItemInput[] = [];
   for (const [i, raw] of (body.items as unknown[]).entries()) {
@@ -143,22 +147,13 @@ async function postMultilinea(
       sin_asiento: sinAsiento,
       destino_ubicacion_id: destinoUbicacionId,
     });
-    if (destinoUbicacionId && listaCamion) {
-      const pool = getChatPostgresPool();
-      const col = pool
-        ? await pool.query(
-            `SELECT 1 FROM information_schema.columns
-              WHERE table_schema = $1 AND table_name = 'camiones' AND column_name = 'lista_precio'`,
-            [schema]
-          )
-        : null;
-      if (pool && col && col.rows.length > 0) {
-        await pool.query(
-          `UPDATE ${quoteSchemaTable(schema, "camiones")} SET lista_precio = $1, updated_at = now()
-            WHERE id = $2::uuid AND empresa_id = $3::uuid`,
-          [listaCamion, camionId, empresaId]
-        );
-      }
+    if (origen === "directa" && listaDestino) {
+      await guardarListaDestino({
+        schema,
+        empresaId,
+        camionId: destinoUbicacionId ? camionId : null,
+        lista: listaDestino,
+      }).catch((e) => console.error("[/api/compras] lista del destino:", e));
     }
     return NextResponse.json(successResponse({ compra: out.compra, movimiento_id: out.movimiento_id }));
   } catch (e) {

@@ -61,3 +61,58 @@ export async function listaDelCamion(opts: {
   const l = q.rows[0]?.lista_precio;
   return esListaPrecio(l) ? l : null;
 }
+
+/**
+ * Lista de precio del salón (SQL 50): se elige en la compra con destino Salón
+ * y la caja del salón vende con ella. `null` si la columna no existe todavía.
+ */
+export async function listaDelSalon(opts: {
+  schema: string;
+  empresaId: string;
+}): Promise<ListaPrecio | null> {
+  const pool = getChatPostgresPool();
+  if (!pool) return null;
+  const col = await pool.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'empresas' AND column_name = 'lista_precio_salon'`,
+    [opts.schema]
+  );
+  if (col.rows.length === 0) return null;
+  const q = await pool.query<{ l: string | null }>(
+    `SELECT lista_precio_salon AS l FROM ${quoteSchemaTable(opts.schema, "empresas")}
+      WHERE id = $1::uuid LIMIT 1`,
+    [opts.empresaId]
+  );
+  const l = q.rows[0]?.l;
+  return esListaPrecio(l) ? l : null;
+}
+
+/** Guarda la lista con la que vende un destino de compra: un camión o el salón. */
+export async function guardarListaDestino(opts: {
+  schema: string;
+  empresaId: string;
+  camionId: string | null;
+  lista: ListaPrecio;
+}): Promise<void> {
+  const pool = getChatPostgresPool();
+  if (!pool) return;
+  const [tabla, columna] = opts.camionId ? ["camiones", "lista_precio"] : ["empresas", "lista_precio_salon"];
+  const col = await pool.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = $2 AND column_name = $3`,
+    [opts.schema, tabla, columna]
+  );
+  if (col.rows.length === 0) return;
+  if (opts.camionId) {
+    await pool.query(
+      `UPDATE ${quoteSchemaTable(opts.schema, "camiones")} SET lista_precio = $1, updated_at = now()
+        WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+      [opts.lista, opts.camionId, opts.empresaId]
+    );
+  } else {
+    await pool.query(
+      `UPDATE ${quoteSchemaTable(opts.schema, "empresas")} SET lista_precio_salon = $1 WHERE id = $2::uuid`,
+      [opts.lista, opts.empresaId]
+    );
+  }
+}

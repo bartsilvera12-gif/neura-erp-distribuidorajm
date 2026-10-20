@@ -97,8 +97,11 @@ export function useCajaVenta() {
   // compra): no se elige acá. Misma clave de SWR que el catálogo de la caja,
   // así que no hay una consulta de más.
   const { origen: origenCatalogo } = useCatalogoVenta(null);
+  // También el salón: su lista se elige en la compra con destino Salón.
   const listaCamion =
-    origenCatalogo?.tipo === "camion" ? (origenCatalogo.lista_precio ?? null) : null;
+    origenCatalogo?.tipo === "camion" || origenCatalogo?.tipo === "salon"
+      ? (origenCatalogo.lista_precio ?? null)
+      : null;
   const lista: ListaPrecio = listaCamion ?? listaElegida;
   /** La lista la fija el camión: la caja no la deja cambiar. */
   const listaFija = listaCamion !== null;
