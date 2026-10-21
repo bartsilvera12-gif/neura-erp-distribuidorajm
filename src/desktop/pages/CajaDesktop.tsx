@@ -120,14 +120,22 @@ export default function CajaDesktop() {
             <Atajo tecla="F9">finalizar</Atajo>
           </p>
         </div>
-        {soloCaja ? null : (
+        <div className="flex shrink-0 gap-2">
           <Link
-            href="/ventas"
+            href="/ventas/arqueo"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
-            Ver ventas
+            Arqueo y movimientos
           </Link>
-        )}
+          {soloCaja ? null : (
+            <Link
+              href="/ventas"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Ver ventas
+            </Link>
+          )}
+        </div>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">

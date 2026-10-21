@@ -6,6 +6,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
 import { useRepartos } from "@/shared/hooks/useRepartos";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
@@ -65,6 +66,8 @@ export default function ArqueoMobile() {
 
 
       <div className="space-y-3 px-4 pt-4">
+        {/* Abrir, movimientos (ingreso, egreso, ajuste) y cerrar la caja. */}
+        <TarjetaCajaAbierta onCambio={() => mutate()} />
         {isLoading && !arqueo ? (
           <p className="py-10 text-center text-sm text-slate-400">Cargando…</p>
         ) : arqueo && !arqueo.disponible ? (

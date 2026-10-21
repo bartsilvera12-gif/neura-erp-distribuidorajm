@@ -542,7 +542,7 @@ function ModalCierre({
  * esperado y debajo están los movimientos que lo explican. El total del día ya
  * lo cuenta el arqueo; repetirlo acá arriba solo tapaba esto.
  */
-export default function TarjetaCajaAbierta() {
+export default function TarjetaCajaAbierta({ onCambio }: { onCambio?: () => void } = {}) {
   const { caja, disponible, mutate: recargarCaja } = useCajaAbierta();
   const { arqueo, mutate: recargarArqueo } = useArqueo();
   const [modal, setModal] = useState<"ninguno" | "movimiento" | "cierre">("ninguno");
@@ -551,6 +551,7 @@ export default function TarjetaCajaAbierta() {
     setModal("ninguno");
     void recargarCaja();
     void recargarArqueo();
+    onCambio?.();
   }
 
   if (!disponible) return null;

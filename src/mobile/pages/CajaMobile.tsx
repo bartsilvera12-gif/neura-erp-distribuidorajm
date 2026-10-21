@@ -134,6 +134,13 @@ function Encabezado({ caja, compacto }: { caja: CajaVenta; compacto?: boolean })
           </button>
         )}
         <h1 className="text-base font-semibold">Nueva venta</h1>
+        {/* El cajero no tiene menú: desde acá llega a sus movimientos y al cierre. */}
+        <Link
+          href="/ventas/arqueo"
+          className="ml-auto rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold active:bg-white/20"
+        >
+          Arqueo
+        </Link>
       </div>
 
       {/* Stepper: los pasos ya completados vuelven a ser tocables. Con el teclado

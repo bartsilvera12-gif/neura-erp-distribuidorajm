@@ -7,8 +7,7 @@ import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
-import AperturaCaja from "@/shared/caja/AperturaCaja";
-import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
+import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
@@ -21,8 +20,6 @@ export default function ArqueoDesktop() {
   const [todas, setTodas] = useState(false);
   const { isAdmin } = useIsAdmin();
   const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
-  // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
-  const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -69,14 +66,10 @@ export default function ArqueoDesktop() {
         </div>
       </header>
 
+      {/* Abrir la caja, cargar movimientos (ingreso, egreso, ajuste) y cerrarla:
+          acá, porque el cajero no entra a Ventas. */}
       <div className="mb-5">
-        <AperturaCaja
-          caja={cajaAbierta}
-          onCambio={() => {
-            recargarCaja();
-            mutate();
-          }}
-        />
+        <TarjetaCajaAbierta onCambio={() => mutate()} />
       </div>
 
 
