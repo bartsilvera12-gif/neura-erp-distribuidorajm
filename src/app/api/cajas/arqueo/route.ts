@@ -249,6 +249,7 @@ export async function GET(request: NextRequest) {
       caja_id: string;
       tipo: string;
       medio: string;
+      es_venta: boolean;
       cantidad: string;
       total: string;
     }>(
@@ -256,13 +257,14 @@ export async function GET(request: NextRequest) {
       `SELECT caja_id,
               tipo,
               lower(btrim(COALESCE(medio_pago, ''))) AS medio,
+              (venta_id IS NOT NULL)                 AS es_venta,
               count(*)::text                         AS cantidad,
               COALESCE(sum(monto), 0)::text          AS total
          FROM ${tM}
         WHERE empresa_id = $1::uuid
           AND caja_id = ANY($2::uuid[])
           AND anulado_at IS NULL
-        GROUP BY caja_id, tipo, 3
+        GROUP BY caja_id, tipo, 3, 4
         ORDER BY sum(monto) DESC NULLS LAST`,
       [empresaId, ids]
     );
@@ -370,9 +372,12 @@ export async function GET(request: NextRequest) {
       const esperadoEfectivo =
         apertura + sencillo + sumar(ingresos, true) - sumar(salidas, true) + sumar(ajustes, true);
 
-      // Desglose de lo que entró, por medio. Es lo que se compara al cerrar.
+      // Desglose de lo COBRADO POR VENTAS, por medio. Los ingresos cargados a
+      // mano (la plata que trae un repartidor, por ejemplo) van aparte, en
+      // movimientos_manuales: suman al esperado pero no son ventas.
+      const ingresosVentas = ingresos.filter((m) => m.es_venta);
       const porMedio = new Map<string, { cantidad: number; total: number }>();
-      for (const m of ingresos) {
+      for (const m of ingresosVentas) {
         const acc = porMedio.get(m.medio) ?? { cantidad: 0, total: 0 };
         acc.cantidad += num(m.cantidad);
         acc.total += num(m.total);
@@ -391,7 +396,7 @@ export async function GET(request: NextRequest) {
         sencillo,
         por_categoria: porCategoria.get(c.id) ?? [],
         ingresos: {
-          total: sumar(ingresos, false),
+          total: sumar(ingresosVentas, false),
           por_medio: [...porMedio.entries()]
             .map(([medio, v]) => ({ medio, label: etiquetaMedio(medio), ...v }))
             .sort((a, b) => b.total - a.total),

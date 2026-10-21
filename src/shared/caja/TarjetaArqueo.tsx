@@ -5,7 +5,7 @@ import { Check, Coins, Lock, Unlock } from "lucide-react";
 import { guardarSencillo } from "@/lib/cajas/storage";
 import { formatGs } from "@/shared/caja/useCajaVenta";
 import { fechaLarga, horaCorta, iconoMedio } from "@/shared/caja/arqueo-ui";
-import type { ArqueoCaja } from "@/lib/cajas/arqueo";
+import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 
 /**
  * Arqueo de una caja: con cuánto abrió, qué entró y por qué medio, qué salió, y
@@ -61,7 +61,7 @@ export default function TarjetaArqueo({
         {caja.ingresos.por_medio.length > 0 ? (
           <>
             <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
-              Ingresos
+              Cobrado por ventas
             </p>
             {caja.ingresos.por_medio.map((m) => {
               const Icono = iconoMedio(m.medio);
@@ -84,20 +84,12 @@ export default function TarjetaArqueo({
             })}
           </>
         ) : (
-          <p className="mt-3 text-sm text-slate-400">Todavía no hubo ingresos.</p>
+          <p className="mt-3 text-sm text-slate-400">Todavía no hubo ventas cobradas.</p>
         )}
 
         <VentasPorCategoria filas={caja.por_categoria ?? []} />
 
-        {caja.salidas.total > 0 ? (
-          <Fila
-            label={`Egresos y retiros (${caja.salidas.cantidad})`}
-            valor={`− ${formatGs(caja.salidas.total)}`}
-          />
-        ) : null}
-        {caja.ajustes.total > 0 ? (
-          <Fila label={`Ajustes (${caja.ajustes.cantidad})`} valor={formatGs(caja.ajustes.total)} />
-        ) : null}
+        <MovimientosCaja movimientos={caja.movimientos_manuales ?? []} />
 
         <div className="mt-3 border-t border-slate-100 pt-3">
           <div className="flex items-center justify-between gap-3">
@@ -244,7 +236,7 @@ function FilaSencillo({
               setValor(actual > 0 ? String(Math.round(actual)) : "");
               setEditando(true);
             }}
-            className="rounded-md px-2 py-0.5 text-xs font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/10"
+            className="no-imprimir rounded-md px-2 py-0.5 text-xs font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/10"
           >
             {actual > 0 ? "Editar" : "Cargar"}
           </button>
@@ -274,6 +266,45 @@ export function VentasPorCategoria({ filas }: { filas: { categoria: string; tota
           </span>
         </div>
       ))}
+    </>
+  );
+}
+
+/**
+ * Lo que se cargó a mano en la caja (no viene de una venta): la plata que
+ * trae un repartidor, un pago, un retiro. Cada uno con su concepto, para que
+ * al cerrar se sepa de dónde salió cada peso.
+ */
+export function MovimientosCaja({ movimientos }: { movimientos: MovimientoManualCaja[] }) {
+  if (movimientos.length === 0) return null;
+  const signo = (t: string) => (t === "egreso" || t === "retiro" ? -1 : 1);
+  const nombre: Record<string, string> = { ingreso: "Ingreso", egreso: "Egreso", retiro: "Retiro", ajuste: "Ajuste" };
+  const entradas = movimientos.filter((m) => signo(m.tipo) > 0).reduce((s, m) => s + m.monto, 0);
+  const salidas = movimientos.filter((m) => signo(m.tipo) < 0).reduce((s, m) => s + m.monto, 0);
+  return (
+    <>
+      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+        Movimientos de caja
+      </p>
+      {movimientos.map((m, i) => (
+        <div key={`${m.fecha}-${i}`} className="flex items-center justify-between gap-3 py-1">
+          <span className="min-w-0 text-sm text-slate-500">
+            <span className="font-medium text-slate-700">{nombre[m.tipo] ?? m.tipo}</span>
+            {" · "}
+            <span className="break-words">{m.concepto}</span>
+            <span className="ml-1 text-xs text-slate-400">({m.label})</span>
+          </span>
+          <span
+            className={`shrink-0 text-sm font-medium tabular-nums ${signo(m.tipo) < 0 ? "text-red-600" : "text-emerald-700"}`}
+          >
+            {signo(m.tipo) < 0 ? "− " : "+ "}
+            {formatGs(m.monto)}
+          </span>
+        </div>
+      ))}
+      <div className="flex items-center justify-between gap-3 border-t border-dashed border-slate-100 py-1 text-xs text-slate-500">
+        <span>Entradas {formatGs(entradas)} · Salidas {formatGs(salidas)}</span>
+      </div>
     </>
   );
 }

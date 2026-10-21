@@ -53,6 +53,13 @@ function cantidadPorMedio(caja: ArqueoCaja | null, medio: string): number {
 }
 
 /** Lo que salió del cajón EN EFECTIVO: es lo único que baja el esperado. */
+/** Lo que entró a mano en efectivo (la plata de un repartidor, etc.). */
+function ingresosManualesEfectivo(movimientos: MovimientoManualCaja[]): number {
+  return movimientos
+    .filter((m) => (m.tipo === "ingreso" || m.tipo === "ajuste") && m.medio === "efectivo")
+    .reduce((s, m) => s + m.monto, 0);
+}
+
 function egresosEfectivo(movimientos: MovimientoManualCaja[]): number {
   return movimientos
     .filter((m) => esSalida(m.tipo) && m.medio === "efectivo")
@@ -378,6 +385,7 @@ function ModalCierre({
   const ventasTransfer = porMedio(detalle, "transferencia");
   const ventasTarjeta = porMedio(detalle, "tarjeta");
   const egresos = egresosEfectivo(movimientos);
+  const ingresosManuales = ingresosManualesEfectivo(movimientos);
 
   async function guardar() {
     if (guardando) return;
@@ -453,6 +461,9 @@ function ModalCierre({
           ) : null}
           {ventasTarjeta > 0 ? (
             <FilaDesglose label="Ventas tarjeta (no suma)" valor={gs(ventasTarjeta)} tenue />
+          ) : null}
+          {ingresosManuales > 0 ? (
+            <FilaDesglose label="+ Ingresos manuales" valor={gs(ingresosManuales)} />
           ) : null}
           {egresos > 0 ? (
             <FilaDesglose label="− Egresos manuales" valor={`-${gs(egresos)}`} />

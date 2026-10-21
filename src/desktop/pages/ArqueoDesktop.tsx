@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Printer, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
@@ -40,6 +40,15 @@ export default function ArqueoDesktop() {
             aria-label="Fecha del arqueo"
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           />
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={!arqueo || arqueo.cajas.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </button>
           <button
             type="button"
             onClick={() => mutate()}
@@ -96,9 +105,15 @@ export default function ArqueoDesktop() {
                 : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
         </p>
       ) : (
-        <div className="space-y-4">
+        // Lo que va al papel con "Imprimir": el cierre del día completo.
+        <div className="factura-imprimible space-y-4 bg-white">
+          <style>{`@media print { @page { size: A4; margin: 12mm; } }`}</style>
+          <div className="hidden print:block">
+            <p className="text-lg font-bold text-slate-900">Cierre de caja</p>
+            <p className="text-sm text-slate-600">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
+          </div>
           <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2 print:grid-cols-1">
             {(arqueo?.cajas ?? []).map((c) => (
               <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />
             ))}
