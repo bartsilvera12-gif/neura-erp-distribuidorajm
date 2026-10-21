@@ -324,7 +324,15 @@ export async function insertCompraMultilinea(
   const montoIva = calculadas.reduce((s, l) => s + l.monto_iva, 0);
   const total = calculadas.reduce((s, l) => s + l.total_linea, 0);
   const ivasDistintos = Array.from(new Set(calculadas.map((l) => l.iva_tipo)));
-  const ivaCabecera = ivasDistintos.length === 1 ? ivasDistintos[0] : "mixto";
+  // La cabecera solo admite exenta / 5 / 10 (CHECK de la tabla): con IVA
+  // mezclado va el de mayor importe. El IVA real de cada renglón queda en
+  // compra_items, que es de donde salen los totales.
+  const porIva = new Map<IvaTipo, number>();
+  for (const l of calculadas) porIva.set(l.iva_tipo, (porIva.get(l.iva_tipo) ?? 0) + l.total_linea);
+  const ivaCabecera: IvaTipo =
+    ivasDistintos.length === 1
+      ? ivasDistintos[0]
+      : [...porIva.entries()].sort((a, b) => b[1] - a[1])[0][0];
   const primera = calculadas[0];
 
   const client = await pool().connect();
