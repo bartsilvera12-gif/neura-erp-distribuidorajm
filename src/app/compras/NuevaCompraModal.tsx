@@ -14,6 +14,8 @@ import type { TipoIva, TipoPago } from "@/lib/compras/types";
 import { TIPOS_COMPROBANTE_COMPRA, type TipoComprobanteCompra } from "@/lib/compras/comprobantes";
 import type { Proveedor } from "@/lib/proveedores/types";
 import type { Producto } from "@/lib/inventario/types";
+import type { Compra } from "@/lib/compras/types";
+import { getCompraDetalle } from "@/lib/compras/storage";
 
 /**
  * Nueva compra: varios productos en una lista, y a dónde entra la mercadería —
@@ -93,7 +95,16 @@ function Titulo({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export default function NuevaCompraModal({
+  onClose,
+  onSaved,
+  editar,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+  /** Editar: se abre con esta compra cargada y al guardar la reemplaza. */
+  editar?: Compra;
+}) {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const { camiones, mutate: recargarCamiones } = useCamiones();
@@ -142,6 +153,54 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   const [tipoPago, setTipoPago] = useState<TipoPago>("contado");
   const [plazoDias, setPlazoDias] = useState("");
   const [lineas, setLineas] = useState<Linea[]>([]);
+
+  // Editar: cuando están los productos y los camiones, se carga la compra.
+  const [precargada, setPrecargada] = useState(!editar);
+  useEffect(() => {
+    if (!editar || precargada || productos.length === 0) return;
+    let cancel = false;
+    void getCompraDetalle(editar.id).then((d) => {
+      if (cancel) return;
+      setProveedorId(String(editar.proveedor_id ?? ""));
+      if (editar.numero_comprobante) setNumeroComprobante(editar.numero_comprobante);
+      if (editar.tipo_comprobante && TIPOS_COMPROBANTE_COMPRA.some((t) => t.valor === editar.tipo_comprobante)) {
+        setTipoComprobante(editar.tipo_comprobante as TipoComprobanteCompra);
+      }
+      setTipoPago(editar.tipo_pago === "credito" ? "credito" : "contado");
+      if (editar.plazo_dias) setPlazoDias(String(editar.plazo_dias));
+      if (d?.destino_camion_id) {
+        setTipoDestino("camion");
+        elegirDestino(d.destino_camion_id);
+      }
+      const items = d?.items?.length
+        ? d.items
+        : [{ producto_id: editar.producto_id, producto_nombre: editar.producto_nombre, cantidad: editar.cantidad,
+             costo_unitario: editar.costo_unitario, iva_tipo: editar.iva_tipo, total_linea: editar.total }];
+      setLineas(
+        items
+          .filter((it) => it.producto_id)
+          .map((it) => {
+            const p = productos.find((x) => x.id === it.producto_id);
+            const iva = it.iva_tipo === "5" || it.iva_tipo === "exenta" ? it.iva_tipo : "10";
+            return {
+              producto_id: String(it.producto_id),
+              nombre: p?.nombre ?? it.producto_nombre,
+              unidad: p?.unidad_medida ?? "",
+              cantidad: String(it.cantidad),
+              costo: String(Math.round(Number(it.costo_unitario) || 0)),
+              iva: iva as TipoIva,
+              precio: p && p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
+              categoria: p?.categoria_principal_id ?? "",
+            };
+          })
+      );
+      setPrecargada(true);
+    });
+    return () => {
+      cancel = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editar, precargada, productos, camiones]);
 
   // Foto/PDF de la factura (se sube después de crear la compra).
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -281,6 +340,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
           sin_asiento: true,
           origen_compra: "directa",
           idempotency_key: idempotencyKey,
+          reemplaza_compra_id: editar?.id ?? null,
           proveedor_id: String(proveedor.id),
           proveedor_nombre: proveedor.nombre,
           destino_camion_id: destino || null,
@@ -387,7 +447,14 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]" />
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Operaciones · Compras</p>
             </div>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Nueva compra</h2>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">
+              {editar ? `Editar compra ${editar.numero_control}` : "Nueva compra"}
+            </h2>
+            {editar ? (
+              <p className="mt-0.5 text-xs text-slate-500">
+                Al guardar, {editar.numero_control} queda anulada y se registra la compra corregida con un número nuevo.
+              </p>
+            ) : null}
           </div>
           <button type="button" onClick={onClose}
             className="rounded-lg px-2 py-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">✕</button>
@@ -663,7 +730,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               </button>
               <button type="submit" disabled={submitting}
                 className="h-11 rounded-lg bg-[#4FAEB2] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#3F8E91] disabled:opacity-40">
-                {submitting ? "Guardando…" : `Guardar compra ${destinoTexto}`}
+                {submitting ? "Guardando…" : editar ? "Guardar cambios" : `Guardar compra ${destinoTexto}`}
               </button>
             </div>
           </div>

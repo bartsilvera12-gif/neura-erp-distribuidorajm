@@ -6,6 +6,7 @@ import {
   getCompras,
   getCompraComprobante,
   getCompraDetalle,
+  anularCompraApi,
   type CompraItemDetalle,
 } from "@/lib/compras/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
@@ -50,6 +51,24 @@ export default function ComprasPage() {
   const [filtroTipoPago, setFiltroTipoPago] = useState<TipoPago | "">("");
   const [detalle, setDetalle] = useState<Compra | null>(null);
   const [modalNueva, setModalNueva] = useState(false);
+  const [editando, setEditando] = useState<Compra | null>(null);
+  const [anulando, setAnulando] = useState<string | null>(null);
+
+  async function anular(c: Compra) {
+    const ok = window.confirm(
+      `¿Anular la compra ${c.numero_control} de ${c.proveedor_nombre}?\n\n` +
+        "Se devuelve el stock que entró (del salón o del camión) y sale de Cuentas por pagar. No se puede deshacer."
+    );
+    if (!ok) return;
+    setAnulando(c.id);
+    const res = await anularCompraApi(c.id);
+    setAnulando(null);
+    if (!res.ok) {
+      window.alert(res.error);
+      return;
+    }
+    recargar();
+  }
   /** Null mientras carga; string si el servidor no pudo devolver la lista. */
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -186,13 +205,14 @@ export default function ComprasPage() {
                 <th className="py-3 pr-4 font-medium text-right">Total</th>
                 <th className="py-3 pr-4 font-medium text-right">Margen</th>
                 <th className="py-3 pr-4 font-medium">Pago</th>
-                <th className="py-3 font-medium">Fecha</th>
+                <th className="py-3 pr-4 font-medium">Fecha</th>
+                <th className="py-3 font-medium text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-400">
+                  <td colSpan={11} className="py-12 text-center text-gray-400">
                     {cargando
                       ? "Cargando compras…"
                       : errorCarga
@@ -217,7 +237,9 @@ export default function ComprasPage() {
                   <tr
                     key={c.id}
                     onClick={() => setDetalle(c)}
-                    className="cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors"
+                    className={`cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors ${
+                      c.estado === "anulada" ? "opacity-50" : ""
+                    }`}
                   >
                     <td className="py-4 pr-4 font-mono text-xs text-gray-500">
                       {c.numero_control}
@@ -254,8 +276,24 @@ export default function ComprasPage() {
                         {c.tipo_pago === "contado" ? "Contado" : c.tipo_pago === "credito" ? `Crédito ${c.plazo_dias ?? ""}d` : "—"}
                       </span>
                     </td>
-                    <td className="py-4 text-gray-500 text-xs tabular-nums">
+                    <td className="py-4 pr-4 text-gray-500 text-xs tabular-nums">
                       {formatFecha(c.fecha)}
+                    </td>
+                    <td className="py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      {c.estado === "anulada" ? (
+                        <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">Anulada</span>
+                      ) : (
+                        <span className="inline-flex gap-1.5">
+                          <button type="button" onClick={() => setEditando(c)}
+                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                            Editar
+                          </button>
+                          <button type="button" onClick={() => void anular(c)} disabled={anulando === c.id}
+                            className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                            {anulando === c.id ? "…" : "Anular"}
+                          </button>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -274,6 +312,14 @@ export default function ComprasPage() {
         <NuevaCompraModal
           onClose={() => setModalNueva(false)}
           onSaved={() => { setModalNueva(false); recargar(); }}
+        />
+      )}
+
+      {editando && (
+        <NuevaCompraModal
+          editar={editando}
+          onClose={() => setEditando(null)}
+          onSaved={() => { setEditando(null); recargar(); }}
         />
       )}
 

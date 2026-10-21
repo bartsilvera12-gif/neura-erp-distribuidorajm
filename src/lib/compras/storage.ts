@@ -41,6 +41,7 @@ function mapRow(r: CompraApiRow): Compra {
     plazo_dias: r.plazo_dias ?? undefined,
     cuotas: r.cuotas ?? undefined,
     nro_timbrado: r.nro_timbrado,
+    estado: r.estado,
     cuenta_contable_id: r.cuenta_contable_id ?? null,
     cuenta_contable_label:
       r.cuenta_contable_codigo && r.cuenta_contable_denominacion
@@ -206,13 +207,25 @@ export interface CompraItemDetalle {
 /** Los productos de una compra y a dónde entró la mercadería (salón o camión). */
 export async function getCompraDetalle(
   compraId: string
-): Promise<{ items: CompraItemDetalle[]; destino: string } | null> {
+): Promise<{ items: CompraItemDetalle[]; destino: string; destino_camion_id: string | null } | null> {
   try {
     const r = await fetch(`/api/compras/${compraId}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) return null;
-    return j.data as { items: CompraItemDetalle[]; destino: string };
+    return j.data as { items: CompraItemDetalle[]; destino: string; destino_camion_id: string | null };
   } catch {
     return null;
+  }
+}
+
+/** Anula una compra: devuelve el stock y la saca de cuentas por pagar. */
+export async function anularCompraApi(compraId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(`/api/compras/${compraId}/anular`, { method: "POST", credentials: "include" });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) return { ok: false, error: j.error ?? "No se pudo anular la compra." };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
 }

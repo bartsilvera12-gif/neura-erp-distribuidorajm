@@ -175,6 +175,9 @@ async function postMultilinea(
       usuario_nombre: ctx.auth.user?.email ?? null,
       sin_asiento: sinAsiento,
       destino_ubicacion_id: destinoUbicacionId,
+    }, {
+      // Editar: la compra original se anula en la misma transacción.
+      reemplazaCompraId: UUID_RE.test(s(body.reemplaza_compra_id)) ? s(body.reemplaza_compra_id) : null,
     });
     if (categorias.size > 0) {
       await asignarCategorias(schema, empresaId, categorias).catch((e) =>
