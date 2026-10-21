@@ -18,6 +18,7 @@ import { cerrarCaja, registrarMovimientoCaja, type TipoMovimientoCaja } from "@/
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 import AperturaCaja from "./AperturaCaja";
 import ModalCaja from "./ModalCaja";
+import { VentasPorCategoria } from "./TarjetaArqueo";
 
 const TEAL = "#4FAEB2";
 
@@ -458,6 +459,12 @@ function ModalCierre({
           ) : null}
           <FilaDesglose label="Efectivo esperado" valor={gs(esperadoConSencillo)} destacado />
         </div>
+
+        {(detalle?.por_categoria ?? []).length > 0 ? (
+          <div className="rounded-xl border border-slate-100 px-4 pb-3">
+            <VentasPorCategoria filas={detalle?.por_categoria ?? []} />
+          </div>
+        ) : null}
 
         <label className="block">
           <span className={ETIQUETA}>Efectivo contado (Gs.)</span>

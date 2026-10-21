@@ -307,6 +307,49 @@ export async function GET(request: NextRequest) {
       porCaja.set(row.caja_id, lista);
     }
 
+    // Lo vendido en cada caja por categoría (la principal de cada producto):
+    // carne, pollo, lácteos… Es un agregado: si falta alguna tabla o columna,
+    // el arqueo sale igual, sin este desglose.
+    const porCategoria = new Map<string, { categoria: string; total: number }[]>();
+    try {
+      const ids = cajasQ.rows.map((c) => c.id);
+      const ok = await queryWithRetry<{ cp: string | null; col: string | null; cc: string | null }>(
+        pool,
+        `SELECT to_regclass($1)::text AS cp,
+                (SELECT column_name FROM information_schema.columns
+                  WHERE table_schema = $2 AND table_name = 'productos' AND column_name = 'categoria_principal_id') AS col,
+                (SELECT column_name FROM information_schema.columns
+                  WHERE table_schema = $2 AND table_name = 'ventas' AND column_name = 'caja_id') AS cc`,
+        [`${schema}.categorias_productos`, schema]
+      );
+      const r0 = ok.rows[0];
+      if (ids.length > 0 && hayVentas.rows[0]?.t && r0?.cp && r0?.col && r0?.cc) {
+        const catQ = await queryWithRetry<{ caja_id: string; categoria: string; total: string }>(
+          pool,
+          `SELECT v.caja_id,
+                  COALESCE(NULLIF(btrim(cp.nombre), ''), 'Sin categoría') AS categoria,
+                  COALESCE(sum(vi.total_linea), 0)::text AS total
+             FROM ${quoteSchemaTable(schema, "ventas_items")} vi
+             JOIN ${quoteSchemaTable(schema, "ventas")} v ON v.id = vi.venta_id
+             LEFT JOIN ${quoteSchemaTable(schema, "productos")} p ON p.id = vi.producto_id
+             LEFT JOIN ${quoteSchemaTable(schema, "categorias_productos")} cp ON cp.id = p.categoria_principal_id
+            WHERE v.empresa_id = $1::uuid
+              AND v.caja_id = ANY($2::uuid[])
+              AND COALESCE(v.estado, '') <> 'anulada'
+            GROUP BY 1, 2
+            ORDER BY sum(vi.total_linea) DESC NULLS LAST`,
+          [empresaId, ids]
+        );
+        for (const row of catQ.rows) {
+          const lista = porCategoria.get(row.caja_id) ?? [];
+          lista.push({ categoria: row.categoria, total: num(row.total) });
+          porCategoria.set(row.caja_id, lista);
+        }
+      }
+    } catch (e) {
+      console.error("[/api/cajas/arqueo] ventas por categoría:", e instanceof Error ? e.message : e);
+    }
+
     const cajas = cajasQ.rows.map((c) => {
       const movs = porCaja.get(c.id) ?? [];
       const apertura = num(c.monto_apertura);
@@ -346,6 +389,7 @@ export async function GET(request: NextRequest) {
         fecha_cierre: c.fecha_cierre,
         monto_apertura: apertura,
         sencillo,
+        por_categoria: porCategoria.get(c.id) ?? [],
         ingresos: {
           total: sumar(ingresos, false),
           por_medio: [...porMedio.entries()]

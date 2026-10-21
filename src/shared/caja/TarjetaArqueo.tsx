@@ -87,6 +87,8 @@ export default function TarjetaArqueo({
           <p className="mt-3 text-sm text-slate-400">Todavía no hubo ingresos.</p>
         )}
 
+        <VentasPorCategoria filas={caja.por_categoria ?? []} />
+
         {caja.salidas.total > 0 ? (
           <Fila
             label={`Egresos y retiros (${caja.salidas.cantidad})`}
@@ -249,5 +251,29 @@ function FilaSencillo({
         ) : null}
       </span>
     </div>
+  );
+}
+
+/** Lo vendido en la caja por categoría: carne, pollo, lácteos… */
+export function VentasPorCategoria({ filas }: { filas: { categoria: string; total: number }[] }) {
+  if (filas.length === 0) return null;
+  const total = filas.reduce((s, f) => s + f.total, 0);
+  return (
+    <>
+      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+        Vendido por categoría
+      </p>
+      {filas.map((f) => (
+        <div key={f.categoria} className="flex items-center justify-between gap-3 py-1">
+          <span className="min-w-0 truncate text-sm text-slate-500">{f.categoria}</span>
+          <span className="flex shrink-0 items-baseline gap-2">
+            <span className="text-xs tabular-nums text-slate-400">
+              {total > 0 ? `${Math.round((f.total / total) * 100)}%` : ""}
+            </span>
+            <span className="text-sm font-medium tabular-nums text-slate-900">{formatGs(f.total)}</span>
+          </span>
+        </div>
+      ))}
+    </>
   );
 }
