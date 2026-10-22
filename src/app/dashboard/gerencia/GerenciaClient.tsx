@@ -260,10 +260,10 @@ export default function GerenciaClient() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             {/* ── Venta por camión ── */}
-            <PanelGerencia titulo="Venta por camión" bajada="Qué camión tira del carro">
+            <PanelGerencia titulo="Venta por camión" bajada="Qué camión tira del carro y qué vende cada uno">
               {data.por_camion.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">
-                  Todavía no hay ventas asociadas a un reparto.
+                  Este mes no hubo ventas desde un camión.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -276,23 +276,52 @@ export default function GerenciaClient() {
                         <th className="pb-2 font-medium">Participación</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {data.por_camion.map((c) => (
-                        <tr key={c.camion} className="text-slate-600">
-                          <td className="py-2 font-medium text-slate-700">{c.camion}</td>
-                          <td className="py-2 tabular-nums">{c.ventas}</td>
-                          <td className="whitespace-nowrap py-2 pr-6 text-right font-semibold tabular-nums text-slate-800">
+                    {data.por_camion.map((c) => (
+                      <tbody key={c.camion} className="border-t border-slate-100">
+                        <tr className="text-slate-600">
+                          <td className="pt-2 font-medium text-slate-700">{c.camion}</td>
+                          <td className="pt-2 tabular-nums">{c.ventas}</td>
+                          <td className="whitespace-nowrap pt-2 pr-6 text-right font-semibold tabular-nums text-slate-800">
                             {gs(c.total)}
                           </td>
-                          <td className="py-2">
+                          <td className="pt-2">
                             <Participacion valor={c.participacion} />
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
+                        {c.productos.length > 0 ? (
+                          <tr>
+                            <td colSpan={4} className="pb-3 pt-1">
+                              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                Lo más vendido
+                              </p>
+                              <ol className="space-y-0.5">
+                                {c.productos.map((p, i) => (
+                                  <li key={p.producto} className="flex items-baseline gap-2 text-xs text-slate-600">
+                                    <span className="w-4 shrink-0 text-right tabular-nums text-slate-400">{i + 1}.</span>
+                                    <span className="min-w-0 flex-1 truncate">{p.producto}</span>
+                                    <span className="shrink-0 tabular-nums text-slate-500">{cant(p.cantidad, p.unidad)}</span>
+                                    <span className="w-24 shrink-0 text-right font-medium tabular-nums text-slate-700">
+                                      {gs(p.total)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    ))}
                   </table>
                 </div>
               )}
+              {data.salon.ventas > 0 ? (
+                <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  Además, <span className="font-semibold text-slate-700">Salón</span> (mostrador):{" "}
+                  {data.salon.ventas} {data.salon.ventas === 1 ? "venta" : "ventas"} ·{" "}
+                  <span className="font-semibold text-slate-700">{gs(data.salon.total)}</span> ·{" "}
+                  {(data.salon.participacion * 100).toFixed(1)}% del mes
+                </p>
+              ) : null}
             </PanelGerencia>
 
             {/* ── Venta por producto ── */}

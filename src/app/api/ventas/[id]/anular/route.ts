@@ -119,8 +119,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     );
 
     // La ubicación del camión: la mercadería tiene que volver de donde salió.
+    // Primero la que quedó anotada en los movimientos de la venta (una venta
+    // del camión sin reparto solo la tiene ahí); si no, la del reparto.
     let ubicacionId: string | null = null;
-    if (venta.reparto_id) {
+    if (
+      (await tablaExiste(client, schema, "movimientos_inventario")) &&
+      (await tieneColumna(client, schema, "movimientos_inventario", "ubicacion_id"))
+    ) {
+      const movQ = await client.query<{ ubicacion_id: string }>(
+        `SELECT ubicacion_id FROM ${quoteSchemaTable(schema, "movimientos_inventario")}
+          WHERE venta_id = $1::uuid AND empresa_id = $2::uuid
+            AND tipo = 'SALIDA' AND ubicacion_id IS NOT NULL
+          LIMIT 1`,
+        [id, empresaId]
+      );
+      ubicacionId = movQ.rows[0]?.ubicacion_id ?? null;
+    }
+    if (ubicacionId === null && venta.reparto_id) {
       const ubiQ = await client.query<{ ubicacion_id: string | null }>(
         `SELECT c.ubicacion_id
            FROM ${quoteSchemaTable(schema, "repartos")} r

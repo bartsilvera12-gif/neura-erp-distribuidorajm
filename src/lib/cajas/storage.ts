@@ -53,7 +53,8 @@ export async function abrirCaja(montoApertura: number): Promise<ResultadoCaja> {
 /** Cierra la caja con el efectivo contado. Devuelve la diferencia contra lo esperado. */
 export async function cerrarCaja(
   cajaId: string,
-  montoContado: number
+  montoContado: number,
+  sencillo?: number
 ): Promise<
   { ok: true; contado: number; esperado: number; diferencia: number } | { ok: false; error: string }
 > {
@@ -63,7 +64,10 @@ export async function cerrarCaja(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monto_cierre_contado: montoContado }),
+        body: JSON.stringify({
+          monto_cierre_contado: montoContado,
+          ...(sencillo !== undefined ? { sencillo } : {}),
+        }),
       }
     );
     const json = (await res.json()) as {
@@ -115,6 +119,25 @@ export async function registrarMovimientoCaja(
     if (!res.ok || !json.success) {
       return { ok: false, error: json.error ?? "No se pudo registrar el movimiento." };
     }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+/** Guarda el sencillo (cambio) que tiene el cajero en una caja abierta. */
+export async function guardarSencillo(
+  cajaId: string,
+  sencillo: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(`/api/cajas/${encodeURIComponent(cajaId)}/sencillo`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sencillo }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) return { ok: false, error: j.error ?? "No se pudo guardar el sencillo." };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };

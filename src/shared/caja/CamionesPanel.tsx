@@ -15,8 +15,6 @@ const TEAL = "#4FAEB2";
  * La baja es lógica: los repartos viejos apuntan al camión, y borrarlo dejaría
  * el histórico sin poder decir de qué camión salió cada venta.
  *
- * Se abre a pedido y no siempre: dar de alta un camión pasa una vez cada
- * tanto, mientras que abrir el reparto pasa todas las mañanas.
  */
 export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
   const { camiones, isLoading, mutate } = useCamiones(true);
@@ -83,7 +81,7 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
         <p className="py-4 text-sm text-slate-400">Cargando camiones…</p>
       ) : camiones.length === 0 ? (
         <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-          Todavía no hay camiones. Dá de alta el primero para poder abrir repartos.
+          Todavía no hay camiones. Dá de alta el primero y asignale quién lo maneja.
         </p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -103,11 +101,11 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
               </span>
               {c.activo ? (
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
-                  <span className="hidden sm:inline">Vendedor</span>
+                  <span className="hidden sm:inline">Usuario</span>
                   <select
                     value={c.repartidor_id ?? ""}
                     onChange={(e) => handleRepartidor(c.id, e.target.value || null)}
-                    aria-label={`Vendedor del camión ${c.alias}`}
+                    aria-label={`Usuario del camión ${c.alias}`}
                     className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:ring-2 focus:ring-[#4FAEB2]"
                   >
                     <option value="">Sin asignar</option>
@@ -142,8 +140,8 @@ export default function CamionesPanel({ onCambio }: { onCambio?: () => void }) {
       )}
 
       <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-        El camión con vendedor asignado abre su reparto solo, con el primer cobro del día, y
-        arranca con lo que quedó arriba del cierre anterior.
+        Quien tiene un camión asignado vende de ese camión. La mercadería sube al camión con
+        una compra que tenga ese camión como destino.
       </p>
 
       {objetivosDe ? (

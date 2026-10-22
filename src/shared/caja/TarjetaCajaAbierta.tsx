@@ -18,6 +18,7 @@ import { cerrarCaja, registrarMovimientoCaja, type TipoMovimientoCaja } from "@/
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 import AperturaCaja from "./AperturaCaja";
 import ModalCaja from "./ModalCaja";
+import { VentasPorCategoria } from "./TarjetaArqueo";
 
 const TEAL = "#4FAEB2";
 
@@ -52,6 +53,13 @@ function cantidadPorMedio(caja: ArqueoCaja | null, medio: string): number {
 }
 
 /** Lo que salió del cajón EN EFECTIVO: es lo único que baja el esperado. */
+/** Lo que entró a mano en efectivo (la plata de un repartidor, etc.). */
+function ingresosManualesEfectivo(movimientos: MovimientoManualCaja[]): number {
+  return movimientos
+    .filter((m) => (m.tipo === "ingreso" || m.tipo === "ajuste") && m.medio === "efectivo")
+    .reduce((s, m) => s + m.monto, 0);
+}
+
 function egresosEfectivo(movimientos: MovimientoManualCaja[]): number {
   return movimientos
     .filter((m) => esSalida(m.tipo) && m.medio === "efectivo")
@@ -358,16 +366,26 @@ function ModalCierre({
   const [monto, setMonto] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sencillo y monedas (cambio): arranca con lo cargado en el arqueo y suma al
+  // esperado. El esperado que llega ya trae el guardado: se lo saca y se suma
+  // el de este campo.
+  const sencilloGuardado = detalle?.sencillo ?? 0;
+  const [sencilloTxt, setSencilloTxt] = useState(
+    sencilloGuardado > 0 ? String(Math.round(sencilloGuardado)) : ""
+  );
+  const sencillo = Number(sencilloTxt || "0");
+  const esperadoConSencillo = esperado - sencilloGuardado + sencillo;
 
   const valor = Number(monto);
   const valido = monto.trim() !== "" && Number.isFinite(valor) && valor >= 0;
-  const diferencia = valido ? valor - esperado : 0;
+  const diferencia = valido ? valor - esperadoConSencillo : 0;
 
   const ventasEfectivo = porMedio(detalle, "efectivo");
   const cantEfectivo = cantidadPorMedio(detalle, "efectivo");
   const ventasTransfer = porMedio(detalle, "transferencia");
   const ventasTarjeta = porMedio(detalle, "tarjeta");
   const egresos = egresosEfectivo(movimientos);
+  const ingresosManuales = ingresosManualesEfectivo(movimientos);
 
   async function guardar() {
     if (guardando) return;
@@ -377,7 +395,7 @@ function ModalCierre({
     }
     setGuardando(true);
     setError(null);
-    const res = await cerrarCaja(cajaId, valor);
+    const res = await cerrarCaja(cajaId, valor, sencillo);
     setGuardando(false);
     if (!res.ok) {
       setError(res.error);
@@ -416,6 +434,20 @@ function ModalCierre({
             hay que creer; con esto se puede discutir dónde no cuadra. */}
         <div className="space-y-2 rounded-xl bg-slate-50 p-4">
           <FilaDesglose label="Apertura" valor={gs(apertura)} />
+          <label className="flex items-center justify-between gap-4">
+            <span className="text-sm text-slate-600">Sencillo y monedas (cambio)</span>
+            <input
+              inputMode="numeric"
+              value={conMiles(sencilloTxt)}
+              onChange={(e) => {
+                setError(null);
+                setSencilloTxt(soloDigitos(e.target.value));
+              }}
+              placeholder="0"
+              aria-label="Sencillo y monedas"
+              className="h-8 w-32 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+            />
+          </label>
           <FilaDesglose
             label={`Ventas efectivo${cantEfectivo > 0 ? ` (${cantEfectivo})` : ""}`}
             valor={gs(ventasEfectivo)}
@@ -430,11 +462,20 @@ function ModalCierre({
           {ventasTarjeta > 0 ? (
             <FilaDesglose label="Ventas tarjeta (no suma)" valor={gs(ventasTarjeta)} tenue />
           ) : null}
+          {ingresosManuales > 0 ? (
+            <FilaDesglose label="+ Ingresos manuales" valor={gs(ingresosManuales)} />
+          ) : null}
           {egresos > 0 ? (
             <FilaDesglose label="− Egresos manuales" valor={`-${gs(egresos)}`} />
           ) : null}
-          <FilaDesglose label="Efectivo esperado" valor={gs(esperado)} destacado />
+          <FilaDesglose label="Efectivo esperado" valor={gs(esperadoConSencillo)} destacado />
         </div>
+
+        {(detalle?.por_categoria ?? []).length > 0 ? (
+          <div className="rounded-xl border border-slate-100 px-4 pb-3">
+            <VentasPorCategoria filas={detalle?.por_categoria ?? []} />
+          </div>
+        ) : null}
 
         <label className="block">
           <span className={ETIQUETA}>Efectivo contado (Gs.)</span>
@@ -512,7 +553,7 @@ function ModalCierre({
  * esperado y debajo están los movimientos que lo explican. El total del día ya
  * lo cuenta el arqueo; repetirlo acá arriba solo tapaba esto.
  */
-export default function TarjetaCajaAbierta() {
+export default function TarjetaCajaAbierta({ onCambio }: { onCambio?: () => void } = {}) {
   const { caja, disponible, mutate: recargarCaja } = useCajaAbierta();
   const { arqueo, mutate: recargarArqueo } = useArqueo();
   const [modal, setModal] = useState<"ninguno" | "movimiento" | "cierre">("ninguno");
@@ -521,6 +562,7 @@ export default function TarjetaCajaAbierta() {
     setModal("ninguno");
     void recargarCaja();
     void recargarArqueo();
+    onCambio?.();
   }
 
   if (!disponible) return null;

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import SelectorCondicionVenta from "@/shared/caja/SelectorCondicionVenta";
 import SelectorComprobante from "@/shared/caja/SelectorComprobante";
-import SelectorListaPrecio from "@/shared/caja/SelectorListaPrecio";
 import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useMemo, useState } from "react";
 import {
@@ -33,6 +32,7 @@ import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
+import { coincideBusqueda, textoSinResultado } from "@/shared/caja/lector-codigo";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
@@ -134,6 +134,13 @@ function Encabezado({ caja, compacto }: { caja: CajaVenta; compacto?: boolean })
           </button>
         )}
         <h1 className="text-base font-semibold">Nueva venta</h1>
+        {/* El cajero no tiene menú: desde acá llega a sus movimientos y al cierre. */}
+        <Link
+          href="/ventas/arqueo"
+          className="ml-auto rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold active:bg-white/20"
+        >
+          Arqueo
+        </Link>
       </div>
 
       {/* Stepper: los pasos ya completados vuelven a ser tocables. Con el teclado
@@ -386,9 +393,7 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return conStock;
-    return conStock.filter(
-      (p) => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-    );
+    return conStock.filter((p) => coincideBusqueda(p, q));
   }, [conStock, query]);
 
 
@@ -410,16 +415,12 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
 
   return (
     <div className="pt-4">
-      {/* Antes de buscar: la lista decide el precio que se ve en cada producto. */}
-      <div className="mb-3">
-        <SelectorListaPrecio caja={caja} />
-      </div>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar producto…"
+          placeholder="Buscar por nombre, SKU o código de barras…"
           className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
         />
       </div>
@@ -445,12 +446,12 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
       ) : errorCatalogo ? null : filtrados.length === 0 ? (
         <p className="mt-6 text-center text-sm text-slate-400">
           {query
-            ? `Ningún producto coincide con “${query}”.`
+            ? textoSinResultado(productos, query)
             : origen?.tipo === "camion_sin_ubicacion"
               ? "No se puede vender desde este camión hasta que tenga ubicación de inventario."
               : origen?.tipo === "camion"
-                ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-                : "No hay stock en el salón. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
+                ? "El camión está vacío. Se carga con una compra que tenga este camión como destino."
+                : "No hay stock en el salón. Cargalo con una compra con destino Salón, o pasá mercadería de un camión al salón desde Camiones."}
         {textoMotivoSalon(origen) ? (
           <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
         ) : null}

@@ -5,6 +5,31 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { listCompras, insertCompraConImpacto, insertCompraMultilinea, type CompraItemInput, type IvaTipo } from "@/lib/compras/server/compras-pg";
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
+import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { guardarListaDestino } from "@/lib/camiones/server/camion-del-usuario";
+import { setCategoriaPrincipal } from "@/lib/inventario/server/catalogos-pg";
+
+/** Pone la categoría principal de cada producto (solo categorías de la empresa). */
+async function asignarCategorias(schema: string, empresaId: string, porProducto: Map<string, string>) {
+  const pool = getChatPostgresPool();
+  if (!pool) return;
+  const ids = [...new Set(porProducto.values())];
+  const validas = await pool.query<{ id: string }>(
+    `SELECT id FROM ${quoteSchemaTable(schema, "categorias_productos")}
+      WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
+    [empresaId, ids]
+  );
+  const ok = new Set(validas.rows.map((r) => r.id));
+  for (const [productoId, categoriaId] of porProducto) {
+    if (!ok.has(categoriaId)) continue;
+    await pool.query(
+      `UPDATE ${quoteSchemaTable(schema, "productos")} SET categoria_principal_id = $1::uuid, updated_at = now()
+        WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+      [categoriaId, productoId, empresaId]
+    );
+    await setCategoriaPrincipal(schema, empresaId, productoId, categoriaId);
+  }
+}
 
 type TenantCtx = Awaited<ReturnType<typeof getTenantSupabaseFromAuth>>;
 
@@ -47,22 +72,64 @@ async function postMultilinea(
 ) {
   const s = (v: unknown) => (v == null ? "" : String(v).trim());
   const origen = body.origen_compra === "recepcion" ? "recepcion" : "directa";
+  // Compra simple (la de la pantalla Compras): sin timbrado, sin cuentas y
+  // sin asiento contable.
+  const sinAsiento = body.sin_asiento === true;
 
   if (!UUID_RE.test(s(body.proveedor_id))) {
     return NextResponse.json(errorResponse("Falta el proveedor."), { status: 400 });
   }
-  if (!s(body.nro_timbrado)) {
+  if (!sinAsiento && !s(body.nro_timbrado)) {
     return NextResponse.json(errorResponse("Falta el N° de timbrado."), { status: 400 });
   }
 
+  // Destino: un camión (su mercadería sube a ese camión) o el salón.
+  let destinoUbicacionId: string | null = null;
+  const camionId = s(body.destino_camion_id);
+  if (origen === "directa" && camionId) {
+    if (!UUID_RE.test(camionId)) {
+      return NextResponse.json(errorResponse("Camión inválido."), { status: 400 });
+    }
+    const pool = getChatPostgresPool();
+    if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
+    const q = await pool.query<{ ubicacion_id: string | null; alias: string }>(
+      `SELECT ubicacion_id, alias FROM ${quoteSchemaTable(schema, "camiones")}
+        WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+      [camionId, empresaId]
+    );
+    const cam = q.rows[0];
+    if (!cam) return NextResponse.json(errorResponse("Ese camión no existe."), { status: 404 });
+    if (!cam.ubicacion_id) {
+      return NextResponse.json(
+        errorResponse(`El camión ${cam.alias} no tiene ubicación de inventario. Revisalo en Camiones.`),
+        { status: 409 }
+      );
+    }
+    destinoUbicacionId = cam.ubicacion_id;
+  }
+  // Lista con la que va a vender el destino (camión o salón): se elige en la
+  // compra (SQL 47 y 50).
+  const listaDestino =
+    body.lista_precio === "mayorista" || body.lista_precio === "minorista"
+      ? body.lista_precio
+      : body.lista_precio_camion === "mayorista" || body.lista_precio_camion === "minorista"
+        ? body.lista_precio_camion
+        : null;
+
   const items: CompraItemInput[] = [];
+  // Categoría elegida para cada producto en la compra: queda como su
+  // categoría principal en Inventario.
+  const categorias = new Map<string, string>();
   for (const [i, raw] of (body.items as unknown[]).entries()) {
     const o = (raw ?? {}) as Record<string, unknown>;
+    if (UUID_RE.test(s(o.producto_id)) && UUID_RE.test(s(o.categoria_id))) {
+      categorias.set(s(o.producto_id), s(o.categoria_id));
+    }
     const iva = s(o.iva_tipo);
     if (!["exenta", "5", "10"].includes(iva)) {
       return NextResponse.json(errorResponse(`Línea ${i + 1}: tipo de IVA inválido.`), { status: 400 });
     }
-    if (!UUID_RE.test(s(o.cuenta_contable_id))) {
+    if (!sinAsiento && !UUID_RE.test(s(o.cuenta_contable_id))) {
       return NextResponse.json(errorResponse(`Línea ${i + 1}: seleccioná la cuenta contable.`), { status: 400 });
     }
     if (!(Number(o.cantidad) > 0)) {
@@ -78,7 +145,7 @@ async function postMultilinea(
       cantidad: Number(o.cantidad),
       costo_unitario: Number(o.costo_unitario),
       iva_tipo: iva as IvaTipo,
-      cuenta_contable_id: s(o.cuenta_contable_id),
+      cuenta_contable_id: UUID_RE.test(s(o.cuenta_contable_id)) ? s(o.cuenta_contable_id) : null,
       recepcion_item_id: UUID_RE.test(s(o.recepcion_item_id)) ? s(o.recepcion_item_id) : null,
       precio_venta: o.precio_venta != null ? Number(o.precio_venta) : null,
       margen_venta: o.margen_venta != null ? Number(o.margen_venta) : null,
@@ -97,6 +164,7 @@ async function postMultilinea(
       tipo_pago: body.tipo_pago === "credito" ? "credito" : "contado",
       plazo_dias: s(body.plazo_dias) ? parseInt(s(body.plazo_dias), 10) || null : null,
       cuotas: s(body.cuotas) ? parseInt(s(body.cuotas), 10) || null : null,
+      // Vacío y no null: en bases heredadas la columna es NOT NULL.
       nro_timbrado: s(body.nro_timbrado).toUpperCase(),
       numero_comprobante: s(body.numero_comprobante) || null,
       tipo_comprobante: s(body.tipo_comprobante) || null,
@@ -105,7 +173,25 @@ async function postMultilinea(
       idempotency_key: UUID_RE.test(idem) ? idem : null,
       created_by: ctx.auth.usuarioCatalogId ?? null,
       usuario_nombre: ctx.auth.user?.email ?? null,
+      sin_asiento: sinAsiento,
+      destino_ubicacion_id: destinoUbicacionId,
+    }, {
+      // Editar: la compra original se anula en la misma transacción.
+      reemplazaCompraId: UUID_RE.test(s(body.reemplaza_compra_id)) ? s(body.reemplaza_compra_id) : null,
     });
+    if (categorias.size > 0) {
+      await asignarCategorias(schema, empresaId, categorias).catch((e) =>
+        console.error("[/api/compras] categorías:", e)
+      );
+    }
+    if (origen === "directa" && listaDestino) {
+      await guardarListaDestino({
+        schema,
+        empresaId,
+        camionId: destinoUbicacionId ? camionId : null,
+        lista: listaDestino,
+      }).catch((e) => console.error("[/api/compras] lista del destino:", e));
+    }
     return NextResponse.json(successResponse({ compra: out.compra, movimiento_id: out.movimiento_id }));
   } catch (e) {
     if (e instanceof ContabilidadError) {

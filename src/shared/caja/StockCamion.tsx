@@ -17,7 +17,7 @@ const TEAL = "#4FAEB2";
  * dos fuentes que puedan diferir.
  *
  * Es de consulta: el vendedor lo mira en la calle para saber si le queda
- * mercadería. Cargar y transferir se hace desde Repartos.
+ * mercadería. La carga entra por Compras; contar y bajar al salón, en Camiones.
  */
 export default function StockCamion() {
   const { camiones, isLoading: cargandoCamiones } = useCamiones();
@@ -70,7 +70,7 @@ export default function StockCamion() {
             Todavía no hay camiones cargados.
           </p>
           <Link
-            href="/ventas/repartos"
+            href="/camiones"
             className="mt-3 inline-block rounded-lg px-4 py-2 text-sm font-semibold text-white"
             style={{ backgroundColor: TEAL }}
           >
@@ -129,11 +129,11 @@ export default function StockCamion() {
               : "El camión está vacío."}
           </p>
           <Link
-            href="/ventas/repartos"
+            href="/compras"
             className="mt-3 inline-block rounded-lg px-4 py-2 text-sm font-semibold text-white"
             style={{ backgroundColor: TEAL }}
           >
-            Cargar el camión
+            Cargar con una compra
           </Link>
         </div>
       ) : (
@@ -178,10 +178,10 @@ export default function StockCamion() {
       ) : null}
 
       <Link
-        href="/ventas/repartos"
+        href="/camiones"
         className="mt-2 block w-full rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600"
       >
-        Cargar o transferir mercadería
+        Contar o bajar al salón
       </Link>
     </div>
   );

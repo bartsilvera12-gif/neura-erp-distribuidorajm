@@ -43,6 +43,7 @@ import {
   BarChart3,
   HandCoins,
   Landmark,
+  Truck,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -133,6 +134,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     { label: "Categorías", href: "/inventario/categorias" },
     { label: "Depósitos / Ubicaciones", href: "/inventario/ubicaciones" },
   ]},
+  { key: "camiones", slug: "camiones", label: "Camiones", href: "/camiones", icon: Truck },
   { key: "clientes", slug: "clientes", label: "Clientes", href: "/clientes", icon: Users },
   {
     key: "compras",
@@ -296,7 +298,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Finanzas",
     itemKeys: ["ventas", "cobranzas", "bancos", "pagos", "gastos", "compras", "notas_credito", "reportes"],
   },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "produccion"] },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "camiones", "produccion"] },
   {
     id: "omnicanal",
     title: "Omnicanal",

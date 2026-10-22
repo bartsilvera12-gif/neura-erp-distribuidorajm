@@ -17,7 +17,7 @@ import {
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
-import { productoPorCodigo, useLectorGlobal } from "@/shared/caja/lector-codigo";
+import { coincideBusqueda, leerEtiquetaBalanza, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
@@ -120,14 +120,22 @@ export default function CajaDesktop() {
             <Atajo tecla="F9">finalizar</Atajo>
           </p>
         </div>
-        {soloCaja ? null : (
+        <div className="flex shrink-0 gap-2">
           <Link
-            href="/ventas"
+            href="/ventas/arqueo"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
-            Ver ventas
+            Arqueo y movimientos
           </Link>
-        )}
+          {soloCaja ? null : (
+            <Link
+              href="/ventas"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Ver ventas
+            </Link>
+          )}
+        </div>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -165,12 +173,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   const filtrados = useMemo(() => {
     const q = texto.trim().toLowerCase();
     if (!q) return conStock;
-    return conStock.filter(
-      (p) =>
-        p.nombre.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        (p.codigo_barras ?? "").toLowerCase().includes(q)
-    );
+    return conStock.filter((p) => coincideBusqueda(p, q));
   }, [conStock, texto]);
 
   // El producto marcado con las flechas: Enter agrega ese. Vuelve al primero
@@ -215,6 +218,12 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   function escaneado(codigo: string, cantidad: number | null = null): boolean {
     const p = productoPorCodigo(productos, codigo);
     if (!p) {
+      // Etiqueta de la balanza: trae el producto y el peso.
+      const etiqueta = leerEtiquetaBalanza(productos, codigo);
+      if (etiqueta) {
+        agregar(etiqueta.producto, etiqueta.cantidad);
+        return true;
+      }
       setAviso({ ok: false, texto: `No hay ningún producto con el código ${codigo}.` });
       return false;
     }
@@ -246,7 +255,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       return;
     }
     // Primero el código exacto (lo que manda el lector); si no, el marcado.
-    if (productoPorCodigo(productos, texto)) {
+    if (productoPorCodigo(productos, texto) || leerEtiquetaBalanza(productos, texto)) {
       escaneado(texto.trim(), multiplicador);
       return;
     }
@@ -310,10 +319,10 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       ) : errorCatalogo ? null : filtrados.length === 0 ? (
         <p className="py-16 text-center text-sm text-slate-400">
           {texto.trim()
-            ? `Ningún producto coincide con “${texto.trim()}”.`
+            ? textoSinResultado(productos, texto)
             : caja.repartoId
-              ? "El camión está vacío. Cargalo desde Repartos antes de salir."
-              : "No hay stock disponible para vender. Si la mercadería está arriba de un camión, se vende desde su reparto; para vender de mostrador, descargala en Repartos o cargala desde Inventario."}
+              ? "El camión está vacío. Se carga con una compra que tenga este camión como destino."
+              : "No hay stock disponible para vender en el salón. Cargalo con una compra con destino Salón, o pasá mercadería de un camión al salón desde Camiones."}
               {textoMotivoSalon(origen) ? (
                 <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
               ) : null}

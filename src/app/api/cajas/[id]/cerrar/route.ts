@@ -70,12 +70,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     client = await pool.connect();
     await client.query("BEGIN");
 
+    const hayColSencillo =
+      (
+        await client.query(
+          `SELECT 1 FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = 'cajas' AND column_name = 'sencillo'`,
+          [schema]
+        )
+      ).rows.length > 0;
+
     const cajaQ = await client.query<{
       estado: string;
       numero_caja: number;
       monto_apertura: string;
+      sencillo: string;
     }>(
-      `SELECT estado, numero_caja, monto_apertura::text AS monto_apertura
+      `SELECT estado, numero_caja, monto_apertura::text AS monto_apertura,
+              ${hayColSencillo ? "sencillo::text" : "'0'"} AS sencillo
          FROM ${tC} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
       [id, empresaId]
     );
@@ -100,8 +111,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const porTipo = new Map(movsQ.rows.map((r) => [r.tipo, num(r.total)]));
 
     // `monto` se guarda siempre positivo y el signo lo da `tipo`.
+    // El sencillo: el que se cargó al cerrar manda; si no, el guardado.
+    const sencilloBody = Number(body?.sencillo);
+    const sencillo =
+      hayColSencillo && Number.isFinite(sencilloBody) && sencilloBody >= 0
+        ? Math.round(sencilloBody)
+        : num(cajaQ.rows[0].sencillo);
     const esperado =
       num(cajaQ.rows[0].monto_apertura) +
+      sencillo +
       (porTipo.get("ingreso") ?? 0) -
       (porTipo.get("egreso") ?? 0) -
       (porTipo.get("retiro") ?? 0) +
@@ -111,8 +129,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       `UPDATE ${tC}
           SET estado = 'cerrada', fecha_cierre = now(),
               monto_cierre_contado = $2, monto_esperado_efectivo = $3
+              ${hayColSencillo ? ", sencillo = $4" : ""}
         WHERE id = $1::uuid`,
-      [id, contado, esperado]
+      hayColSencillo ? [id, contado, esperado, sencillo] : [id, contado, esperado]
     );
 
     await client.query("COMMIT");

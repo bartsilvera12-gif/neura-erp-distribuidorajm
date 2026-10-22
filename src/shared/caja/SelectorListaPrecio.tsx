@@ -11,6 +11,17 @@ const TEAL = "#4FAEB2";
  * volverlos a poner.
  */
 export default function SelectorListaPrecio({ caja }: { caja: CajaVenta }) {
+  // La lista es la del camión o la del salón: se elige en la compra.
+  if (caja.listaFija) {
+    return (
+      <p className="text-sm text-slate-600">
+        <span className="font-semibold" style={{ color: TEAL }}>
+          {caja.lista === "mayorista" ? "Mayorista" : "Minorista"}
+        </span>{" "}
+        <span className="text-xs text-slate-400">(se elige en Compras)</span>
+      </p>
+    );
+  }
   return (
     <div>
       <div

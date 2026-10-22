@@ -33,6 +33,9 @@ export interface Compra {
 
   nro_timbrado: string;
 
+  /** 'registrada' | 'anulada'. */
+  estado?: string;
+
   /** N° de la factura del proveedor (001-001-0000001). */
   numero_comprobante?: string | null;
   /** Tipo de comprobante ('Factura' por defecto). */

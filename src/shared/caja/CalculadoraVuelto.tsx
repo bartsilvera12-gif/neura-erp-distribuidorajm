@@ -35,7 +35,12 @@ export default function CalculadoraVuelto({
   const entrega = caja.pagaConNum;
   const vuelto = entrega - total;
   const opciones = sugeridos(total);
-  const alto = grande ? "h-12 text-base" : "h-10 text-sm";
+  // Grande: el monto se lee de lejos y los botones se tocan sin errar.
+  const alto = grande ? "h-14 text-2xl" : "h-10 text-sm";
+  const boton = grande
+    ? "rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+    : "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100";
+  const importe = grande ? "text-3xl" : "text-xl";
 
   function escribir(v: string) {
     const digitos = v.replace(/\D/g, "");
@@ -62,7 +67,7 @@ export default function CalculadoraVuelto({
         <button
           type="button"
           onClick={() => caja.setPagaCon(Math.round(total).toLocaleString("es-PY"))}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+          className={boton}
         >
           Exacto
         </button>
@@ -71,7 +76,7 @@ export default function CalculadoraVuelto({
             key={b}
             type="button"
             onClick={() => caja.setPagaCon(b.toLocaleString("es-PY"))}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            className={boton}
           >
             {gs(b)}
           </button>
@@ -81,12 +86,12 @@ export default function CalculadoraVuelto({
         vuelto >= 0 ? (
           <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2">
             <span className="text-sm font-semibold text-emerald-800">Vuelto</span>
-            <span className="text-xl font-bold tabular-nums text-emerald-800">{gs(vuelto)}</span>
+            <span className={`${importe} font-bold tabular-nums text-emerald-800`}>{gs(vuelto)}</span>
           </div>
         ) : (
           <div className="mt-3 flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2">
             <span className="text-sm font-semibold text-amber-800">Falta</span>
-            <span className="text-xl font-bold tabular-nums text-amber-800">{gs(-vuelto)}</span>
+            <span className={`${importe} font-bold tabular-nums text-amber-800`}>{gs(-vuelto)}</span>
           </div>
         )
       ) : null}

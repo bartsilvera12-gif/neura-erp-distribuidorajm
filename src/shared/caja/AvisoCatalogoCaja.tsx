@@ -29,7 +29,7 @@ export default function AvisoCatalogoCaja({
         <span>
           El camión <span className="font-semibold">{origen.camion ?? "asignado"}</span> no tiene
           ubicación de inventario, así que no se sabe qué lleva arriba. No se puede vender desde
-          este camión hasta darle una: Repartos → Camiones.
+          este camión hasta darle una desde Camiones.
         </span>
       </p>
     );
@@ -74,11 +74,11 @@ export function textoMotivoSalon(
     case "rol_no_es_vendedor_movil":
       return "Estás como administrador: la caja vende del stock del salón. Para vender desde un camión, entrá con el usuario del repartidor.";
     case "sin_reparto_abierto":
-      return "No tenés ningún reparto abierto. Abrí uno en Repartos para vender del camión.";
+      return "No tenés un camión asignado: la caja vende del salón. Se asigna en Camiones.";
     case "usuario_no_encontrado":
       return "El usuario con el que entraste no figura en la lista de usuarios de la empresa (se busca por correo). Revisá que el correo de la ficha sea el mismo con el que iniciás sesión.";
     case "varios_repartos_abiertos":
-      return "Tenés más de un reparto abierto y no se puede saber de cuál vendés. Cerrá el que no corresponda en Repartos.";
+      return "Tenés más de un camión asignado y no se puede saber de cuál vendés. Revisalo en Camiones.";
     default:
       return null;
   }

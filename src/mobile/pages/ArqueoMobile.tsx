@@ -6,6 +6,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
 import { useRepartos } from "@/shared/hooks/useRepartos";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
@@ -65,6 +66,8 @@ export default function ArqueoMobile() {
 
 
       <div className="space-y-3 px-4 pt-4">
+        {/* Abrir, movimientos (ingreso, egreso, ajuste) y cerrar la caja. */}
+        <TarjetaCajaAbierta onCambio={() => mutate()} />
         {isLoading && !arqueo ? (
           <p className="py-10 text-center text-sm text-slate-400">Cargando…</p>
         ) : arqueo && !arqueo.disponible ? (
@@ -78,15 +81,17 @@ export default function ArqueoMobile() {
                 : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
           </p>
         ) : (
-          <>
+          <div className="factura-imprimible space-y-3 bg-white">
+            <style>{`@media print { @page { size: A4; margin: 12mm; } }`}</style>
+            <div className="hidden print:block">
+              <p className="text-lg font-bold text-slate-900">Cierre de caja</p>
+              <p className="text-sm text-slate-600">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
+            </div>
             {/* Lo cobrado por forma de pago, que es como lo leían en papel. */}
             <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
-            {/* El detalle caja por caja es del que controla el negocio, no del
-                vendedor: acá alcanza con lo cobrado del día. */}
-            {todas
-              ? (arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} />)
-              : null}
-          </>
+            {/* Cada caja con lo vendido por categoría y sus movimientos. */}
+            {(arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />)}
+          </div>
         )}
 
         {isAdmin ? (
@@ -99,12 +104,22 @@ export default function ArqueoMobile() {
           </button>
         ) : null}
 
+        {arqueo && arqueo.cajas.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="block w-full rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600"
+          >
+            Imprimir cierre del día
+          </button>
+        ) : null}
+
         {soloCaja ? null : (
           <Link
-            href="/ventas/cierre"
+            href="/camiones"
             className="block w-full rounded-xl border border-slate-200 bg-white py-3.5 text-center text-sm font-medium text-slate-600"
           >
-            Cierre de reparto
+            Camiones
           </Link>
         )}
         <Link

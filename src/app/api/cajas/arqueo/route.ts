@@ -161,6 +161,7 @@ export async function GET(request: NextRequest) {
       monto_cierre_contado: string | null;
       monto_esperado_efectivo: string | null;
       diferencia: string | null;
+      sencillo: string;
     }>(
       pool,
       `SELECT id, numero_caja, estado,
@@ -169,7 +170,8 @@ export async function GET(request: NextRequest) {
               monto_apertura::text AS monto_apertura,
               monto_cierre_contado::text    AS monto_cierre_contado,
               monto_esperado_efectivo::text AS monto_esperado_efectivo,
-              diferencia::text              AS diferencia
+              diferencia::text              AS diferencia,
+              ${cols.has("sencillo") ? "sencillo::text" : "'0'"} AS sencillo
          FROM ${tC}
         WHERE empresa_id = $1::uuid
           AND ( (fecha_apertura AT TIME ZONE $2)::date = $3::date
@@ -247,6 +249,7 @@ export async function GET(request: NextRequest) {
       caja_id: string;
       tipo: string;
       medio: string;
+      es_venta: boolean;
       cantidad: string;
       total: string;
     }>(
@@ -254,13 +257,14 @@ export async function GET(request: NextRequest) {
       `SELECT caja_id,
               tipo,
               lower(btrim(COALESCE(medio_pago, ''))) AS medio,
+              (venta_id IS NOT NULL)                 AS es_venta,
               count(*)::text                         AS cantidad,
               COALESCE(sum(monto), 0)::text          AS total
          FROM ${tM}
         WHERE empresa_id = $1::uuid
           AND caja_id = ANY($2::uuid[])
           AND anulado_at IS NULL
-        GROUP BY caja_id, tipo, 3
+        GROUP BY caja_id, tipo, 3, 4
         ORDER BY sum(monto) DESC NULLS LAST`,
       [empresaId, ids]
     );
@@ -305,6 +309,49 @@ export async function GET(request: NextRequest) {
       porCaja.set(row.caja_id, lista);
     }
 
+    // Lo vendido en cada caja por categoría (la principal de cada producto):
+    // carne, pollo, lácteos… Es un agregado: si falta alguna tabla o columna,
+    // el arqueo sale igual, sin este desglose.
+    const porCategoria = new Map<string, { categoria: string; total: number }[]>();
+    try {
+      const ids = cajasQ.rows.map((c) => c.id);
+      const ok = await queryWithRetry<{ cp: string | null; col: string | null; cc: string | null }>(
+        pool,
+        `SELECT to_regclass($1)::text AS cp,
+                (SELECT column_name FROM information_schema.columns
+                  WHERE table_schema = $2 AND table_name = 'productos' AND column_name = 'categoria_principal_id') AS col,
+                (SELECT column_name FROM information_schema.columns
+                  WHERE table_schema = $2 AND table_name = 'ventas' AND column_name = 'caja_id') AS cc`,
+        [`${schema}.categorias_productos`, schema]
+      );
+      const r0 = ok.rows[0];
+      if (ids.length > 0 && hayVentas.rows[0]?.t && r0?.cp && r0?.col && r0?.cc) {
+        const catQ = await queryWithRetry<{ caja_id: string; categoria: string; total: string }>(
+          pool,
+          `SELECT v.caja_id,
+                  COALESCE(NULLIF(btrim(cp.nombre), ''), 'Sin categoría') AS categoria,
+                  COALESCE(sum(vi.total_linea), 0)::text AS total
+             FROM ${quoteSchemaTable(schema, "ventas_items")} vi
+             JOIN ${quoteSchemaTable(schema, "ventas")} v ON v.id = vi.venta_id
+             LEFT JOIN ${quoteSchemaTable(schema, "productos")} p ON p.id = vi.producto_id
+             LEFT JOIN ${quoteSchemaTable(schema, "categorias_productos")} cp ON cp.id = p.categoria_principal_id
+            WHERE v.empresa_id = $1::uuid
+              AND v.caja_id = ANY($2::uuid[])
+              AND COALESCE(v.estado, '') <> 'anulada'
+            GROUP BY 1, 2
+            ORDER BY sum(vi.total_linea) DESC NULLS LAST`,
+          [empresaId, ids]
+        );
+        for (const row of catQ.rows) {
+          const lista = porCategoria.get(row.caja_id) ?? [];
+          lista.push({ categoria: row.categoria, total: num(row.total) });
+          porCategoria.set(row.caja_id, lista);
+        }
+      }
+    } catch (e) {
+      console.error("[/api/cajas/arqueo] ventas por categoría:", e instanceof Error ? e.message : e);
+    }
+
     const cajas = cajasQ.rows.map((c) => {
       const movs = porCaja.get(c.id) ?? [];
       const apertura = num(c.monto_apertura);
@@ -319,12 +366,18 @@ export async function GET(request: NextRequest) {
           .reduce((acc, m) => acc + num(m.total), 0);
 
       // `monto` se guarda siempre positivo y el signo lo da `tipo`.
+      // El sencillo (cambio del cajero) está en el cajón aunque no entró por
+      // una venta: suma al esperado.
+      const sencillo = num(c.sencillo);
       const esperadoEfectivo =
-        apertura + sumar(ingresos, true) - sumar(salidas, true) + sumar(ajustes, true);
+        apertura + sencillo + sumar(ingresos, true) - sumar(salidas, true) + sumar(ajustes, true);
 
-      // Desglose de lo que entró, por medio. Es lo que se compara al cerrar.
+      // Desglose de lo COBRADO POR VENTAS, por medio. Los ingresos cargados a
+      // mano (la plata que trae un repartidor, por ejemplo) van aparte, en
+      // movimientos_manuales: suman al esperado pero no son ventas.
+      const ingresosVentas = ingresos.filter((m) => m.es_venta);
       const porMedio = new Map<string, { cantidad: number; total: number }>();
-      for (const m of ingresos) {
+      for (const m of ingresosVentas) {
         const acc = porMedio.get(m.medio) ?? { cantidad: 0, total: 0 };
         acc.cantidad += num(m.cantidad);
         acc.total += num(m.total);
@@ -340,8 +393,10 @@ export async function GET(request: NextRequest) {
         fecha_apertura: c.fecha_apertura,
         fecha_cierre: c.fecha_cierre,
         monto_apertura: apertura,
+        sencillo,
+        por_categoria: porCategoria.get(c.id) ?? [],
         ingresos: {
-          total: sumar(ingresos, false),
+          total: sumar(ingresosVentas, false),
           por_medio: [...porMedio.entries()]
             .map(([medio, v]) => ({ medio, label: etiquetaMedio(medio), ...v }))
             .sort((a, b) => b.total - a.total),

@@ -9,7 +9,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
-import { asegurarRepartoAbierto } from "@/lib/repartos/server/asegurar-reparto";
+import { listaDelCamion, listaDelSalon, ubicacionDelCamionDe } from "@/lib/camiones/server/camion-del-usuario";
 import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import type { Venta, LineaVenta } from "@/lib/ventas/types";
 
@@ -213,21 +213,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Si el que vende tiene un camión asignado, la venta sale de su reparto
-    // aunque nadie lo haya abierto esa mañana: se abre solo, con el saldo que
-    // quedó arriba del cierre anterior. Sin esto la venta queda sin camión, la
-    // mercadería sale del stock general y el cierre del día dice "sin reparto"
-    // con el camión en la calle.
-    let repartoFinal = repartoId;
-    if (repartoFinal === null) {
+    // Si el que vende tiene un camión asignado, la venta sale de su camión:
+    // sin repartos que abrir ni cerrar. Una venta que todavía llega con
+    // `reparto_id` (pantallas viejas) sigue saliendo de ese camión.
+    let ubicacionCamion: string | null = null;
+    if (repartoId === null) {
       const yo = await usuarioDelSchema({
         schema,
         empresaId: auth.empresa_id,
         email: auth.user.email,
         catalogId: auth.usuarioCatalogId ?? null,
       });
-      repartoFinal = await asegurarRepartoAbierto(schema, auth.empresa_id, yo?.id ?? null);
+      ubicacionCamion = await ubicacionDelCamionDe({ schema, empresaId: auth.empresa_id, usuario: yo });
     }
+    // El camión vende con su lista (se elige en la compra), no con la que
+    // mande la pantalla.
+    // Y el salón con la suya (SQL 50). Una venta con reparto viejo, la que mande.
+    const listaFinal: ListaPrecio = ubicacionCamion
+      ? ((await listaDelCamion({ schema, empresaId: auth.empresa_id, ubicacionId: ubicacionCamion })) ?? listaPrecio)
+      : repartoId === null
+        ? ((await listaDelSalon({ schema, empresaId: auth.empresa_id })) ?? listaPrecio)
+        : listaPrecio;
 
     const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
       schema,
@@ -239,8 +245,9 @@ export async function POST(request: NextRequest) {
       tipoVenta,
       metodoPago,
       cajaId: cajaFinal,
-      repartoId: repartoFinal,
-      listaPrecio,
+      repartoId,
+      ubicacionId: ubicacionCamion,
+      listaPrecio: listaFinal,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
       subtotalDeclarado,

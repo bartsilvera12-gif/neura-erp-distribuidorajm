@@ -19,6 +19,7 @@ import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
 import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
 import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
+import { listaDelCamion, listaDelSalon } from "@/lib/camiones/server/camion-del-usuario";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
@@ -252,16 +253,23 @@ export async function GET(request: NextRequest) {
     // De dónde sale la lista. Viaja en la respuesta porque hasta ahora cada
     // pantalla lo suponía por su cuenta y podía decir "salón" mostrando el
     // camión, o al revés.
+    // La lista de precio del camión (se elige en la compra): la caja la usa
+    // sin preguntar.
+    const listaCamion =
+      paraVenta && ubicacionId
+        ? await listaDelCamion({ schema, empresaId, ubicacionId }).catch(() => null)
+        : null;
     const origen = camionSinUbicacion
       ? { tipo: "camion_sin_ubicacion" as const, camion: camion.camion }
       : ubicacionId
-        ? { tipo: "camion" as const, camion: camion.camion }
+        ? { tipo: "camion" as const, camion: camion.camion, lista_precio: listaCamion }
         : paraVenta
           ? {
               tipo: "salon" as const,
               camion: null,
               motivo_salon: motivoSalon,
               error_camion: errorCamion,
+              lista_precio: await listaDelSalon({ schema, empresaId }).catch(() => null),
             }
           : { tipo: "empresa" as const, camion: null };
 
@@ -355,7 +363,35 @@ export async function GET(request: NextRequest) {
         r.imagen_path ? signProductoImagen(ctx.supabase, r.imagen_path, 3600) : null
       )
     );
-    const productos = rows.map((r, i) => ({ ...r, imagen_url: firmadas[i] ?? null }));
+    let productos = rows.map((r, i) => ({ ...r, imagen_url: firmadas[i] ?? null }));
+
+    // En la caja, lo más vendido primero: en cuántas ventas entró cada
+    // producto en los últimos 60 días (sin anuladas). Lo que no se vendió
+    // queda abajo, por nombre. Si la consulta falla, queda el orden por nombre.
+    if (paraVenta && productos.length > 1) {
+      try {
+        const ventasQ = await queryWithRetry<{ producto_id: string; n: string }>(
+          pool,
+          `SELECT vi.producto_id, count(DISTINCT vi.venta_id)::text AS n
+             FROM ${quoteSchemaTable(schema, "ventas_items")} vi
+             JOIN ${quoteSchemaTable(schema, "ventas")} v ON v.id = vi.venta_id
+            WHERE v.empresa_id = $1::uuid
+              AND COALESCE(v.estado, '') <> 'anulada'
+              AND v.fecha >= now() - interval '60 days'
+            GROUP BY vi.producto_id`,
+          [empresaId]
+        );
+        const veces = new Map(ventasQ.rows.map((r) => [r.producto_id, Number(r.n)]));
+        const campo = (r: object, k: string) => String((r as Record<string, unknown>)[k] ?? "");
+        productos = [...productos].sort(
+          (a, b) =>
+            (veces.get(campo(b, "id")) ?? 0) - (veces.get(campo(a, "id")) ?? 0) ||
+            campo(a, "nombre").localeCompare(campo(b, "nombre"), "es")
+        );
+      } catch (e) {
+        console.error("[/api/productos] orden por más vendidos:", e);
+      }
+    }
 
     return NextResponse.json(successResponse({ productos, origen }));
   } catch (err) {

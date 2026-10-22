@@ -214,7 +214,7 @@ export default function FinalizarVenta({
               }
             }}
           >
-            <CalculadoraVuelto caja={caja} inputId="cobro-paga-con" />
+            <CalculadoraVuelto caja={caja} inputId="cobro-paga-con" grande />
           </div>
         ) : null}
 

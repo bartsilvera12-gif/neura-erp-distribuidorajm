@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Printer, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
 import TablaArqueo from "@/shared/caja/TablaArqueo";
-import AperturaCaja from "@/shared/caja/AperturaCaja";
-import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
+import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 
@@ -21,8 +20,6 @@ export default function ArqueoDesktop() {
   const [todas, setTodas] = useState(false);
   const { isAdmin } = useIsAdmin();
   const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
-  // Abrir y cerrar la caja se hace acá: es la pantalla donde se mira el cuadre.
-  const { caja: cajaAbierta, mutate: recargarCaja } = useCajaAbierta();
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -45,6 +42,15 @@ export default function ArqueoDesktop() {
           />
           <button
             type="button"
+            onClick={() => window.print()}
+            disabled={!arqueo || arqueo.cajas.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </button>
+          <button
+            type="button"
             onClick={() => mutate()}
             aria-label="Actualizar arqueo"
             className="rounded-lg border border-slate-200 bg-white p-2.5 text-slate-600 transition-colors hover:bg-slate-50"
@@ -53,10 +59,10 @@ export default function ArqueoDesktop() {
           </button>
           {soloCaja ? null : (
             <Link
-              href="/ventas/cierre"
+              href="/camiones"
               className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
             >
-              Cierre de reparto
+              Camiones
             </Link>
           )}
           <Link
@@ -69,14 +75,10 @@ export default function ArqueoDesktop() {
         </div>
       </header>
 
+      {/* Abrir la caja, cargar movimientos (ingreso, egreso, ajuste) y cerrarla:
+          acá, porque el cajero no entra a Ventas. */}
       <div className="mb-5">
-        <AperturaCaja
-          caja={cajaAbierta}
-          onCambio={() => {
-            recargarCaja();
-            mutate();
-          }}
-        />
+        <TarjetaCajaAbierta onCambio={() => mutate()} />
       </div>
 
 
@@ -103,11 +105,17 @@ export default function ArqueoDesktop() {
                 : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
         </p>
       ) : (
-        <div className="space-y-4">
+        // Lo que va al papel con "Imprimir": el cierre del día completo.
+        <div className="factura-imprimible space-y-4 bg-white">
+          <style>{`@media print { @page { size: A4; margin: 12mm; } }`}</style>
+          <div className="hidden print:block">
+            <p className="text-lg font-bold text-slate-900">Cierre de caja</p>
+            <p className="text-sm text-slate-600">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
+          </div>
           <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2 print:grid-cols-1">
             {(arqueo?.cajas ?? []).map((c) => (
-              <TarjetaArqueo key={c.id} caja={c} />
+              <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />
             ))}
           </div>
         </div>

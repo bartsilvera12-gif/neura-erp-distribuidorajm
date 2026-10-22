@@ -3,11 +3,29 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { updateCompraCuentaContable } from "@/lib/compras/server/compras-pg";
+import { getCompraDetalle, updateCompraCuentaContable } from "@/lib/compras/server/compras-pg";
 
 export const runtime = "nodejs";
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** GET /api/compras/[id] — los productos de la compra y a dónde entraron. */
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const ctx = await getTenantSupabaseFromAuth(request);
+    if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+    const { id } = await context.params;
+    if (!UUID_RE.test(id)) return NextResponse.json(errorResponse("Compra inválida."), { status: 400 });
+    const schema = await fetchDataSchemaForEmpresaId(ctx.auth.empresa_id);
+    const detalle = await getCompraDetalle(schema, ctx.auth.empresa_id, id);
+    return NextResponse.json(successResponse(detalle));
+  } catch (err) {
+    console.error("[/api/compras/[id] GET]", err instanceof Error ? err.message : err);
+    return NextResponse.json(errorResponse("No se pudo leer la compra."), { status: 500 });
+  }
+}
 
 /**
  * PATCH /api/compras/[id] — edición ACOTADA: solo la cuenta contable asociada.

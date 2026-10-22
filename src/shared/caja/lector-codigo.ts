@@ -8,14 +8,67 @@ import type { Producto } from "@/lib/inventario/types";
  * como si fuera un teclado, muy rápido, y termina con Enter.
  */
 
+/** Si el producto coincide con lo buscado: por nombre, SKU o código de barras. */
+export function coincideBusqueda(p: Producto, q: string): boolean {
+  const t = q.trim().toLowerCase();
+  if (!t) return true;
+  return (
+    String(p.nombre ?? "").toLowerCase().includes(t) ||
+    String(p.sku ?? "").toLowerCase().includes(t) ||
+    String(p.codigo_barras ?? "").toLowerCase().includes(t)
+  );
+}
+
+/**
+ * Cuando la búsqueda no encuentra nada con stock: si el producto existe pero
+ * está en cero, decirlo. "Ningún producto coincide" hacía creer que la caja
+ * no buscaba por código.
+ */
+export function textoSinResultado(productos: Producto[], q: string): string {
+  const t = q.trim();
+  const sinStock = productos.filter((p) => p.stock_actual <= 0 && coincideBusqueda(p, t));
+  if (sinStock.length === 0) return `Ningún producto coincide con “${t}”.`;
+  const nombres = sinStock.slice(0, 3).map((p) => p.nombre).join(", ");
+  return `${nombres}${sinStock.length > 3 ? ` y ${sinStock.length - 3} más` : ""}: sin stock para vender acá (stock 0).`;
+}
+
+/** Dígito de control EAN-13 de los primeros 12 dígitos. */
+function digitoEan13(doce: string): number {
+  let suma = 0;
+  for (let i = 0; i < 12; i++) suma += Number(doce[i]) * (i % 2 === 0 ? 1 : 3);
+  return (10 - (suma % 10)) % 10;
+}
+
+/**
+ * Etiqueta de balanza (EAN-13 de peso variable): 2 + código del producto en la
+ * balanza (6 dígitos) + peso en gramos (5) + control. Ej.: 2 000073 00220 6 =
+ * producto 73, 0,220 kg. El código de la balanza es el SKU del producto.
+ */
+export function leerEtiquetaBalanza(
+  productos: Producto[],
+  codigo: string
+): { producto: Producto; cantidad: number } | null {
+  const c = codigo.trim();
+  if (!/^2\d{12}$/.test(c)) return null;
+  if (digitoEan13(c.slice(0, 12)) !== Number(c[12])) return null;
+  const plu = String(Number(c.slice(1, 7)));
+  const gramos = Number(c.slice(7, 12));
+  if (!(gramos > 0)) return null;
+  const producto =
+    productos.find((p) => String(p.sku ?? "").trim() === plu) ??
+    productos.find((p) => String(Number(String(p.sku ?? "").trim())) === plu) ??
+    null;
+  return producto ? { producto, cantidad: gramos / 1000 } : null;
+}
+
 /** El producto de un código: por código de barras exacto, o por SKU. */
 export function productoPorCodigo(productos: Producto[], codigo: string): Producto | null {
   const c = codigo.trim();
   if (!c) return null;
-  const porBarras = productos.find((p) => (p.codigo_barras ?? "").trim() === c);
+  const porBarras = productos.find((p) => String(p.codigo_barras ?? "").trim() === c);
   if (porBarras) return porBarras;
   const cl = c.toLowerCase();
-  return productos.find((p) => p.sku.trim().toLowerCase() === cl) ?? null;
+  return productos.find((p) => String(p.sku ?? "").trim().toLowerCase() === cl) ?? null;
 }
 
 /**

@@ -1,23 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Store, Trash2, Truck } from "lucide-react";
 import SelectorUnidad from "@/components/inventario/SelectorUnidad";
 import MontoInput from "@/components/ui/MontoInput";
-import { saveCompra, uploadCompraComprobante, getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
-import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
+import { uploadCompraComprobante } from "@/lib/compras/storage";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
 import { getProveedores, proveedorExiste, createProveedor } from "@/lib/proveedores/storage";
 import { getProductos, productoExiste, saveProducto } from "@/lib/inventario/storage";
-import type { TipoIva, TipoPago, Moneda } from "@/lib/compras/types";
+import { useCamiones } from "@/shared/hooks/useRepartos";
+import { formatCantidad } from "@/lib/inventario/unidades";
+import type { TipoIva, TipoPago } from "@/lib/compras/types";
+import { TIPOS_COMPROBANTE_COMPRA, type TipoComprobanteCompra } from "@/lib/compras/comprobantes";
 import type { Proveedor } from "@/lib/proveedores/types";
 import type { Producto } from "@/lib/inventario/types";
+import type { Compra } from "@/lib/compras/types";
+import { getCompraDetalle } from "@/lib/compras/storage";
+
+/**
+ * Nueva compra: varios productos en una lista, y a dónde entra la mercadería —
+ * al salón o arriba de un camión (la carga del camión es esto).
+ *
+ * Sin timbrado, sin cuentas contables y sin asiento: queda el stock y, si es a
+ * crédito, la deuda con el proveedor (Cuentas por pagar).
+ */
 
 const fmt = (v: number) => `₲ ${Math.round(v).toLocaleString("es-PY")}`;
-function margenColor(m: number) {
-  if (m >= 40) return "text-emerald-600";
-  if (m >= 20) return "text-amber-600";
-  return "text-red-600";
-}
 function genIdemKey(): string {
   try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -30,13 +38,37 @@ function formatComprobante(raw: string): string {
   if (d.length > 6) out += "-" + d.slice(6, 13);
   return out;
 }
-const TIPOS_COMPROBANTE = ["Factura", "Factura Electrónica", "Factura Virtual", "Factura de Exportación", "Autofactura", "Boleta", "Otro"];
+/** IVA del producto ("10%", "5%", "EXENTA") al vocabulario de compras. */
+function ivaDe(p: Producto): TipoIva {
+  const v = (p.tipo_iva ?? "").trim().toUpperCase();
+  if (v === "5%" || v === "5") return "5";
+  if (v === "EXENTA" || v === "EXENTO" || v === "0" || v === "0%") return "exenta";
+  return "10";
+}
+const IVA_FACTOR: Record<TipoIva, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
+
 const MAX_COMPROBANTE_MB = 8;
 const ALLOWED_COMPROBANTE = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
 const INPUT = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] bg-white";
+const CELDA = "w-full rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 bg-white";
 const LABEL = "mb-1 block text-xs font-semibold text-slate-500";
 const SUBLABEL = "mb-1 block text-[11px] font-medium text-slate-500";
+
+type Linea = {
+  producto_id: string;
+  nombre: string;
+  unidad: string;
+  cantidad: string;
+  costo: string;
+  iva: TipoIva;
+  precio: string;
+  /** Categoría principal del producto ("" = sin categoría). */
+  categoria: string;
+};
+
+type Categoria = { id: string; nombre: string };
+const NUEVA_CATEGORIA = "__nueva__";
 
 function Seg<T extends string>({ value, options, onChange }: {
   value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
@@ -63,21 +95,112 @@ function Titulo({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Modal compacto de alta de compra directa (misma lógica que /compras/nueva, estilo ERP). */
-export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export default function NuevaCompraModal({
+  onClose,
+  onSaved,
+  editar,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+  /** Editar: se abre con esta compra cargada y al guardar la reemplaza. */
+  editar?: Compra;
+}) {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
+  const { camiones, mutate: recargarCamiones } = useCamiones();
   const [idempotencyKey] = useState(genIdemKey);
 
-  const [form, setForm] = useState({
-    proveedor_id: "", producto_id: "", nro_timbrado: "",
-    tipo_comprobante: "Factura", numero_comprobante: "",
-    cantidad: "", moneda: "PYG" as Moneda, tipo_cambio: "", costo_unitario_input: "",
-    iva_tipo: "10" as TipoIva, precio_venta: "", tipo_pago: "contado" as TipoPago,
-    plazo_dias: "", cuotas: "1", cuenta_contable_id: "", cuenta_contrapartida_id: "", cuenta_proveedores_id: "",
-  });
-  const set = (patch: Partial<typeof form>) => setForm((p) => ({ ...p, ...patch }));
+  const [proveedorId, setProveedorId] = useState("");
+  /** "" = salón; si no, el id del camión. */
+  const [destino, setDestino] = useState("");
+  /** "camion" sin camión elegido todavía: se muestra el buscador de camiones. */
+  const [tipoDestino, setTipoDestino] = useState<"salon" | "camion">("salon");
+  /** Lista con la que va a vender el destino (salón o camión). */
+  const [lista, setLista] = useState<"minorista" | "mayorista">("minorista");
+  const [listaSalon, setListaSalon] = useState<"minorista" | "mayorista">("minorista");
+  function elegirDestino(id: string) {
+    setDestino(id);
+    if (!id) {
+      setLista(listaSalon);
+      return;
+    }
+    const c = camiones.find((x) => x.id === id);
+    setLista(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
+  }
+  const camionOpts: ComboOption[] = useMemo(
+    () => camiones.map((c) => ({ id: c.id, label: nombreCamion(c.alias), sub: c.repartidor ?? "Sin usuario asignado" })),
+    [camiones]
+  );
+  const [numeroComprobante, setNumeroComprobante] = useState("");
+  const [tipoComprobante, setTipoComprobante] = useState<TipoComprobanteCompra>("Factura");
+  const [generando, setGenerando] = useState(false);
+
+  /** Número interno para este tipo (REM-000001…), cuando el proveedor no da uno. */
+  async function generarNumero() {
+    setGenerando(true);
+    try {
+      const r = await fetch(`/api/compras/siguiente-numero?tipo=${encodeURIComponent(tipoComprobante)}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const j = (await r.json().catch(() => ({}))) as { data?: { numero?: string }; error?: string };
+      if (j.data?.numero) setNumeroComprobante(j.data.numero);
+      else setErrorSubmit(j.error ?? "No se pudo generar el número.");
+    } finally {
+      setGenerando(false);
+    }
+  }
+  const [tipoPago, setTipoPago] = useState<TipoPago>("contado");
+  const [plazoDias, setPlazoDias] = useState("");
+  const [lineas, setLineas] = useState<Linea[]>([]);
+
+  // Editar: cuando están los productos y los camiones, se carga la compra.
+  const [precargada, setPrecargada] = useState(!editar);
+  useEffect(() => {
+    if (!editar || precargada || productos.length === 0) return;
+    let cancel = false;
+    void getCompraDetalle(editar.id).then((d) => {
+      if (cancel) return;
+      setProveedorId(String(editar.proveedor_id ?? ""));
+      if (editar.numero_comprobante) setNumeroComprobante(editar.numero_comprobante);
+      if (editar.tipo_comprobante && TIPOS_COMPROBANTE_COMPRA.some((t) => t.valor === editar.tipo_comprobante)) {
+        setTipoComprobante(editar.tipo_comprobante as TipoComprobanteCompra);
+      }
+      setTipoPago(editar.tipo_pago === "credito" ? "credito" : "contado");
+      if (editar.plazo_dias) setPlazoDias(String(editar.plazo_dias));
+      if (d?.destino_camion_id) {
+        setTipoDestino("camion");
+        elegirDestino(d.destino_camion_id);
+      }
+      const items = d?.items?.length
+        ? d.items
+        : [{ producto_id: editar.producto_id, producto_nombre: editar.producto_nombre, cantidad: editar.cantidad,
+             costo_unitario: editar.costo_unitario, iva_tipo: editar.iva_tipo, total_linea: editar.total }];
+      setLineas(
+        items
+          .filter((it) => it.producto_id)
+          .map((it) => {
+            const p = productos.find((x) => x.id === it.producto_id);
+            const iva = it.iva_tipo === "5" || it.iva_tipo === "exenta" ? it.iva_tipo : "10";
+            return {
+              producto_id: String(it.producto_id),
+              nombre: p?.nombre ?? it.producto_nombre,
+              unidad: p?.unidad_medida ?? "",
+              cantidad: String(it.cantidad),
+              costo: String(Math.round(Number(it.costo_unitario) || 0)),
+              iva: iva as TipoIva,
+              precio: p && p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
+              categoria: p?.categoria_principal_id ?? "",
+            };
+          })
+      );
+      setPrecargada(true);
+    });
+    return () => {
+      cancel = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editar, precargada, productos, camiones]);
 
   // Foto/PDF de la factura (se sube después de crear la compra).
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -93,7 +216,37 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   const [errRuc, setErrRuc] = useState<string | null>(null);
   // Inline: producto
   const [nvProd, setNvProd] = useState(false);
-  const [fProd, setFProd] = useState({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0" });
+  const [fProd, setFProd] = useState({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0", categoria: "" });
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+
+  async function recargarCategorias() {
+    try {
+      const r = await fetch("/api/inventario/categorias", { credentials: "include", cache: "no-store" });
+      const j = (await r.json().catch(() => ({}))) as { data?: { categorias?: Categoria[] } };
+      setCategorias(j.data?.categorias ?? []);
+    } catch {
+      // Sin categorías la compra igual se puede cargar.
+    }
+  }
+
+  /** Crea una categoría desde la compra y la devuelve (o null si se canceló). */
+  async function crearCategoria(): Promise<string | null> {
+    const nombre = window.prompt("Nombre de la nueva categoría:")?.trim();
+    if (!nombre) return null;
+    const r = await fetch("/api/inventario/categorias", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre }),
+    });
+    const j = (await r.json().catch(() => ({}))) as { data?: { categoria?: Categoria }; error?: string };
+    if (!r.ok || !j.data?.categoria) {
+      setErrorSubmit(j.error ?? "No se pudo crear la categoría.");
+      return null;
+    }
+    await recargarCategorias();
+    return j.data.categoria.id;
+  }
   const [errSku, setErrSku] = useState<string | null>(null);
 
   async function recargarProveedores() {
@@ -105,100 +258,130 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   useEffect(() => {
     recargarProveedores();
     recargarProductos();
-    getCuentasContablesOpciones().then(setCuentas);
-    (async () => {
-      try {
-        const { apiFetch } = await import("@/lib/api/fetch-with-supabase-session");
-        const r = await apiFetch("/api/configuracion/contable");
-        const j = await r.json().catch(() => ({}));
-        const def = j?.data?.config?.cuenta_caja_id ?? j?.data?.config?.cuenta_banco_id ?? null;
-        const prov = j?.data?.config?.cuenta_proveedores_id ?? null;
-        setForm((prev) => ({
-          ...prev,
-          cuenta_contrapartida_id: prev.cuenta_contrapartida_id || def || "",
-          cuenta_proveedores_id: prev.cuenta_proveedores_id || prov || "",
-        }));
-      } catch {}
-    })();
+    recargarCategorias();
+    // Con qué lista vende hoy el salón: es el destino que viene elegido.
+    fetch("/api/compras/lista-salon", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { data?: { lista?: string } }) => {
+        const l = j.data?.lista === "mayorista" ? "mayorista" : "minorista";
+        setListaSalon(l);
+        setLista((prev) => (destino ? prev : l));
+      })
+      .catch(() => null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Cálculos
-  const cantidadNum = parseFloat(form.cantidad) || 0;
-  const costoInputNum = parseFloat(form.costo_unitario_input) || 0;
-  const tipoCambioNum = form.moneda === "USD" ? (parseFloat(form.tipo_cambio) || 0) : 1;
-  const costoUnitarioPYG = costoInputNum * tipoCambioNum;
-  const precioVentaNum = parseFloat(form.precio_venta) || 0;
-  const bruto = cantidadNum > 0 && costoUnitarioPYG > 0 ? cantidadNum * costoUnitarioPYG : 0;
-  const montoIva = form.iva_tipo === "exenta" ? 0
-    : form.iva_tipo === "5" ? Math.round(bruto * (5 / 105)) : Math.round(bruto * (10 / 110));
-  const subtotal = bruto - montoIva;
-  const total = bruto;
-  const margenVenta = precioVentaNum > 0 && costoUnitarioPYG > 0
-    ? ((precioVentaNum - costoUnitarioPYG) / precioVentaNum) * 100 : null;
-  const calculosListos = subtotal > 0 && precioVentaNum > 0;
-  const productoSel = productos.find((p) => p.id === form.producto_id);
 
   const provOpts: ComboOption[] = useMemo(
     () => proveedores.map((p) => ({ id: p.id, label: p.nombre, sub: p.ruc ? `RUC ${p.ruc}` : null })), [proveedores]);
-  const prodOpts: ComboOption[] = useMemo(
-    () => productos.map((p) => ({ id: p.id, label: p.nombre, sub: `${p.sku} · stock ${p.stock_actual}` })), [productos]);
 
-  function seleccionarProducto(id: string | null) {
-    const p = productos.find((x) => x.id === id);
-    set({ producto_id: id ?? "", costo_unitario_input: p ? String(p.costo_promedio) : form.costo_unitario_input,
-          precio_venta: p ? String(p.precio_venta) : form.precio_venta });
+  // ── Lista de productos ──
+  function agregar(p: Producto) {
+    setErrorSubmit(null);
+    const ya = lineas.findIndex((l) => l.producto_id === p.id);
+    if (ya === -1) {
+      setLineas((prev) => [
+        ...prev,
+        {
+          producto_id: p.id,
+          nombre: p.nombre,
+          unidad: p.unidad_medida,
+          cantidad: "1",
+          costo: p.costo_promedio > 0 ? String(Math.round(p.costo_promedio)) : "",
+          iva: ivaDe(p),
+          precio: p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
+          categoria: p.categoria_principal_id ?? "",
+        },
+      ]);
+    }
+    // El cursor va a la cantidad de ese renglón: se escribe y se sigue.
+    const idx = ya === -1 ? lineas.length : ya;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`compra-cant-${idx}`) as HTMLInputElement | null;
+      el?.focus();
+      el?.select();
+    });
   }
+  function cambiar(i: number, patch: Partial<Linea>) {
+    setLineas((prev) => prev.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  }
+  function quitar(i: number) {
+    setLineas((prev) => prev.filter((_, j) => j !== i));
+  }
+
+  const calc = lineas.map((l) => {
+    const cantidad = parseFloat(l.cantidad.replace(",", ".")) || 0;
+    const costo = parseFloat(l.costo) || 0;
+    const total = cantidad * costo;
+    const iva = Math.round(total * IVA_FACTOR[l.iva]);
+    return { cantidad, costo, total, iva, precio: parseFloat(l.precio) || 0 };
+  });
+  const total = calc.reduce((s, c) => s + c.total, 0);
+  const montoIva = calc.reduce((s, c) => s + c.iva, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorSubmit(null);
-    if (!form.proveedor_id) return setErrorSubmit("Seleccioná o agregá un proveedor.");
-    if (!form.producto_id) return setErrorSubmit("Seleccioná o agregá un producto.");
-    if (cantidadNum <= 0) return setErrorSubmit("La cantidad debe ser mayor a 0.");
-    if (costoUnitarioPYG <= 0) return setErrorSubmit("El costo unitario debe ser mayor a 0.");
-    if (precioVentaNum <= 0) return setErrorSubmit("El precio de venta debe ser mayor a 0.");
-    if (!form.nro_timbrado?.trim()) return setErrorSubmit("Ingresá el N° de timbrado.");
-    if (!form.cuenta_contable_id) return setErrorSubmit("Seleccioná la cuenta contable de la compra.");
-    if (form.tipo_pago === "contado" && !form.cuenta_contrapartida_id) return setErrorSubmit("Seleccioná la cuenta de pago (contado).");
-    if (form.tipo_pago === "credito" && !form.cuenta_proveedores_id) return setErrorSubmit("Seleccioná la cuenta a pagar (Proveedores).");
-
-    const todosProductos = await getProductos();
-    const proveedor = proveedores.find((p) => String(p.id) === form.proveedor_id);
-    const producto = todosProductos.find((p) => p.id === form.producto_id);
-    if (!proveedor) return setErrorSubmit("Proveedor no encontrado. Recargá e intentá de nuevo.");
-    if (!producto) return setErrorSubmit("Producto no encontrado. Recargá e intentá de nuevo.");
+    const proveedor = proveedores.find((p) => String(p.id) === proveedorId);
+    if (!proveedor) return setErrorSubmit("Elegí el proveedor.");
+    if (tipoDestino === "camion" && !destino) return setErrorSubmit("Elegí a qué camión va la mercadería.");
+    if (lineas.length === 0) return setErrorSubmit("Agregá al menos un producto.");
+    for (const [i, c] of calc.entries()) {
+      if (c.cantidad <= 0) return setErrorSubmit(`${lineas[i].nombre}: la cantidad tiene que ser mayor a 0.`);
+      if (c.costo <= 0) return setErrorSubmit(`${lineas[i].nombre}: poné el costo.`);
+    }
 
     setSubmitting(true);
     try {
-      const res = await saveCompra({
-        proveedor_id: String(proveedor.id), proveedor_nombre: proveedor.nombre,
-        producto_id: producto.id, producto_nombre: producto.nombre,
-        cantidad: cantidadNum, moneda: form.moneda, tipo_cambio: tipoCambioNum,
-        costo_unitario_original: costoInputNum, costo_unitario: costoUnitarioPYG,
-        iva_tipo: form.iva_tipo, subtotal, monto_iva: montoIva, total,
-        precio_venta: precioVentaNum, margen_venta: margenVenta ?? 0, tipo_pago: form.tipo_pago,
-        plazo_dias: form.tipo_pago === "credito" && form.plazo_dias ? parseInt(form.plazo_dias) : undefined,
-        cuotas: form.tipo_pago === "credito" ? Math.max(1, parseInt(form.cuotas) || 1) : undefined,
-        nro_timbrado: form.nro_timbrado,
-        numero_comprobante: form.numero_comprobante.trim() || null,
-        tipo_comprobante: form.tipo_comprobante || "Factura",
-        cuenta_contable_id: form.cuenta_contable_id || null,
-        cuenta_contrapartida_id: form.tipo_pago === "contado"
-          ? (form.cuenta_contrapartida_id || null)
-          : (form.cuenta_proveedores_id || null),
-        cuenta_contable_label: null,
-      }, idempotencyKey);
-      if (!res.success) { setErrorSubmit(res.error); return; }
+      const r = await fetch("/api/compras", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sin_asiento: true,
+          origen_compra: "directa",
+          idempotency_key: idempotencyKey,
+          reemplaza_compra_id: editar?.id ?? null,
+          proveedor_id: String(proveedor.id),
+          proveedor_nombre: proveedor.nombre,
+          destino_camion_id: destino || null,
+          lista_precio: lista,
+          moneda: "PYG",
+          tipo_cambio: 1,
+          tipo_pago: tipoPago,
+          plazo_dias: tipoPago === "credito" && plazoDias ? parseInt(plazoDias, 10) : null,
+          cuotas: tipoPago === "credito" ? 1 : null,
+          numero_comprobante: numeroComprobante.trim() || null,
+          tipo_comprobante: tipoComprobante,
+          items: lineas.map((l, i) => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.nombre,
+            cantidad: calc[i].cantidad,
+            costo_unitario: calc[i].costo,
+            iva_tipo: l.iva,
+            precio_venta: calc[i].precio > 0 ? calc[i].precio : null,
+            categoria_id: l.categoria || null,
+          })),
+        }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string; data?: { compra?: { id: string } } };
+      if (!r.ok || !j.success || !j.data?.compra) {
+        setErrorSubmit(j.error ?? `No se pudo guardar la compra (${r.status}).`);
+        return;
+      }
 
-      // Subir la foto/PDF de la factura (best-effort: la compra ya quedó guardada).
+      // La lista del camión pudo cambiar con esta compra.
+      if (destino) void recargarCamiones();
+
+      // Foto/PDF de la factura (best-effort: la compra ya quedó guardada).
       if (archivo) {
-        const up = await uploadCompraComprobante(res.compra.id, archivo);
+        const up = await uploadCompraComprobante(j.data.compra.id, archivo);
         if (!up.ok) {
           alert(`La compra se guardó, pero no se pudo adjuntar el comprobante: ${up.error}. Podés volver a adjuntarlo desde el detalle.`);
         }
       }
-      if (res.warning) alert(res.warning);
       onSaved();
+    } catch (err) {
+      setErrorSubmit(err instanceof Error ? err.message : "Error de red.");
     } finally {
       setSubmitting(false);
     }
@@ -223,7 +406,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     });
     if (!r.ok) { setErrRuc(r.error); return; }
     await recargarProveedores();
-    set({ proveedor_id: String(r.proveedor.id) });
+    setProveedorId(String(r.proveedor.id));
     setNvProv(false);
     setFProv({ nombre: "", ruc: "", telefono: "", email: "", contacto: "" });
   }
@@ -237,20 +420,24 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
       nombre: fProd.nombre.trim().toUpperCase(), sku: fProd.sku.trim().toUpperCase(),
       unidad_medida: fProd.unidad_medida.toUpperCase(), metodo_valuacion: "CPP",
       stock_actual: 0, stock_minimo: parseInt(fProd.stock_minimo) || 0,
-      // El precio de venta se toma del campo del formulario principal al guardar la compra.
-      costo_promedio: costoUnitarioPYG || 0, precio_venta: 0,
+      categoria_principal_id: fProd.categoria || null,
+      costo_promedio: 0, precio_venta: 0,
     });
     if (!creado) return;
     await recargarProductos();
-    set({ producto_id: creado.id });
+    agregar(creado);
     setNvProd(false);
-    setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0" });
+    setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0", categoria: "" });
   }
+
+  const destinoTexto = destino
+    ? `al camión ${camiones.find((c) => c.id === destino)?.alias ?? ""}`
+    : "al salón";
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-8" onClick={onClose}>
       <form onSubmit={handleSubmit}
-        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-3xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-2xl sm:border"
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border"
         onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
@@ -260,7 +447,14 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]" />
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Operaciones · Compras</p>
             </div>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Nueva compra</h2>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">
+              {editar ? `Editar compra ${editar.numero_control}` : "Nueva compra"}
+            </h2>
+            {editar ? (
+              <p className="mt-0.5 text-xs text-slate-500">
+                Al guardar, {editar.numero_control} queda anulada y se registra la compra corregida con un número nuevo.
+              </p>
+            ) : null}
           </div>
           <button type="button" onClick={onClose}
             className="rounded-lg px-2 py-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">✕</button>
@@ -269,32 +463,14 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
         {/* Cuerpo */}
         <div className="flex-1 space-y-5 overflow-y-auto p-5">
 
-          {/* Comprobante + Proveedor + Cuenta contable */}
+          {/* Proveedor y destino */}
           <section className="space-y-3">
-            <Titulo>Comprobante y proveedor</Titulo>
+            <Titulo>Proveedor y destino</Titulo>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className={LABEL}>Tipo de comprobante</label>
-                <select value={form.tipo_comprobante} onChange={(e) => set({ tipo_comprobante: e.target.value })} className={INPUT}>
-                  {TIPOS_COMPROBANTE.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>N° de factura</label>
-                <input value={form.numero_comprobante} inputMode="numeric"
-                  onChange={(e) => set({ numero_comprobante: formatComprobante(e.target.value) })}
-                  placeholder="Ej: 001-001-0000001" className={INPUT} />
-              </div>
-              <div>
-                <label className={LABEL}>N° de timbrado <span className="text-red-500">*</span></label>
-                <input value={form.nro_timbrado} inputMode="numeric"
-                  onChange={(e) => set({ nro_timbrado: e.target.value.replace(/\D/g, "").slice(0, 8) })}
-                  placeholder="Ej: 12345678 (8 dígitos)" className={INPUT} />
-              </div>
-              <div>
                 <label className={LABEL}>Proveedor <span className="text-red-500">*</span></label>
-                <SmartCombobox options={provOpts} value={form.proveedor_id || null}
-                  onChange={(id) => set({ proveedor_id: id ?? "" })} placeholder="Seleccionar proveedor…" />
+                <SmartCombobox options={provOpts} value={proveedorId || null}
+                  onChange={(id) => setProveedorId(id ?? "")} placeholder="Seleccionar proveedor…" />
                 {!nvProv ? (
                   <button type="button" onClick={() => setNvProv(true)}
                     className="mt-1.5 text-[11px] text-slate-400 underline underline-offset-2 transition-colors hover:text-[#3F8E91]">
@@ -302,27 +478,30 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   </button>
                 ) : null}
               </div>
-            </div>
-
-            {/* Foto / PDF de la factura */}
-            <div>
-              <label className={LABEL}>Foto de la factura (opcional)</label>
-              {!archivo ? (
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/5">
-                  <span className="text-base leading-none">📎</span> Adjuntar foto o PDF
-                </button>
-              ) : (
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
-                  <span className="truncate text-slate-700">📄 {archivo.name}</span>
-                  <button type="button" onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
-                    className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Quitar</button>
+              <div>
+                <label className={LABEL}>Comprobante (opcional)</label>
+                <div className="flex gap-2">
+                  <select value={tipoComprobante}
+                    onChange={(e) => { setTipoComprobante(e.target.value as TipoComprobanteCompra); setNumeroComprobante(""); }}
+                    aria-label="Tipo de comprobante"
+                    className="w-40 shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40">
+                    {TIPOS_COMPROBANTE_COMPRA.map((t) => <option key={t.valor} value={t.valor}>{t.valor}</option>)}
+                  </select>
+                  <input value={numeroComprobante}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // La máscara 001-001-0000001 solo para una factura tipeada a mano.
+                      setNumeroComprobante(/factura/i.test(tipoComprobante) && !/[a-z]/i.test(v) ? formatComprobante(v) : v.toUpperCase());
+                    }}
+                    placeholder={/factura/i.test(tipoComprobante) ? "001-001-0000001" : "N°"}
+                    aria-label={`N° de ${tipoComprobante.toLowerCase()}`}
+                    className={`${INPUT} min-w-0`} />
+                  <button type="button" onClick={generarNumero} disabled={generando}
+                    className="shrink-0 rounded-lg border border-[#4FAEB2] px-3 text-xs font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/10 disabled:opacity-40">
+                    {generando ? "…" : "Generar"}
+                  </button>
                 </div>
-              )}
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
-                onChange={(e) => elegirArchivo(e.target.files?.[0] ?? null)} />
-              {errArchivo && <p className="mt-1 text-[11px] text-red-600">{errArchivo}</p>}
-              <p className="mt-1 text-[11px] text-slate-400">JPG, PNG, WebP o PDF · máx. {MAX_COMPROBANTE_MB} MB.</p>
+              </div>
             </div>
 
             {nvProv && (
@@ -342,51 +521,65 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   <div><label className={SUBLABEL}>Email</label>
                     <input value={fProv.email} onChange={(e) => setFProv((p) => ({ ...p, email: e.target.value.toLowerCase() }))}
                       placeholder="Ej: ventas@empresa.com" className={INPUT} /></div>
-                  <div className="sm:col-span-2"><label className={SUBLABEL}>Persona de contacto</label>
-                    <input value={fProv.contacto} onChange={(e) => setFProv((p) => ({ ...p, contacto: e.target.value.toUpperCase() }))}
-                      placeholder="Ej: CARLOS MENDOZA" className={`${INPUT} uppercase`} /></div>
                 </div>
               </InlineBox>
             )}
 
             <div>
-              <label className={LABEL}>Cuenta contable <span className="text-red-500">*</span></label>
-              <CuentaCombobox cuentas={cuentas} value={form.cuenta_contable_id || null}
-                onChange={(id) => set({ cuenta_contable_id: id ?? "" })} placeholder="Buscar por código o denominación…" />
-              <p className="mt-1 text-[11px] text-slate-400">Solo cuentas activas e imputables (asentables).</p>
+              <label className={LABEL}>¿A dónde va la mercadería?</label>
+              {/* items-start: el buscador abierto crece hacia abajo sin estirar
+                  los botones de al lado. */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <div className="flex shrink-0 gap-2">
+                  <DestinoBoton activo={tipoDestino === "salon"}
+                    onClick={() => { setTipoDestino("salon"); elegirDestino(""); }}
+                    icono={<Store className="h-4 w-4" />} titulo="Salón" />
+                  <DestinoBoton activo={tipoDestino === "camion"}
+                    onClick={() => setTipoDestino("camion")}
+                    icono={<Truck className="h-4 w-4" />} titulo="Camión" />
+                </div>
+                {tipoDestino === "camion" ? (
+                  <div className="min-w-0 flex-1">
+                    {/* Buscador: con muchos camiones, un botón por camión no entra. */}
+                    <SmartCombobox options={camionOpts} value={destino || null} allowClear={false}
+                      onChange={(id) => elegirDestino(id ?? "")}
+                      placeholder={camiones.length === 0 ? "No hay camiones activos" : "Elegí el camión…"} />
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-3 max-w-sm">
+                <label className={SUBLABEL}>
+                  {tipoDestino === "camion" ? "El camión vende con precio" : "El salón vende con precio"}
+                </label>
+                <Seg<"minorista" | "mayorista"> value={lista}
+                  options={[{ value: "minorista", label: "Minorista" }, { value: "mayorista", label: "Mayorista (−10%)" }]}
+                  onChange={setLista} />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  La caja vende con esta lista; no se elige al vender.
+                </p>
+              </div>
             </div>
           </section>
 
-          {/* Producto */}
+          {/* Productos */}
           <section className="space-y-3">
-            <Titulo>Producto</Titulo>
-            <div>
-              <label className={LABEL}>Producto <span className="text-red-500">*</span></label>
-              <SmartCombobox options={prodOpts} value={form.producto_id || null}
-                onChange={seleccionarProducto} placeholder="Seleccionar producto…" />
-              {productoSel && (
-                <p className="mt-1.5 text-[11px] text-slate-400">
-                  Costo promedio: {fmt(productoSel.costo_promedio)} · Precio de venta: {fmt(productoSel.precio_venta)}
-                </p>
-              )}
-              {!nvProd ? (
-                <button type="button" onClick={() => setNvProd(true)}
-                  className="mt-1.5 text-[11px] text-slate-400 underline underline-offset-2 transition-colors hover:text-[#3F8E91]">
-                  ¿No encontrás el producto? Crear nuevo
-                </button>
-              ) : null}
-            </div>
-
-            {nvProd && (
+            <Titulo>Productos</Titulo>
+            <BuscadorProducto productos={productos} onElegir={agregar} />
+            {!nvProd ? (
+              <button type="button" onClick={() => setNvProd(true)}
+                className="text-[11px] text-slate-400 underline underline-offset-2 transition-colors hover:text-[#3F8E91]">
+                ¿No encontrás el producto? Crear nuevo
+              </button>
+            ) : (
               <InlineBox titulo="Nuevo producto" onCancel={() => { setNvProd(false); setErrSku(null); }}
                 onSave={agregarProducto} saveDisabled={!fProd.nombre.trim() || !fProd.sku.trim()}>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div><label className={SUBLABEL}>Nombre *</label>
                     <input value={fProd.nombre} onChange={(e) => setFProd((p) => ({ ...p, nombre: e.target.value.toUpperCase() }))}
-                      placeholder="Ej: REMERA OVERSIZE BLANCA" className={`${INPUT} uppercase`} /></div>
+                      placeholder="Ej: ACEITE NATURA 900 ML" className={`${INPUT} uppercase`} /></div>
                   <div><label className={SUBLABEL}>SKU / Código *</label>
                     <input value={fProd.sku} onChange={(e) => { setErrSku(null); setFProd((p) => ({ ...p, sku: e.target.value.toUpperCase() })); }}
-                      placeholder="Ej: OOTD-005" className={`${INPUT} uppercase ${errSku ? "border-red-300 bg-red-50" : ""}`} />
+                      placeholder="Ej: 1001" className={`${INPUT} uppercase ${errSku ? "border-red-300 bg-red-50" : ""}`} />
                     {errSku && <p className="mt-1 text-[11px] text-red-600">{errSku}</p>}</div>
                   <div><label className={SUBLABEL}>Unidad de medida</label>
                     <SelectorUnidad
@@ -397,142 +590,248 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   <div><label className={SUBLABEL}>Stock mínimo</label>
                     <input type="number" min={0} value={fProd.stock_minimo}
                       onChange={(e) => setFProd((p) => ({ ...p, stock_minimo: e.target.value }))} placeholder="Ej: 5" className={INPUT} /></div>
+                  <div><label className={SUBLABEL}>Categoría</label>
+                    <SelectorCategoria value={fProd.categoria} categorias={categorias}
+                      onChange={async (v) => {
+                        if (v === NUEVA_CATEGORIA) {
+                          const id = await crearCategoria();
+                          if (id) setFProd((p) => ({ ...p, categoria: id }));
+                        } else setFProd((p) => ({ ...p, categoria: v }));
+                      }}
+                      className={INPUT} /></div>
                 </div>
-                <p className="text-[11px] text-slate-400">El costo y el precio de venta se toman de los campos de la compra.</p>
+                <p className="text-[11px] text-slate-400">Se agrega a la lista; el costo y el precio se cargan ahí.</p>
               </InlineBox>
             )}
+
+            {lineas.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+                Buscá un producto (o escaneá el código) y se agrega a la lista.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Producto</th>
+                      <th className="w-24 px-2 py-2 text-right">Cantidad</th>
+                      <th className="w-32 px-2 py-2 text-right">Costo unit.</th>
+                      <th className="w-32 px-2 py-2 text-right">Precio venta</th>
+                      <th className="w-40 px-2 py-2 text-left">Categoría</th>
+                      <th className="w-28 px-3 py-2 text-right">Total</th>
+                      <th className="w-10" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {lineas.map((l, i) => (
+                      <tr key={l.producto_id}>
+                        <td className="px-3 py-2">
+                          <span className="block font-medium text-slate-900">{l.nombre}</span>
+                          <span className="block text-[11px] text-slate-400">{l.unidad}</span>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input id={`compra-cant-${i}`} inputMode="decimal" value={l.cantidad}
+                            onChange={(e) => cambiar(i, { cantidad: e.target.value })}
+                            aria-label={`Cantidad de ${l.nombre}`} className={CELDA} />
+                        </td>
+                        <td className="px-2 py-2">
+                          <MontoInput value={l.costo} onChange={(n) => cambiar(i, { costo: String(n) })}
+                            decimals={false} placeholder="0" aria-label={`Costo de ${l.nombre}`} className={CELDA} />
+                        </td>
+                        <td className="px-2 py-2">
+                          <MontoInput value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
+                            decimals={false} placeholder="—" aria-label={`Precio de venta de ${l.nombre}`} className={CELDA} />
+                        </td>
+                        <td className="px-2 py-2">
+                          <SelectorCategoria value={l.categoria} categorias={categorias}
+                            onChange={async (v) => {
+                              if (v === NUEVA_CATEGORIA) {
+                                const id = await crearCategoria();
+                                if (id) cambiar(i, { categoria: id });
+                              } else cambiar(i, { categoria: v });
+                            }}
+                            aria-label={`Categoría de ${l.nombre}`}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-sm" />
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
+                          {fmt(calc[i].total)}
+                        </td>
+                        <td className="px-1 py-2 text-center">
+                          <button type="button" onClick={() => quitar(i)} aria-label={`Quitar ${l.nombre}`}
+                            className="rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400">
+              El costo es con IVA incluido (el IVA es el del producto). El precio de venta y la categoría, si los ponés, quedan en el producto (Inventario).
+            </p>
           </section>
 
-          {/* Moneda, costos y precio de venta */}
+          {/* Pago y factura */}
           <section className="space-y-3">
-            <Titulo>Moneda, costos y precio</Titulo>
+            <Titulo>Pago</Titulo>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className={LABEL}>Moneda</label>
-                <Seg<Moneda> value={form.moneda}
-                  options={[{ value: "PYG", label: "Guaraníes (₲)" }, { value: "USD", label: "Dólares (USD)" }]}
-                  onChange={(v) => set({ moneda: v, tipo_cambio: "" })} />
-                {form.moneda === "USD" && (
+                <label className={LABEL}>Condición</label>
+                <Seg<TipoPago> value={tipoPago}
+                  options={[{ value: "contado", label: "Contado" }, { value: "credito", label: "Crédito" }]}
+                  onChange={setTipoPago} />
+                {tipoPago === "credito" && (
                   <div className="mt-2">
-                    <label className={SUBLABEL}>Tipo de cambio (USD → Gs.) <span className="text-red-500">*</span></label>
-                    <MontoInput value={form.tipo_cambio} onChange={(nn) => set({ tipo_cambio: String(nn) })}
-                      placeholder="Ej: 7500" className={INPUT} decimals={false} />
+                    <label className={SUBLABEL}>Plazo en días</label>
+                    <input inputMode="numeric" value={plazoDias}
+                      onChange={(e) => setPlazoDias(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Ej: 30" className={INPUT} />
                   </div>
                 )}
               </div>
-              <div><label className={LABEL}>Cantidad <span className="text-red-500">*</span></label>
-                <input type="number" min={1} step={1} value={form.cantidad}
-                  onChange={(e) => set({ cantidad: e.target.value })} placeholder="Ej: 50" className={INPUT} /></div>
-
-              {/* Par costo ↔ precio, siempre lado a lado */}
-              <div><label className={LABEL}>Costo unitario ({form.moneda === "USD" ? "USD" : "Gs."}) <span className="text-red-500">*</span></label>
-                <MontoInput value={form.costo_unitario_input} onChange={(nn) => set({ costo_unitario_input: String(nn) })}
-                  placeholder={form.moneda === "USD" ? "Ej: 12" : "Ej: 35000"} className={INPUT} decimals={form.moneda === "USD"} />
-                {form.moneda === "USD" && costoInputNum > 0 && tipoCambioNum > 0 && (
-                  <p className="mt-1 text-[11px] text-slate-400">≈ {fmt(costoUnitarioPYG)} por unidad</p>
-                )}
-              </div>
-              <div><label className={LABEL}>Precio de venta (Gs.) <span className="text-red-500">*</span></label>
-                <MontoInput value={form.precio_venta} onChange={(nn) => set({ precio_venta: String(nn) })}
-                  placeholder="Ej: 75000" className={INPUT} decimals={false} />
-                <p className="mt-1 text-[11px] text-slate-400">Se actualizará en inventario al guardar.</p>
-              </div>
-            </div>
-
-            {margenVenta !== null && calculosListos && (
-              <div className={`flex items-center justify-between rounded-lg border px-4 py-2.5 ${
-                margenVenta < 0 ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50"}`}>
-                <span className="text-sm text-slate-600">Margen sobre venta</span>
-                <span className={`text-lg font-bold tabular-nums ${margenColor(margenVenta)}`}>
-                  {margenVenta < 0 ? "⚠ " : ""}{margenVenta.toFixed(2)}%
-                </span>
-              </div>
-            )}
-
-            {/* IVA */}
-            <div>
-              <label className={LABEL}>IVA (incluido en el costo)</label>
-              <Seg<TipoIva> value={form.iva_tipo}
-                options={[{ value: "exenta", label: "Exenta" }, { value: "5", label: "IVA 5%" }, { value: "10", label: "IVA 10%" }]}
-                onChange={(v) => set({ iva_tipo: v })} />
-            </div>
-
-            {subtotal > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                <Stat label="Subtotal" value={fmt(subtotal)} />
-                <Stat label="IVA" value={form.iva_tipo === "exenta" ? "—" : fmt(montoIva)} />
-                <Stat label="Total" value={fmt(total)} highlight />
-              </div>
-            )}
-          </section>
-
-          {/* Condiciones de pago */}
-          <section className="space-y-3">
-            <Titulo>Condiciones de pago</Titulo>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label className={LABEL}>Tipo de pago</label>
-                <Seg<TipoPago> value={form.tipo_pago}
-                  options={[{ value: "contado", label: "Contado" }, { value: "credito", label: "Crédito" }]}
-                  onChange={(v) => set({ tipo_pago: v })} /></div>
-              {form.tipo_pago === "contado" ? (
-                <div><label className={LABEL}>Cuenta de pago <span className="text-red-500">*</span></label>
-                  <CuentaCombobox cuentas={cuentas} value={form.cuenta_contrapartida_id || null}
-                    onChange={(id) => set({ cuenta_contrapartida_id: id ?? "" })} placeholder="Caja, Banco…" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className={LABEL}>Plazo (días)</label>
-                    <input type="number" min={1} value={form.plazo_dias}
-                      onChange={(e) => set({ plazo_dias: e.target.value })} placeholder="Ej: 30" className={INPUT} /></div>
-                  <div><label className={LABEL}>Cuotas</label>
-                    <input type="number" min={1} value={form.cuotas}
-                      onChange={(e) => set({ cuotas: e.target.value })} placeholder="Ej: 3" className={INPUT} /></div>
-                </div>
-              )}
-            </div>
-            {form.tipo_pago === "credito" && (
               <div>
-                <label className={LABEL}>Cuenta de pago (Proveedores / a pagar) <span className="text-red-500">*</span></label>
-                <CuentaCombobox cuentas={cuentas} value={form.cuenta_proveedores_id || null}
-                  onChange={(id) => set({ cuenta_proveedores_id: id ?? "" })} placeholder="Proveedores, Cuentas a Pagar…" />
-                <p className="mt-1 text-[11px] text-slate-400">Cuenta donde queda registrada la deuda. La vas a ver en Reportes → Cuentas por Pagar.</p>
+                <label className={LABEL}>Foto de la factura (opcional)</label>
+                {!archivo ? (
+                  <button type="button" onClick={() => fileRef.current?.click()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/5">
+                    <span className="text-base leading-none">📎</span> Adjuntar foto o PDF
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                    <span className="truncate text-slate-700">📄 {archivo.name}</span>
+                    <button type="button" onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
+                      className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Quitar</button>
+                  </div>
+                )}
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                  onChange={(e) => elegirArchivo(e.target.files?.[0] ?? null)} />
+                {errArchivo && <p className="mt-1 text-[11px] text-red-600">{errArchivo}</p>}
               </div>
-            )}
-          </section>
-
-          {calculosListos && productoSel && (
-            <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
-              <span className="mt-0.5 leading-none">✓</span>
-              <span>Al guardar se registrará una <strong>entrada de {cantidadNum} unidades</strong> de <strong>{productoSel.nombre}</strong> en inventario.</span>
             </div>
-          )}
-
-          {errorSubmit && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorSubmit}</div>
-          )}
+          </section>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          <button type="button" onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50">
-            Cancelar
-          </button>
-          <button type="submit" disabled={!calculosListos || submitting}
-            className="rounded-xl bg-[#4FAEB2] px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-40">
-            {submitting ? "Guardando…" : "Guardar compra"}
-          </button>
+        {/* Pie con totales */}
+        <div className="border-t border-slate-100 px-5 py-4">
+          {errorSubmit ? (
+            <p role="alert" className="mb-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">{errorSubmit}</p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-slate-500">
+              {lineas.length} {lineas.length === 1 ? "producto" : "productos"} · IVA incluido {fmt(montoIva)}
+              <span className="block text-xl font-bold tabular-nums text-slate-900">{fmt(total)}</span>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={onClose}
+                className="h-11 rounded-lg px-4 text-sm font-medium text-slate-600 hover:bg-slate-100">
+                Cancelar
+              </button>
+              <button type="submit" disabled={submitting}
+                className="h-11 rounded-lg bg-[#4FAEB2] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#3F8E91] disabled:opacity-40">
+                {submitting ? "Guardando…" : editar ? "Guardar cambios" : `Guardar compra ${destinoTexto}`}
+              </button>
+            </div>
+          </div>
         </div>
       </form>
     </div>
   );
 }
 
-function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function DestinoBoton({ activo, onClick, icono, titulo }: {
+  activo: boolean; onClick: () => void; icono: React.ReactNode; titulo: string;
+}) {
   return (
-    <div className={`rounded-lg px-3 py-2.5 text-center ${highlight ? "bg-[#4FAEB2] text-white" : "border border-slate-200 bg-slate-50"}`}>
-      <p className={`mb-0.5 text-[11px] ${highlight ? "text-white/80" : "text-slate-400"}`}>{label}</p>
-      <p className={`text-sm font-bold tabular-nums ${highlight ? "" : "text-slate-700"}`}>{value}</p>
+    <button type="button" onClick={onClick} aria-pressed={activo}
+      className={`flex h-10 items-center gap-2 rounded-lg border-2 px-4 text-sm font-semibold transition-colors ${
+        activo ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+      <span className={activo ? "text-[#3F8E91]" : "text-slate-400"}>{icono}</span>
+      {titulo}
+    </button>
+  );
+}
+
+/** "Camion 1" ya dice camión; "01" no: se le agrega para que se entienda. */
+function nombreCamion(alias: string): string {
+  const sinTilde = alias.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return sinTilde.startsWith("camion") ? alias : `Camión ${alias}`;
+}
+
+/**
+ * Buscador para sumar productos a la compra: por nombre, SKU o código de
+ * barras. Enter agrega el marcado (flechas para moverse); un código exacto
+ * —lo que manda el lector— se agrega directo.
+ */
+function BuscadorProducto({ productos, onElegir }: { productos: Producto[]; onElegir: (p: Producto) => void }) {
+  const [q, setQ] = useState("");
+  const [marcado, setMarcado] = useState(0);
+  const [abierto, setAbierto] = useState(false);
+
+  const filtrados = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return [];
+    return productos
+      .filter((p) =>
+        p.nombre.toLowerCase().includes(t) ||
+        p.sku.toLowerCase().includes(t) ||
+        (p.codigo_barras ?? "").toLowerCase().includes(t))
+      .slice(0, 8);
+  }, [productos, q]);
+
+  function elegir(p: Producto) {
+    onElegir(p);
+    setQ("");
+    setMarcado(0);
+    setAbierto(false);
+  }
+
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+      <input
+        value={q}
+        autoComplete="off"
+        onChange={(e) => { setQ(e.target.value); setMarcado(0); setAbierto(true); }}
+        onFocus={() => setAbierto(true)}
+        onBlur={() => setTimeout(() => setAbierto(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setMarcado((i) => (e.key === "ArrowDown" ? Math.min(i + 1, filtrados.length - 1) : Math.max(i - 1, 0)));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const t = q.trim();
+            const exacto = productos.find((p) => (p.codigo_barras ?? "").trim() === t || p.sku.trim().toLowerCase() === t.toLowerCase());
+            const p = exacto ?? filtrados[marcado];
+            if (p) elegir(p);
+          } else if (e.key === "Escape") {
+            setQ("");
+          }
+        }}
+        placeholder="Buscar producto por nombre, SKU o código de barras para agregarlo…"
+        className={`${INPUT} pl-9`}
+      />
+      {abierto && filtrados.length > 0 ? (
+        <ul className="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+          {filtrados.map((p, i) => (
+            <li key={p.id}>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => elegir(p)}
+                onMouseEnter={() => setMarcado(i)}
+                className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left ${i === marcado ? "bg-[#4FAEB2]/10" : ""}`}>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-slate-900">{p.nombre}</span>
+                  <span className="block text-[11px] text-slate-400">{p.sku}</span>
+                </span>
+                <span className="shrink-0 text-[11px] text-slate-500">
+                  stock {formatCantidad(p.stock_actual, p.unidad_medida)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -555,5 +854,22 @@ function InlineBox({ titulo, children, onSave, onCancel, saveDisabled }: {
         </button>
       </div>
     </div>
+  );
+}
+
+/** Categorías de producto, con "sin categoría" y "+ nueva" al final. */
+function SelectorCategoria({ value, categorias, onChange, className, ...rest }: {
+  value: string;
+  categorias: Categoria[];
+  onChange: (v: string) => void;
+  className: string;
+  "aria-label"?: string;
+}) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className} {...rest}>
+      <option value="">Sin categoría</option>
+      {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      <option value={NUEVA_CATEGORIA}>+ Nueva categoría…</option>
+    </select>
   );
 }

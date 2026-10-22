@@ -1,6 +1,6 @@
-import RepartosPage from "@/shared/caja/RepartosPage";
+import { redirect } from "next/navigation";
 
-/** Repartos: carga del camión y control de mercadería. */
+/** Los repartos ya no existen: los camiones se manejan en su propio módulo. */
 export default function Page() {
-  return <RepartosPage />;
+  redirect("/camiones");
 }

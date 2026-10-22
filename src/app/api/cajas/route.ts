@@ -31,6 +31,25 @@ export async function GET(request: NextRequest) {
     }
 
     const tC = quoteSchemaTable(schema, "cajas");
+
+    // La caja abierta de QUIEN PREGUNTA (o una sin dueño), no la última de la
+    // empresa: es la misma regla que usan el arqueo y la apertura automática
+    // al cobrar. Antes el cajero vendía en la caja abierta del administrador
+    // y su arqueo salía en cero.
+    const colsQ = await queryWithRetry<{ columna: string }>(
+      pool,
+      `SELECT column_name AS columna FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'cajas' AND column_name IN ('abierta_por', 'usuario_id')`,
+      [schema]
+    );
+    const colDueno = colsQ.rows.some((r) => r.columna === "abierta_por")
+      ? "abierta_por"
+      : colsQ.rows.some((r) => r.columna === "usuario_id")
+        ? "usuario_id"
+        : null;
+    const yo = ctx.auth.usuarioCatalogId ?? null;
+    const filtroDueno = colDueno && yo ? ` AND (${colDueno} = $2::uuid OR ${colDueno} IS NULL)` : "";
+
     const q = await queryWithRetry<{
       id: string;
       numero_caja: number;
@@ -42,10 +61,10 @@ export async function GET(request: NextRequest) {
       `SELECT id, numero_caja, estado, fecha_apertura::text AS fecha_apertura,
               monto_apertura::text AS monto_apertura
          FROM ${tC}
-        WHERE empresa_id = $1::uuid AND estado = 'abierta'
-        ORDER BY fecha_apertura DESC
+        WHERE empresa_id = $1::uuid AND estado = 'abierta'${filtroDueno}
+        ORDER BY ${filtroDueno ? `(${colDueno} IS NULL), ` : ""}fecha_apertura DESC
         LIMIT 1`,
-      [empresaId]
+      filtroDueno ? [empresaId, yo] : [empresaId]
     );
 
     const row = q.rows[0];
@@ -133,13 +152,18 @@ export async function POST(request: NextRequest) {
     }
     const existe = new Set(cols.rows.map((r) => r.columna));
 
-    // Solo puede haber una caja abierta por empresa: con dos, una venta no
-    // sabría a cuál imputarse y el arqueo de las dos quedaría mal.
+    // Una caja abierta por usuario (la suya, o una sin dueño): cada uno vende
+    // en su caja y la cierra él. Es la regla del arqueo y de la apertura
+    // automática al cobrar. Antes era una por empresa, y el cajero no podía
+    // abrir la suya mientras el administrador tuviera la de él abierta.
+    const colDuenoAbrir = existe.has("abierta_por") ? "abierta_por" : existe.has("usuario_id") ? "usuario_id" : null;
+    const yoAbrir = ctx.auth.usuarioCatalogId ?? null;
+    const soloMia = colDuenoAbrir && yoAbrir ? ` AND (${colDuenoAbrir} = $2::uuid OR ${colDuenoAbrir} IS NULL)` : "";
     const abiertaQ = await client.query<{ numero_caja: number }>(
       `SELECT numero_caja FROM ${tC}
-        WHERE empresa_id = $1::uuid AND estado = 'abierta'
+        WHERE empresa_id = $1::uuid AND estado = 'abierta'${soloMia}
         FOR UPDATE`,
-      [empresaId]
+      soloMia ? [empresaId, yoAbrir] : [empresaId]
     );
     if (abiertaQ.rows.length > 0) {
       await client.query("ROLLBACK");
