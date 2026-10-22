@@ -34,6 +34,7 @@ export default function EditarProductoPage() {
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
+    tipo_iva: "10%",
   });
   const [imagenPath, setImagenPath] = useState<string | null>(null);
   const [imagenUrl, setImagenUrl] = useState<string | null>(null);
@@ -136,6 +137,7 @@ export default function EditarProductoPage() {
         stock_actual: String(p.stock_actual),
         stock_minimo: String(p.stock_minimo),
         unidad_medida: p.unidad_medida,
+        tipo_iva: p.tipo_iva ?? "10%",
       });
       setCodigoOriginal(p.codigo_barras ?? null);
       setImagenPath(p.imagen_path ?? null);
@@ -250,6 +252,7 @@ export default function EditarProductoPage() {
         stock_actual: parseInt(form.stock_actual) || 0,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida.trim().toUpperCase(),
+        tipo_iva: form.tipo_iva,
         categoria_principal_id: categoriaId,
         ubicacion_principal_id: ubicacionId,
         proveedor_principal_id: proveedorId,
@@ -534,6 +537,25 @@ export default function EditarProductoPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* IVA con el que se vende */}
+          <div>
+            <label className={labelClass} htmlFor="tipo_iva">IVA</label>
+            <select
+              id="tipo_iva"
+              name="tipo_iva"
+              value={form.tipo_iva}
+              onChange={handleChange}
+              className={`${inputClass} max-w-xs`}
+            >
+              <option value="10%">IVA 10%</option>
+              <option value="5%">IVA 5%</option>
+              <option value="EXENTA">Exenta (sin IVA)</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Con qué IVA se vende este producto. Ej.: elaborados 10%, congelados 5%.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

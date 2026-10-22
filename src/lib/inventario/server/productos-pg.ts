@@ -33,6 +33,36 @@ function tMov(schema: string): string {
   return quoteSchemaTable(schema, "movimientos_inventario");
 }
 
+// ─── IVA del producto ───────────────────────────────────────────────────────
+
+/** IVA con el que se vende un producto. Los tres únicos valores válidos. */
+export const TIPOS_IVA = ["EXENTA", "5%", "10%"] as const;
+export type TipoIva = (typeof TIPOS_IVA)[number];
+
+/** Deja el IVA en uno de los tres valores válidos; cae a 10% si viene raro. */
+export function normalizarTipoIva(v: unknown, fallback: TipoIva = "10%"): TipoIva {
+  return (TIPOS_IVA as readonly string[]).includes(v as string) ? (v as TipoIva) : fallback;
+}
+
+// La columna productos.tipo_iva la agrega la migración 41 POR tenant; el schema
+// base no la tiene. Nombrarla en un tenant que no la cargó rompe la consulta
+// entera, así que se pregunta antes y se cachea por schema (una vez detectada,
+// no desaparece). Mismo criterio que usa GET /api/productos para la caja.
+const tipoIvaPorSchema = new Map<string, boolean>();
+
+async function tieneColumnaTipoIva(schema: string): Promise<boolean> {
+  const cacheado = tipoIvaPorSchema.get(schema);
+  if (cacheado !== undefined) return cacheado;
+  const { rows } = await pool().query<{ c: string }>(
+    `SELECT column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'productos' AND column_name = 'tipo_iva'`,
+    [schema]
+  );
+  const existe = rows.length > 0;
+  tipoIvaPorSchema.set(schema, existe);
+  return existe;
+}
+
 /** Convierte 23505 en DuplicadoError tipado. */
 function classifyUnique(err: unknown): never {
   const e = err as { code?: string; message?: string; constraint?: string };
@@ -80,6 +110,7 @@ export interface ProductoRow {
   categoria_principal_id: string | null;
   ubicacion_principal_id: string | null;
   proveedor_principal_id: string | null;
+  tipo_iva?: string | null;
 }
 
 export interface InsertProductoInput {
@@ -96,14 +127,23 @@ export interface InsertProductoInput {
   categoria_principal_id?: string | null;
   ubicacion_principal_id?: string | null;
   proveedor_principal_id?: string | null;
+  tipo_iva?: string | null;
 }
 
-const RETURNING = `
+/**
+ * Columnas que devuelve cada operación. `tipo_iva` solo se nombra si el schema
+ * tiene la columna; donde no está, se devuelve NULL para que la fila igual
+ * tenga la forma esperada sin romper la consulta.
+ */
+function returningCols(hayIva: boolean): string {
+  return `
   id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
   unidad_medida, metodo_valuacion, activo, created_at, updated_at,
   codigo_barras, codigo_barras_interno, imagen_path, imagen_url,
-  categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
+  categoria_principal_id, ubicacion_principal_id, proveedor_principal_id,
+  ${hayIva ? "tipo_iva" : "NULL::text AS tipo_iva"}
 `;
+}
 
 // ─── Operaciones ──────────────────────────────────────────────────────────
 
@@ -114,19 +154,18 @@ export async function insertProducto(
 ): Promise<ProductoRow> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = tProd(schema);
-  const sql = `
-    INSERT INTO ${t} (
-      empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
-      unidad_medida, metodo_valuacion, codigo_barras, codigo_barras_interno,
-      categoria_principal_id, ubicacion_principal_id, proveedor_principal_id
-    ) VALUES (
-      $1::uuid, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7::numeric,
-      $8, $9, $10, COALESCE($11::boolean, false),
-      $12::uuid, $13::uuid, $14::uuid
-    )
-    RETURNING ${RETURNING}
-  `;
-  const params = [
+  const hayIva = await tieneColumnaTipoIva(schema);
+  const cols = [
+    "empresa_id", "nombre", "sku", "costo_promedio", "precio_venta", "stock_actual", "stock_minimo",
+    "unidad_medida", "metodo_valuacion", "codigo_barras", "codigo_barras_interno",
+    "categoria_principal_id", "ubicacion_principal_id", "proveedor_principal_id",
+  ];
+  const valores = [
+    "$1::uuid", "$2", "$3", "$4::numeric", "$5::numeric", "$6::numeric", "$7::numeric",
+    "$8", "$9", "$10", "COALESCE($11::boolean, false)",
+    "$12::uuid", "$13::uuid", "$14::uuid",
+  ];
+  const params: unknown[] = [
     empresaId,
     d.nombre,
     d.sku,
@@ -142,6 +181,18 @@ export async function insertProducto(
     d.ubicacion_principal_id ?? null,
     d.proveedor_principal_id ?? null,
   ];
+  // Donde la columna existe, se graba el IVA elegido (default 10% si no vino).
+  // Donde no existe, se omite y el producto queda sin IVA propio.
+  if (hayIva) {
+    cols.push("tipo_iva");
+    params.push(normalizarTipoIva(d.tipo_iva));
+    valores.push(`$${params.length}`);
+  }
+  const sql = `
+    INSERT INTO ${t} (${cols.join(", ")})
+    VALUES (${valores.join(", ")})
+    RETURNING ${returningCols(hayIva)}
+  `;
   try {
     const { rows } = await pool().query<ProductoRow>(sql, params);
     return rows[0];
@@ -166,6 +217,7 @@ export interface UpdateProductoInput {
   categoria_principal_id?: string | null;
   ubicacion_principal_id?: string | null;
   proveedor_principal_id?: string | null;
+  tipo_iva?: string | null;
 }
 
 /** Update parcial. Devuelve la fila o null si no existe / no pertenece a la empresa. */
@@ -177,6 +229,7 @@ export async function updateProductoPg(
 ): Promise<ProductoRow | null> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = tProd(schema);
+  const hayIva = await tieneColumnaTipoIva(schema);
   const sets: string[] = [];
   const params: unknown[] = [];
   let i = 1;
@@ -208,6 +261,9 @@ export async function updateProductoPg(
   if (patch.categoria_principal_id !== undefined) add("categoria_principal_id", patch.categoria_principal_id || null, "::uuid");
   if (patch.ubicacion_principal_id !== undefined) add("ubicacion_principal_id", patch.ubicacion_principal_id || null, "::uuid");
   if (patch.proveedor_principal_id !== undefined) add("proveedor_principal_id", patch.proveedor_principal_id || null, "::uuid");
+  // Solo si el schema tiene la columna; si no, el IVA elegido se ignora en
+  // silencio (ese tenant no maneja IVA por producto).
+  if (patch.tipo_iva !== undefined && hayIva) add("tipo_iva", normalizarTipoIva(patch.tipo_iva));
   if (sets.length === 0) return await getProductoPg(schemaRaw, empresaId, id);
 
   sets.push(`updated_at = now()`);
@@ -219,7 +275,7 @@ export async function updateProductoPg(
   const sql = `
     UPDATE ${t} SET ${sets.join(", ")}
     WHERE id = $${idIdx}::uuid AND empresa_id = $${empIdx}::uuid
-    RETURNING ${RETURNING}
+    RETURNING ${returningCols(hayIva)}
   `;
   try {
     const { rows } = await pool().query<ProductoRow>(sql, params);
@@ -236,8 +292,9 @@ export async function getProductoPg(
 ): Promise<ProductoRow | null> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = tProd(schema);
+  const hayIva = await tieneColumnaTipoIva(schema);
   const { rows } = await pool().query<ProductoRow>(
-    `SELECT ${RETURNING} FROM ${t} WHERE id = $1::uuid AND empresa_id = $2::uuid LIMIT 1`,
+    `SELECT ${returningCols(hayIva)} FROM ${t} WHERE id = $1::uuid AND empresa_id = $2::uuid LIMIT 1`,
     [id, empresaId]
   );
   return rows[0] ?? null;
@@ -407,5 +464,6 @@ export function rowToProductoApi(r: ProductoRow): Record<string, unknown> {
     categoria_principal_id: r.categoria_principal_id ?? null,
     ubicacion_principal_id: r.ubicacion_principal_id ?? null,
     proveedor_principal_id: r.proveedor_principal_id ?? null,
+    tipo_iva: r.tipo_iva ?? null,
   };
 }

@@ -7,6 +7,7 @@ import {
   updateProductoPg,
   rowToProductoApi,
   getProductoPg,
+  normalizarTipoIva,
   DuplicadoError,
 } from "@/lib/inventario/server/productos-pg";
 
@@ -106,6 +107,9 @@ export async function PATCH(
     if (body.imagen_url !== undefined) {
       const v = body.imagen_url != null ? String(body.imagen_url) : "";
       patch.imagen_url = v || null;
+    }
+    if (body.tipo_iva !== undefined) {
+      patch.tipo_iva = normalizarTipoIva(body.tipo_iva);
     }
 
     // Relaciones opcionales — validar ownership

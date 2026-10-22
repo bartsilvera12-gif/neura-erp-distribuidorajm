@@ -243,6 +243,7 @@ export async function saveProducto(
     categoria_principal_id: datos.categoria_principal_id ?? null,
     ubicacion_principal_id: datos.ubicacion_principal_id ?? null,
     proveedor_principal_id: datos.proveedor_principal_id ?? null,
+    tipo_iva: datos.tipo_iva ?? null,
   };
 
   const res = await fetch("/api/productos", {
@@ -317,6 +318,7 @@ export async function updateProducto(
   if (datos.categoria_principal_id !== undefined) body.categoria_principal_id = datos.categoria_principal_id ?? null;
   if (datos.ubicacion_principal_id !== undefined) body.ubicacion_principal_id = datos.ubicacion_principal_id ?? null;
   if (datos.proveedor_principal_id !== undefined) body.proveedor_principal_id = datos.proveedor_principal_id ?? null;
+  if (datos.tipo_iva !== undefined) body.tipo_iva = datos.tipo_iva;
 
   const res = await fetch(`/api/productos/${encodeURIComponent(id)}`, {
     method: "PATCH",

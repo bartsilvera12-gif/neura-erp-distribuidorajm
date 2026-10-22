@@ -7,6 +7,7 @@ import {
   insertProducto,
   insertMovimientoInicial,
   rowToProductoApi,
+  normalizarTipoIva,
   DuplicadoError,
 } from "@/lib/inventario/server/productos-pg";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
@@ -429,6 +430,9 @@ export async function POST(request: NextRequest) {
       body.metodo_valuacion === "FIFO" || body.metodo_valuacion === "LIFO"
         ? (body.metodo_valuacion as "FIFO" | "LIFO")
         : "CPP";
+    // IVA con el que se vende. Si no vino o vino raro, queda en 10% (el default
+    // histórico con el que se venían vendiendo los productos).
+    const tipoIva = normalizarTipoIva(body.tipo_iva);
 
     // Relaciones opcionales — validar ownership en mismo tenant
     const categoriaPrincipalId = body.categoria_principal_id ? String(body.categoria_principal_id) : null;
@@ -460,6 +464,7 @@ export async function POST(request: NextRequest) {
         categoria_principal_id: categoriaPrincipalId,
         ubicacion_principal_id: ubicacionPrincipalId,
         proveedor_principal_id: proveedorPrincipalId,
+        tipo_iva: tipoIva,
       });
 
       // Inventario inicial (mismo schema, via PG directo).

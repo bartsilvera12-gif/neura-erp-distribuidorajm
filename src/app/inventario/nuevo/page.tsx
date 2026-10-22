@@ -29,6 +29,7 @@ export default function NuevoProductoPage() {
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
+    tipo_iva: "10%",
   });
   const [submitting, setSubmitting] = useState(false);
   /** SKU ya cargados, para que el correlativo sugerido no choque con uno existente. */
@@ -296,6 +297,7 @@ export default function NuevoProductoPage() {
           stock_actual: parseInt(form.stock_actual) || 0,
           stock_minimo: parseInt(form.stock_minimo) || 0,
           unidad_medida: form.unidad_medida.trim().toUpperCase(),
+          tipo_iva: form.tipo_iva,
           // Valuación: siempre costo promedio. Era un selector en el formulario,
           // pero la distribuidora no lleva FIFO ni LIFO y elegir mal el método
           // cambia el costo de todo el inventario sin que nadie lo note.
@@ -627,6 +629,25 @@ export default function NuevoProductoPage() {
 
               </div>
             )}
+          </div>
+
+          {/* IVA con el que se vende */}
+          <div>
+            <label className={labelClass} htmlFor="tipo_iva">IVA</label>
+            <select
+              id="tipo_iva"
+              name="tipo_iva"
+              value={form.tipo_iva}
+              onChange={handleChange}
+              className={`${inputClass} max-w-xs`}
+            >
+              <option value="10%">IVA 10%</option>
+              <option value="5%">IVA 5%</option>
+              <option value="EXENTA">Exenta (sin IVA)</option>
+            </select>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Con qué IVA se vende este producto. Ej.: elaborados 10%, congelados 5%.
+            </p>
           </div>
 
           {/* Clasificación, Proveedor, Ubicación */}
