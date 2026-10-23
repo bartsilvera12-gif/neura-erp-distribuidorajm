@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Package, RefreshCw, Truck } from "lucide-react";
 import CamionesPanel from "@/shared/caja/CamionesPanel";
+import InventarioCamion from "./InventarioCamion";
 import { useCamiones, useObjetivos } from "@/shared/hooks/useRepartos";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { formatCantidad, parseCantidad } from "@/lib/inventario/unidades";
@@ -84,6 +85,7 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [version, setVersion] = useState(0);
 
   // Al contar se pueden encontrar productos que no figuraban: con "ver todos"
   // aparece el catálogo entero. Al cargar del salón también se ve todo, porque
@@ -157,6 +159,7 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
         return;
       }
       await mutate();
+      setVersion((v) => v + 1);
       setAviso({
         ok: true,
         texto:
@@ -216,21 +219,28 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
                 : "Escribí cuánto cargar del salón al camión."}
           </p>
         )}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
-          <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} />
-          Ver todos los productos
-        </label>
+        {modo !== "ver" ? (
+          <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
+            <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} />
+            Ver todos los productos
+          </label>
+        ) : null}
         <button
           type="button"
-          onClick={() => mutate()}
+          onClick={() => {
+            void mutate();
+            setVersion((v) => v + 1);
+          }}
           aria-label="Actualizar"
-          className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+          className={`rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 ${modo === "ver" ? "ml-auto" : ""}`}
         >
           <RefreshCw className="h-4 w-4" />
         </button>
       </div>
 
-      {error ? (
+      {modo === "ver" ? (
+        <InventarioCamion camionId={camionId} version={version} />
+      ) : error ? (
         <p className="rounded-lg bg-red-50 p-3 text-xs text-red-700">{error.message}</p>
       ) : isLoading ? (
         <p className="py-6 text-sm text-slate-400">Cargando stock…</p>
@@ -250,31 +260,29 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
                 <span className="w-28 text-right text-sm tabular-nums text-slate-600">
                   {formatCantidad(i.actual, i.unidad)} {i.unidad}
                 </span>
-                {modo !== "ver" ? (
-                  <span className="flex items-center gap-1.5">
-                    <input
-                      inputMode="decimal"
-                      value={valores[i.producto_id] ?? ""}
-                      onChange={(e) => setValores((p) => ({ ...p, [i.producto_id]: e.target.value }))}
-                      placeholder={modo === "contar" ? formatCantidad(i.actual, i.unidad) : "0"}
-                      aria-label={`${modo === "contar" ? "Contado" : modo === "salon" ? "A pasar" : "A cargar"} de ${i.nombre}`}
-                      className={`h-9 w-24 rounded-lg border px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2] ${
-                        diferencia ? "border-amber-400" : "border-slate-200"
-                      }`}
-                    />
-                    {modo === "salon" && i.actual > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setValores((p) => ({ ...p, [i.producto_id]: formatCantidad(i.actual, i.unidad) }))
-                        }
-                        className="rounded-lg px-2 py-1 text-xs font-medium text-[#3F8E91] hover:bg-slate-50"
-                      >
-                        Todo
-                      </button>
-                    ) : null}
-                  </span>
-                ) : null}
+                <span className="flex items-center gap-1.5">
+                  <input
+                    inputMode="decimal"
+                    value={valores[i.producto_id] ?? ""}
+                    onChange={(e) => setValores((p) => ({ ...p, [i.producto_id]: e.target.value }))}
+                    placeholder={modo === "contar" ? formatCantidad(i.actual, i.unidad) : "0"}
+                    aria-label={`${modo === "contar" ? "Contado" : modo === "salon" ? "A pasar" : "A cargar"} de ${i.nombre}`}
+                    className={`h-9 w-24 rounded-lg border px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2] ${
+                      diferencia ? "border-amber-400" : "border-slate-200"
+                    }`}
+                  />
+                  {modo === "salon" && i.actual > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setValores((p) => ({ ...p, [i.producto_id]: formatCantidad(i.actual, i.unidad) }))
+                      }
+                      className="rounded-lg px-2 py-1 text-xs font-medium text-[#3F8E91] hover:bg-slate-50"
+                    >
+                      Todo
+                    </button>
+                  ) : null}
+                </span>
                 {diferencia ? (
                   <input
                     value={motivos[i.producto_id] ?? ""}
