@@ -213,4 +213,23 @@ body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
+  /*
+   * Ticket térmico (80/58 mm): que la hoja se corte JUSTO al alto del ticket,
+   * sin el hueco en blanco. El comprobante normal va `position: absolute` —bien
+   * para la factura A4—, pero en el ticket eso deja el alto en flujo en cero y
+   * la hoja queda tan larga como la pantalla, con todo lo de abajo en blanco.
+   * En flujo normal, el alto del papel pasa a ser exactamente el del ticket.
+   * (El "URL / 1/1" del pie lo agrega el navegador: se saca destildando
+   * "Encabezados y pies de página" al imprimir.)
+   */
+  html:has(.ticket-termico),
+  body:has(.ticket-termico) {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .factura-imprimible.ticket-termico {
+    position: static !important;
+  }
 }

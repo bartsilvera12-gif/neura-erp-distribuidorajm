@@ -61,14 +61,14 @@ export default function TicketVenta({ datos }: { datos: DatosComprobante }) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 py-4">
+    <div className="flex flex-col items-center gap-4 py-4 print:gap-0 print:py-0">
       {/* El papel es del ancho del rollo y el largo del ticket: margen cero,
           que la impresora térmica ya deja el suyo. */}
       <style>{`@media print { @page { size: ${ancho}mm ${largoMm}mm; margin: 0; } }`}</style>
 
       <article
         ref={ref}
-        className="factura-imprimible bg-white font-mono text-black shadow-sm ring-1 ring-slate-200 print:shadow-none print:ring-0"
+        className="ticket-termico factura-imprimible bg-white font-mono text-black shadow-sm ring-1 ring-slate-200 print:shadow-none print:ring-0"
         style={{
           width: `${ancho}mm`,
           fontSize: angosto ? "10px" : "11.5px",
