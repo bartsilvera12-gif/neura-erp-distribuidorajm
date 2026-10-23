@@ -78,7 +78,8 @@ export async function PATCH(request: NextRequest) {
       actividad_economica: body.actividad_economica === undefined ? undefined : str(body.actividad_economica),
       departamento: body.departamento === undefined ? undefined : str(body.departamento),
       ciudad: body.ciudad === undefined ? undefined : str(body.ciudad),
-      email: body.email === undefined ? undefined : str(body.email),
+      // El correo va tal cual, en minúscula: en mayúscula queda raro impreso.
+      email: body.email === undefined ? undefined : (strKeep(body.email)?.toLowerCase() ?? null),
     };
 
     // Si activamos autoimpresor, validar campos minimos

@@ -216,6 +216,22 @@ export default function FacturacionModoSection() {
         </div>
       </div>
 
+      {/* Datos de la empresa: van en facturas, tickets y recibos con cualquier
+          modo. Con autoimpresor se cargan en su formulario de abajo. */}
+      {modo.modo !== "autoimpresor" && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-1 flex items-baseline justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">Datos de la empresa</h3>
+            {okAuto && <span className="text-xs text-emerald-600">{okAuto}</span>}
+          </div>
+          <p className="mb-3 text-xs text-slate-500">
+            Salen en facturas, tickets y recibos. El teléfono y el correo también van en la factura electrónica.
+          </p>
+          {errAuto && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-3">{errAuto}</p>}
+          <DatosEmpresaForm value={auto} onSave={guardarAuto} saving={savingAuto} />
+        </div>
+      )}
+
       {/* AUTOIMPRESOR (solo si modo=autoimpresor) */}
       {modo.modo === "autoimpresor" && (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -297,6 +313,52 @@ function AutoimpresorForm({
       <div className="flex justify-end">
         <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
           {saving ? "Guardando..." : "Guardar autoimpresor"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DatosEmpresaForm({
+  value, onSave, saving,
+}: { value: Autoimpresor; onSave: (p: Partial<Autoimpresor>) => Promise<void>; saving: boolean }) {
+  const [f, setF] = useState({
+    razon_social_emisor: value.razon_social_emisor ?? "",
+    ruc_emisor: value.ruc_emisor ?? "",
+    nombre_fantasia: value.nombre_fantasia ?? "",
+    direccion_matriz: value.direccion_matriz ?? "",
+    telefono: value.telefono ?? "",
+    email: value.email ?? "",
+  });
+  const set = (k: keyof typeof f, v: string) => setF((prev) => ({ ...prev, [k]: v }));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const nulo = (v: string) => (v.trim() ? v.trim() : null);
+    await onSave({
+      razon_social_emisor: nulo(f.razon_social_emisor),
+      ruc_emisor: nulo(f.ruc_emisor),
+      nombre_fantasia: nulo(f.nombre_fantasia),
+      direccion_matriz: nulo(f.direccion_matriz),
+      telefono: nulo(f.telefono),
+      email: nulo(f.email),
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <Field label="Razón social"><input className={`${inputClass} uppercase`} value={f.razon_social_emisor} onChange={(e) => set("razon_social_emisor", e.target.value)} /></Field>
+        <Field label="RUC"><input className={inputClass} placeholder="80012345-6" value={f.ruc_emisor} onChange={(e) => set("ruc_emisor", e.target.value)} /></Field>
+        <Field label="Nombre fantasía"><input className={`${inputClass} uppercase`} value={f.nombre_fantasia} onChange={(e) => set("nombre_fantasia", e.target.value)} /></Field>
+        <Field label="Dirección" className="md:col-span-3"><input className={`${inputClass} uppercase`} value={f.direccion_matriz} onChange={(e) => set("direccion_matriz", e.target.value)} /></Field>
+        <Field label="Teléfono del salón"><input className={inputClass} placeholder="0981 123456" value={f.telefono} onChange={(e) => set("telefono", e.target.value)} /></Field>
+        <Field label="Correo electrónico" className="md:col-span-2"><input type="email" className={inputClass} value={f.email} onChange={(e) => set("email", e.target.value)} /></Field>
+      </div>
+      <div className="flex justify-end">
+        <button type="submit" disabled={saving}
+          className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0284C7] disabled:opacity-50">
+          {saving ? "Guardando…" : "Guardar datos de la empresa"}
         </button>
       </div>
     </form>
