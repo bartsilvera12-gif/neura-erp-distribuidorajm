@@ -138,9 +138,12 @@ export default function CajaDesktop() {
         </div>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
-        <Catalogo caja={caja} />
+      {/* Una sola columna centrada: el recuadro de la venta (total + cobrar)
+          arriba, a la vista, y debajo los más vendidos para cargar rápido. El
+          resto del catálogo sigue a un toque con el buscador. */}
+      <div className="mx-auto flex max-w-[640px] flex-col gap-5">
         <PanelCobro caja={caja} imprimir={imprimir} setImprimir={setImprimir} />
+        <Catalogo caja={caja} />
       </div>
 
       {listo ? (
@@ -159,6 +162,25 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   const { productos, origen, isLoading, errorCatalogo } = useCatalogoVenta(caja.repartoId);
   const [query, setQuery] = useState("");
 
+  // Los 9 más vendidos: el servidor devuelve solo los ids (ordenados de más a
+  // menos), y acá se cruzan con el catálogo, que ya trae stock y precio. Si no
+  // hay historial, queda vacío y se muestran los primeros del catálogo.
+  const [idsTop, setIdsTop] = useState<string[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    fetch("/api/productos/mas-vendidos?limit=9", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancel && j?.success && Array.isArray(j.data?.ids)) setIdsTop(j.data.ids as string[]);
+      })
+      .catch(() => {
+        // Sin ranking la caja igual funciona: muestra los primeros del catálogo.
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
   // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo
   // de la lista a mitad de la venta haría desaparecer una línea ya cargada.
   const conStock = useMemo(
@@ -175,6 +197,22 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
     if (!q) return conStock;
     return conStock.filter((p) => coincideBusqueda(p, q));
   }, [conStock, texto]);
+
+  // Buscador vacío: solo los 9 más vendidos (los del ranking primero, después
+  // el resto por nombre para completar los 9). Con búsqueda, se muestran todas
+  // las coincidencias, para poder encontrar cualquier producto.
+  const sinBusqueda = texto.trim() === "";
+  const topNueve = useMemo(() => {
+    const rango = new Map(idsTop.map((id, i) => [id, i]));
+    return [...conStock]
+      .sort((a, b) => {
+        const ra = rango.get(a.id) ?? Infinity;
+        const rb = rango.get(b.id) ?? Infinity;
+        return ra !== rb ? ra - rb : a.nombre.localeCompare(b.nombre);
+      })
+      .slice(0, 9);
+  }, [conStock, idsTop]);
+  const mostrados = sinBusqueda ? topNueve : filtrados;
 
   // El producto marcado con las flechas: Enter agrega ese. Vuelve al primero
   // cada vez que cambia la búsqueda.
@@ -316,7 +354,7 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
 
       {isLoading ? (
         <p className="py-16 text-center text-sm text-slate-400">Cargando productos…</p>
-      ) : errorCatalogo ? null : filtrados.length === 0 ? (
+      ) : errorCatalogo ? null : mostrados.length === 0 ? (
         <p className="py-16 text-center text-sm text-slate-400">
           {texto.trim()
             ? textoSinResultado(productos, texto)
@@ -328,8 +366,14 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
               ) : null}
         </p>
       ) : (
-        <ul ref={listaRef} className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-          {filtrados.map((p, i) => {
+        <>
+          {sinBusqueda ? (
+            <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
+              Más vendidos
+            </p>
+          ) : null}
+          <ul ref={listaRef} className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+            {mostrados.map((p, i) => {
             const cantidad = caja.cantidadDe(p.id);
             const marcado = texto.trim() !== "" && i === resaltado;
             return (
@@ -377,7 +421,8 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
               </li>
             );
           })}
-        </ul>
+          </ul>
+        </>
       )}
     </section>
   );
@@ -408,15 +453,11 @@ function PanelCobro({
     setCobrando(true);
   }
   return (
-    <aside className="lg:sticky lg:top-6 lg:self-start">
-      {/* El panel se limita al alto de la pantalla para que el total quede
-          siempre a la vista, y la lista de productos scrollea por dentro. Pero
-          el cliente arriba y los totales abajo no se achican: en una pantalla
-          baja no quedaba lugar para la lista y se recortaba a la mitad —el
-          detalle de la venta desaparecía y el texto quedaba cortado por el
-          medio—. Con un alto mínimo la lista ya no se aplasta, y si aun así no
-          entra todo, scrollea el panel entero en vez de tapar nada. */}
-      <div className="flex max-h-[calc(100vh-7rem)] flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white">
+    <aside>
+      {/* El recuadro de la venta va centrado y arriba del catálogo: el cajero
+          ve el total mientras carga, y el detalle crece hacia abajo (la página
+          scrollea) en vez de quedar encajonado en una columna lateral. */}
+      <div className="flex flex-col rounded-2xl border border-slate-200 bg-white">
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
           <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Precio
@@ -426,7 +467,7 @@ function PanelCobro({
           </div>
         </div>
 
-        <div className="min-h-[7rem] flex-1 overflow-y-auto px-5">
+        <div className="min-h-[7rem] max-h-[45vh] overflow-y-auto px-5">
           {caja.carrito.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-400">
               Agregá productos desde el catálogo.
