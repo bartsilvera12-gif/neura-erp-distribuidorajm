@@ -149,7 +149,17 @@ async function postMultilinea(
       recepcion_item_id: UUID_RE.test(s(o.recepcion_item_id)) ? s(o.recepcion_item_id) : null,
       precio_venta: o.precio_venta != null ? Number(o.precio_venta) : null,
       margen_venta: o.margen_venta != null ? Number(o.margen_venta) : null,
+      cantidad_ingresada:
+        o.cantidad_ingresada != null && s(o.cantidad_ingresada) !== "" && Number.isFinite(Number(o.cantidad_ingresada))
+          ? Number(o.cantidad_ingresada)
+          : null,
     });
+  }
+
+  // Camión que trajo la mercadería (aunque entre al salón).
+  const transporteId = s(body.camion_transporte_id);
+  if (transporteId && !UUID_RE.test(transporteId)) {
+    return NextResponse.json(errorResponse("Camión de transporte inválido."), { status: 400 });
   }
 
   const idem = s(body.idempotency_key);
@@ -175,6 +185,10 @@ async function postMultilinea(
       usuario_nombre: ctx.auth.user?.email ?? null,
       sin_asiento: sinAsiento,
       destino_ubicacion_id: destinoUbicacionId,
+      fecha: /^\d{4}-\d{2}-\d{2}$/.test(s(body.fecha)) ? s(body.fecha) : null,
+      fecha_vencimiento: /^\d{4}-\d{2}-\d{2}$/.test(s(body.fecha_vencimiento)) ? s(body.fecha_vencimiento) : null,
+      // Si el destino es un camión, ese es el que la trae: no hace falta repetirlo.
+      camion_transporte_id: transporteId || null,
     }, {
       // Editar: la compra original se anula en la misma transacción.
       reemplazaCompraId: UUID_RE.test(s(body.reemplaza_compra_id)) ? s(body.reemplaza_compra_id) : null,

@@ -38,6 +38,8 @@ export interface Compra {
 
   /** N° de la factura del proveedor (001-001-0000001). */
   numero_comprobante?: string | null;
+  /** Algún renglón todavía tiene mercadería pendiente de ingresar (SQL 52). */
+  pendiente_ingreso?: boolean;
   /** Tipo de comprobante ('Factura' por defecto). */
   tipo_comprobante?: string | null;
   /** Ruta en Storage del comprobante adjunto (foto/PDF), si hay. */

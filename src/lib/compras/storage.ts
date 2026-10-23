@@ -1,6 +1,7 @@
 import type { Compra } from "./types";
 
 interface CompraApiRow {
+  pendiente_ingreso?: boolean | null;
   id: string; numero_control: string; proveedor_id: string; proveedor_nombre: string;
   producto_id: string; producto_nombre: string; cantidad: string | number; moneda: string;
   tipo_cambio: string | number; costo_unitario_original: string | number;
@@ -51,6 +52,7 @@ function mapRow(r: CompraApiRow): Compra {
     tipo_comprobante: r.tipo_comprobante ?? null,
     documento_path: r.documento_path ?? null,
     fecha: r.fecha,
+    pendiente_ingreso: r.pendiente_ingreso === true,
   };
 }
 
@@ -196,25 +198,57 @@ export async function getCompraComprobante(compraId: string): Promise<{ url: str
 }
 
 export interface CompraItemDetalle {
+  id: string;
   producto_id: string | null;
+  codigo: string | null;
   producto_nombre: string;
   cantidad: number;
+  /** Lo que ya entró al stock; `cantidad - cantidad_ingresada` = pendiente. */
+  cantidad_ingresada: number;
   costo_unitario: number;
   iva_tipo: string | null;
   total_linea: number;
 }
 
-/** Los productos de una compra y a dónde entró la mercadería (salón o camión). */
-export async function getCompraDetalle(
-  compraId: string
-): Promise<{ items: CompraItemDetalle[]; destino: string; destino_camion_id: string | null } | null> {
+export interface CompraDetalle {
+  items: CompraItemDetalle[];
+  destino: string;
+  destino_camion_id: string | null;
+  fecha_vencimiento: string | null;
+  camion_transporte_id: string | null;
+  camion_transporte: string | null;
+  admite_ingreso_parcial: boolean;
+}
+
+/** Los productos de una compra (con lo ingresado) y a dónde entró la mercadería. */
+export async function getCompraDetalle(compraId: string): Promise<CompraDetalle | null> {
   try {
     const r = await fetch(`/api/compras/${compraId}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) return null;
-    return j.data as { items: CompraItemDetalle[]; destino: string; destino_camion_id: string | null };
+    return j.data as CompraDetalle;
   } catch {
     return null;
+  }
+}
+
+/** Ingresa al stock lo pendiente de una compra. */
+export async function registrarIngresoApi(
+  compraId: string,
+  items: { compra_item_id: string; cantidad: number }[]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(`/api/compras/${compraId}/ingreso`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) return { ok: false, error: j.error ?? "No se pudo registrar el ingreso." };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
 }
 

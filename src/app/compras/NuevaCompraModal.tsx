@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Store, Trash2, Truck } from "lucide-react";
 import SelectorUnidad from "@/components/inventario/SelectorUnidad";
 import MontoInput from "@/components/ui/MontoInput";
+import FechaSelect from "@/components/ui/FechaSelect";
 import { uploadCompraComprobante } from "@/lib/compras/storage";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
 import { getProveedores, proveedorExiste, createProveedor } from "@/lib/proveedores/storage";
@@ -47,19 +48,23 @@ function ivaDe(p: Producto): TipoIva {
 }
 const IVA_FACTOR: Record<TipoIva, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
 
-/**
- * Vencimiento calculado: fecha de la compra + días de plazo. No se guarda; es
- * una ayuda para que se vea cuándo vence la factura a crédito.
- */
-function vencimientoDesde(baseIso: string | null, diasStr: string): string | null {
+/** Hoy en Paraguay, AAAA-MM-DD. */
+function hoyIso(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion" }).format(new Date());
+}
+
+/** Fecha (AAAA-MM-DD) + días de plazo → vencimiento propuesto de la factura. */
+function sumarDias(fechaIso: string, diasStr: string): string {
   const dias = parseInt(diasStr, 10);
-  if (!Number.isFinite(dias) || dias <= 0) return null;
-  const base = baseIso ? new Date(baseIso) : new Date();
-  if (Number.isNaN(base.getTime())) return null;
-  base.setDate(base.getDate() + dias);
-  const dd = String(base.getDate()).padStart(2, "0");
-  const mm = String(base.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${base.getFullYear()}`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaIso) || !Number.isFinite(dias) || dias <= 0) return "";
+  const d = new Date(`${fechaIso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Cantidad escrita ("1,5") a número. */
+function num(v: string): number {
+  return parseFloat(v.replace(",", ".")) || 0;
 }
 
 const MAX_COMPROBANTE_MB = 8;
@@ -73,8 +78,15 @@ const SUBLABEL = "mb-1 block text-[11px] font-medium text-slate-500";
 type Linea = {
   producto_id: string;
   nombre: string;
+  codigo: string;
   unidad: string;
   cantidad: string;
+  /**
+   * Cuánto entra ya (al salón o al camión). Sigue a la cantidad hasta que se
+   * lo cambia a mano; lo que falta queda pendiente de ingresar.
+   */
+  ingresa: string;
+  ingresaTocado: boolean;
   costo: string;
   iva: TipoIva;
   precio: string;
@@ -167,6 +179,16 @@ export default function NuevaCompraModal({
   }
   const [tipoPago, setTipoPago] = useState<TipoPago>("contado");
   const [plazoDias, setPlazoDias] = useState("");
+  const [fechaCompra, setFechaCompra] = useState(hoyIso());
+  /** Vencimiento de la factura: se propone con fecha + plazo hasta que se lo toca. */
+  const [vencimiento, setVencimiento] = useState("");
+  const [vencimientoTocado, setVencimientoTocado] = useState(false);
+  /** Camión que trajo la mercadería cuando entra al salón ("" = ninguno). */
+  const [transporte, setTransporte] = useState("");
+  useEffect(() => {
+    if (vencimientoTocado) return;
+    setVencimiento(tipoPago === "credito" ? sumarDias(fechaCompra, plazoDias) : "");
+  }, [fechaCompra, plazoDias, tipoPago, vencimientoTocado]);
   const [lineas, setLineas] = useState<Linea[]>([]);
 
   // Editar: cuando están los productos y los camiones, se carga la compra.
@@ -183,6 +205,14 @@ export default function NuevaCompraModal({
       }
       setTipoPago(editar.tipo_pago === "credito" ? "credito" : "contado");
       if (editar.plazo_dias) setPlazoDias(String(editar.plazo_dias));
+      if (editar.fecha) {
+        setFechaCompra(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion" }).format(new Date(editar.fecha)));
+      }
+      if (d?.fecha_vencimiento) {
+        setVencimiento(d.fecha_vencimiento);
+        setVencimientoTocado(true);
+      }
+      if (d?.camion_transporte_id && !d.destino_camion_id) setTransporte(d.camion_transporte_id);
       if (d?.destino_camion_id) {
         setTipoDestino("camion");
         elegirDestino(d.destino_camion_id);
@@ -190,7 +220,8 @@ export default function NuevaCompraModal({
       const items = d?.items?.length
         ? d.items
         : [{ producto_id: editar.producto_id, producto_nombre: editar.producto_nombre, cantidad: editar.cantidad,
-             costo_unitario: editar.costo_unitario, iva_tipo: editar.iva_tipo, total_linea: editar.total }];
+             cantidad_ingresada: editar.cantidad, costo_unitario: editar.costo_unitario, iva_tipo: editar.iva_tipo,
+             total_linea: editar.total }];
       setLineas(
         items
           .filter((it) => it.producto_id)
@@ -200,8 +231,11 @@ export default function NuevaCompraModal({
             return {
               producto_id: String(it.producto_id),
               nombre: p?.nombre ?? it.producto_nombre,
+              codigo: p?.sku ?? "",
               unidad: p?.unidad_medida ?? "",
               cantidad: String(it.cantidad),
+              ingresa: String(it.cantidad_ingresada ?? it.cantidad),
+              ingresaTocado: Number(it.cantidad_ingresada ?? it.cantidad) !== Number(it.cantidad),
               costo: String(Math.round(Number(it.costo_unitario) || 0)),
               iva: iva as TipoIva,
               precio: p && p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
@@ -299,8 +333,11 @@ export default function NuevaCompraModal({
         {
           producto_id: p.id,
           nombre: p.nombre,
+          codigo: p.sku,
           unidad: p.unidad_medida,
           cantidad: "1",
+          ingresa: "1",
+          ingresaTocado: false,
           costo: p.costo_promedio > 0 ? String(Math.round(p.costo_promedio)) : "",
           iva: ivaDe(p),
           precio: p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
@@ -317,19 +354,29 @@ export default function NuevaCompraModal({
     });
   }
   function cambiar(i: number, patch: Partial<Linea>) {
-    setLineas((prev) => prev.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+    setLineas((prev) =>
+      prev.map((l, j) => {
+        if (j !== i) return l;
+        const n = { ...l, ...patch };
+        // Mientras no se tocó "ingresa", entra todo lo comprado.
+        if (patch.cantidad !== undefined && !n.ingresaTocado) n.ingresa = patch.cantidad;
+        return n;
+      })
+    );
   }
   function quitar(i: number) {
     setLineas((prev) => prev.filter((_, j) => j !== i));
   }
 
   const calc = lineas.map((l) => {
-    const cantidad = parseFloat(l.cantidad.replace(",", ".")) || 0;
+    const cantidad = num(l.cantidad);
+    const ingresa = Math.min(cantidad, Math.max(0, num(l.ingresa)));
     const costo = parseFloat(l.costo) || 0;
     const total = cantidad * costo;
     const iva = Math.round(total * IVA_FACTOR[l.iva]);
-    return { cantidad, costo, total, iva, precio: parseFloat(l.precio) || 0 };
+    return { cantidad, ingresa, pendiente: cantidad - ingresa, costo, total, iva, precio: parseFloat(l.precio) || 0 };
   });
+  const hayPendiente = calc.some((c) => c.pendiente > 1e-9);
   const total = calc.reduce((s, c) => s + c.total, 0);
   const montoIva = calc.reduce((s, c) => s + c.iva, 0);
 
@@ -343,7 +390,11 @@ export default function NuevaCompraModal({
     for (const [i, c] of calc.entries()) {
       if (c.cantidad <= 0) return setErrorSubmit(`${lineas[i].nombre}: la cantidad tiene que ser mayor a 0.`);
       if (c.costo <= 0) return setErrorSubmit(`${lineas[i].nombre}: poné el costo.`);
+      if (num(lineas[i].ingresa) > c.cantidad + 1e-9) {
+        return setErrorSubmit(`${lineas[i].nombre}: no puede ingresar más de lo comprado.`);
+      }
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaCompra)) return setErrorSubmit("Poné la fecha de compra.");
 
     setSubmitting(true);
     try {
@@ -367,10 +418,14 @@ export default function NuevaCompraModal({
           cuotas: tipoPago === "credito" ? 1 : null,
           numero_comprobante: numeroComprobante.trim() || null,
           tipo_comprobante: tipoComprobante,
+          fecha: fechaCompra,
+          fecha_vencimiento: vencimiento || null,
+          camion_transporte_id: !destino && transporte ? transporte : null,
           items: lineas.map((l, i) => ({
             producto_id: l.producto_id,
             producto_nombre: l.nombre,
             cantidad: calc[i].cantidad,
+            cantidad_ingresada: calc[i].ingresa,
             costo_unitario: calc[i].costo,
             iva_tipo: l.iva,
             precio_venta: calc[i].precio > 0 ? calc[i].precio : null,
@@ -452,7 +507,7 @@ export default function NuevaCompraModal({
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-8" onClick={onClose}>
       <form onSubmit={handleSubmit}
-        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border"
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border"
         onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
@@ -576,6 +631,38 @@ export default function NuevaCompraModal({
             </div>
           </section>
 
+          {/* Datos de la factura */}
+          <section className="space-y-3">
+            <Titulo>Datos de la factura</Titulo>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className={LABEL}>Fecha de compra <span className="text-red-500">*</span></label>
+                <FechaSelect value={fechaCompra} onChange={(e) => setFechaCompra(e.target.value)} className={INPUT} />
+              </div>
+              <div>
+                <label className={LABEL}>Vencimiento de la factura</label>
+                <FechaSelect value={vencimiento}
+                  onChange={(e) => { setVencimiento(e.target.value); setVencimientoTocado(true); }}
+                  className={INPUT} />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {tipoPago === "credito" ? "Se calcula con el plazo; podés cambiarla." : "Opcional en compras al contado."}
+                </p>
+              </div>
+              <div>
+                <label className={LABEL}>Camión que la trajo</label>
+                {tipoDestino === "camion" ? (
+                  <p className="flex h-[38px] items-center rounded-lg border border-slate-100 bg-slate-50 px-3 text-sm text-slate-500">
+                    {destino ? nombreCamion(camiones.find((c) => c.id === destino)?.alias ?? "") : "El camión de destino"}
+                  </p>
+                ) : (
+                  <SmartCombobox options={camionOpts} value={transporte || null}
+                    onChange={(id) => setTransporte(id ?? "")}
+                    placeholder={camiones.length === 0 ? "No hay camiones" : "Ninguno / proveedor"} />
+                )}
+              </div>
+            </div>
+          </section>
+
           {/* Productos */}
           <section className="space-y-3">
             <Titulo>Productos</Titulo>
@@ -625,11 +712,15 @@ export default function NuevaCompraModal({
               </p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[760px] text-sm">
+                <table className="w-full min-w-[1040px] text-sm">
                   <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-3 py-2 text-left">Producto</th>
-                      <th className="w-24 px-2 py-2 text-right">Cantidad</th>
+                      <th className="min-w-[200px] px-3 py-2 text-left">Producto</th>
+                      <th className="w-24 px-2 py-2 text-right">Comprada</th>
+                      <th className="w-24 px-2 py-2 text-right" title={`Lo que entra ya ${destinoTexto}`}>
+                        {tipoDestino === "camion" ? "Ingresa" : "Ingresa al salón"}
+                      </th>
+                      <th className="w-20 px-2 py-2 text-right">Pendiente</th>
                       <th className="w-32 px-2 py-2 text-right">Costo unit.</th>
                       <th className="w-32 px-2 py-2 text-right">Precio venta</th>
                       <th className="w-40 px-2 py-2 text-left">Categoría</th>
@@ -642,12 +733,23 @@ export default function NuevaCompraModal({
                       <tr key={l.producto_id}>
                         <td className="px-3 py-2">
                           <span className="block font-medium text-slate-900">{l.nombre}</span>
-                          <span className="block text-[11px] text-slate-400">{l.unidad}</span>
+                          <span className="block text-[11px] text-slate-400">
+                            {l.codigo ? `Cód. ${l.codigo} · ` : ""}{l.unidad}
+                          </span>
                         </td>
                         <td className="px-2 py-2">
                           <input id={`compra-cant-${i}`} inputMode="decimal" value={l.cantidad}
                             onChange={(e) => cambiar(i, { cantidad: e.target.value })}
                             aria-label={`Cantidad de ${l.nombre}`} className={CELDA} />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input inputMode="decimal" value={l.ingresa}
+                            onChange={(e) => cambiar(i, { ingresa: e.target.value, ingresaTocado: true })}
+                            aria-label={`Cantidad que ingresa de ${l.nombre}`}
+                            className={`${CELDA} ${num(l.ingresa) > calc[i].cantidad + 1e-9 ? "border-red-300 bg-red-50" : ""}`} />
+                        </td>
+                        <td className={`px-2 py-2 text-right tabular-nums ${calc[i].pendiente > 1e-9 ? "font-semibold text-amber-600" : "text-slate-300"}`}>
+                          {calc[i].pendiente > 1e-9 ? formatCantidad(calc[i].pendiente, l.unidad) : "—"}
                         </td>
                         <td className="px-2 py-2">
                           <MontoInput value={l.costo} onChange={(n) => cambiar(i, { costo: String(n) })}
@@ -685,7 +787,13 @@ export default function NuevaCompraModal({
             )}
             <p className="text-[11px] text-slate-400">
               El costo es con IVA incluido (el IVA es el del producto). El precio de venta y la categoría, si los ponés, quedan en el producto (Inventario).
+              {" "}Si no llegó todo, bajá «Ingresa»: lo que falta queda pendiente y se ingresa después desde el detalle de la compra.
             </p>
+            {hayPendiente ? (
+              <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+                Queda mercadería pendiente de ingresar: solo entra al stock lo que pusiste en «Ingresa».
+              </p>
+            ) : null}
           </section>
 
           {/* Pago y factura */}
@@ -703,11 +811,6 @@ export default function NuevaCompraModal({
                     <input inputMode="numeric" value={plazoDias}
                       onChange={(e) => setPlazoDias(e.target.value.replace(/\D/g, ""))}
                       placeholder="Ej: 30" className={INPUT} />
-                    {vencimientoDesde(editar?.fecha ?? null, plazoDias) ? (
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Vence el {vencimientoDesde(editar?.fecha ?? null, plazoDias)}
-                      </p>
-                    ) : null}
                   </div>
                 )}
               </div>

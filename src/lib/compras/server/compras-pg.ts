@@ -111,10 +111,17 @@ export async function listCompras(
   const cols = COLS.split(",")
     .map((c) => `c.${c.trim()}`)
     .join(", ");
+  const ext = await columnasIngreso(pool(), schema);
+  const pendiente = ext.ingresada
+    ? `EXISTS (SELECT 1 FROM ${quoteSchemaTable(schema, "compra_items")} ci
+                WHERE ci.compra_id = c.id AND ci.empresa_id = c.empresa_id
+                  AND ci.cantidad_ingresada IS NOT NULL AND ci.cantidad_ingresada < ci.cantidad)`
+    : "false";
   const { rows } = await pool().query<CompraRow>(
     `SELECT ${cols},
             pc.cuenta AS cuenta_contable_codigo,
-            pc.denominacion AS cuenta_contable_denominacion
+            pc.denominacion AS cuenta_contable_denominacion,
+            ${pendiente} AS pendiente_ingreso
        FROM ${t} c
        LEFT JOIN ${tPC} pc ON pc.id = c.cuenta_contable_id
       WHERE c.empresa_id = $1::uuid
@@ -211,6 +218,11 @@ export interface CompraItemInput {
   /** Solo para compra directa: actualiza el precio de venta del producto. */
   precio_venta?: number | null;
   margen_venta?: number | null;
+  /**
+   * Compra directa: cuánto de la línea entra ya al stock (SQL 52). Lo que
+   * falta queda pendiente de ingresar. Sin dato = entra todo.
+   */
+  cantidad_ingresada?: number | null;
 }
 
 export interface CompraMultilineaInput {
@@ -243,6 +255,38 @@ export interface CompraMultilineaInput {
    * empresa menos lo que está arriba de los camiones).
    */
   destino_ubicacion_id?: string | null;
+  /** Fecha de la factura (AAAA-MM-DD). Sin dato = ahora. */
+  fecha?: string | null;
+  /** Vencimiento de la factura (SQL 52). */
+  fecha_vencimiento?: string | null;
+  /** Camión que trajo la mercadería (SQL 52), aunque entre al salón. */
+  camion_transporte_id?: string | null;
+}
+
+/** Columnas del SQL 52 (fecha de vencimiento, camión, ingreso parcial). */
+async function columnasIngreso(
+  q: { query: (sql: string, v: unknown[]) => Promise<{ rows: { t: string; c: string }[] }> },
+  schema: string
+): Promise<{ cabecera: boolean; ingresada: boolean }> {
+  const { rows } = await q.query(
+    `SELECT table_name AS t, column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1
+        AND ((table_name = 'compras' AND column_name = 'destino_ubicacion_id')
+          OR (table_name = 'compra_items' AND column_name = 'cantidad_ingresada'))`,
+    [schema]
+  );
+  return {
+    cabecera: rows.some((r) => r.t === "compras"),
+    ingresada: rows.some((r) => r.t === "compra_items"),
+  };
+}
+
+const FALTA_SQL_52 = "Falta correr el SQL 52 (compras: vencimiento, camión e ingreso parcial).";
+
+/** Fecha de la factura a las 12:00 de Paraguay; `null` si no vino o es inválida. */
+function fechaCompraTs(fecha: string | null | undefined): string | null {
+  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return null;
+  return `${fecha}T12:00:00-03:00`;
 }
 
 /** IVA INCLUIDO: el costo cargado es el total con IVA; el IVA se DEDUCE. */
@@ -310,6 +354,16 @@ export async function insertCompraMultilinea(
   }
   const desdeRecepcion = d.origen_compra === "recepcion";
   const afectaStock = !desdeRecepcion;
+  // Cuánto entra ya de cada línea (compra directa). Por defecto, todo.
+  const ingresadaDe = (it: CompraItemInput): number => {
+    if (desdeRecepcion) return Number(it.cantidad);
+    const v = it.cantidad_ingresada;
+    if (v == null || !Number.isFinite(Number(v))) return Number(it.cantidad);
+    return Math.min(Number(it.cantidad), Math.max(0, Number(v)));
+  };
+  const hayPendiente = !desdeRecepcion && d.items.some((it) => ingresadaDe(it) + 1e-9 < Number(it.cantidad));
+  const fechaTs = fechaCompraTs(d.fecha);
+  const fechaVenc = d.fecha_vencimiento && /^\d{4}-\d{2}-\d{2}$/.test(d.fecha_vencimiento) ? d.fecha_vencimiento : null;
   if (desdeRecepcion && d.items.some((it) => !it.recepcion_item_id)) {
     throw new ContabilidadError("Toda línea de una compra por recepción debe referenciar un ítem recibido.");
   }
@@ -353,6 +407,11 @@ export async function insertCompraMultilinea(
       });
     }
 
+    const ext = await columnasIngreso(client, schema);
+    if ((hayPendiente && !ext.ingresada) || ((fechaVenc || d.camion_transporte_id) && !ext.cabecera)) {
+      throw new ContabilidadError(FALTA_SQL_52, 409);
+    }
+
     const numero = await nextNumeroControl(client, schema, empresaId);
 
     let compra: CompraRow;
@@ -370,7 +429,7 @@ export async function insertCompraMultilinea(
            $1::uuid,$2::uuid,$3,$4::uuid,$5,
            $6::numeric,$7,$8::numeric,$9::numeric,$10::numeric,
            $11,$12::numeric,$13::numeric,$14::numeric,$15::numeric,$16::numeric,
-           $17,$18::integer,$31::integer,$19,$20,'registrada',now(),
+           $17,$18::integer,$31::integer,$19,$20,'registrada',COALESCE($32::timestamptz, now()),
            $21::uuid,$22,$23::uuid,$24::boolean,$25::uuid,$26::uuid,$27::uuid,$28,
            $29,COALESCE(NULLIF($30,''),'Factura')
          ) RETURNING ${COLS}`,
@@ -385,6 +444,7 @@ export async function insertCompraMultilinea(
           d.cuenta_contrapartida_id, d.orden_compra_id, d.origen_compra,
           d.numero_comprobante, d.tipo_comprobante,
           d.tipo_pago === "credito" ? Math.max(1, Number(d.cuotas) || 1) : 1,
+          fechaTs,
         ]
       );
       compra = rows[0];
@@ -397,6 +457,14 @@ export async function insertCompraMultilinea(
         if (existing) return { compra: existing, movimiento_id: null, movimiento_warning: null };
       }
       throw insErr;
+    }
+
+    if (ext.cabecera) {
+      await client.query(
+        `UPDATE ${tC} SET fecha_vencimiento = $3::date, camion_transporte_id = $4::uuid, destino_ubicacion_id = $5::uuid
+          WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+        [compra.id, empresaId, fechaVenc, d.camion_transporte_id ?? null, destino]
+      );
     }
 
     // ── Consumo de lo recibido pendiente de facturar (anti doble facturación) ──
@@ -450,43 +518,50 @@ export async function insertCompraMultilinea(
       await client.query(
         `INSERT INTO ${tCI} (empresa_id, compra_id, producto_id, producto_nombre, descripcion, cantidad,
            costo_unitario, iva_tipo, subtotal, monto_iva, total_linea, cuenta_contable_id,
-           recepcion_item_id, afecta_inventario, costo_unitario_ordenado, costo_unitario_recibido, orden_linea)
+           recepcion_item_id, afecta_inventario, costo_unitario_ordenado, costo_unitario_recibido, orden_linea
+           ${ext.ingresada ? ", cantidad_ingresada" : ""})
          VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::numeric,$7::numeric,$8,$9::numeric,$10::numeric,
-                 $11::numeric,$12::uuid,$13::uuid,$14::boolean,$15::numeric,$16::numeric,$17)`,
+                 $11::numeric,$12::uuid,$13::uuid,$14::boolean,$15::numeric,$16::numeric,$17
+                 ${ext.ingresada ? ", $18::numeric" : ""})`,
         [empresaId, compra.id, l.producto_id, l.producto_nombre, l.descripcion, l.cantidad,
          l.costo_unitario, l.iva_tipo, l.subtotal, l.monto_iva, l.total_linea, l.cuenta_contable_id,
          l.recepcion_item_id, afectaStock && !!l.producto_id,
-         l._costo_ordenado ?? null, l._costo_recibido ?? null, i + 1]
+         l._costo_ordenado ?? null, l._costo_recibido ?? null, i + 1,
+         ...(ext.ingresada ? [desdeRecepcion || !l.producto_id ? null : ingresadaDe(l)] : [])]
       );
     }
 
     // ── Inventario: SOLO compra directa. Un movimiento por producto. ──
     if (afectaStock) {
-      const porProducto = new Map<string, { cantidad: number; costoPonderado: number; nombre: string; precioVenta: number | null }>();
+      // `cantidad` = lo que entra ahora al stock; el costo se pondera con lo comprado.
+      const porProducto = new Map<string, { cantidad: number; comprada: number; costoPonderado: number; nombre: string; precioVenta: number | null }>();
       for (const l of calculadas) {
         if (!l.producto_id) continue;
-        const prev = porProducto.get(l.producto_id) ?? { cantidad: 0, costoPonderado: 0, nombre: l.producto_nombre, precioVenta: null };
-        prev.cantidad += Number(l.cantidad);
+        const prev = porProducto.get(l.producto_id) ?? { cantidad: 0, comprada: 0, costoPonderado: 0, nombre: l.producto_nombre, precioVenta: null };
+        prev.cantidad += ingresadaDe(l);
+        prev.comprada += Number(l.cantidad);
         prev.costoPonderado += Number(l.cantidad) * Number(l.costo_unitario);
         if (l.precio_venta != null && Number(l.precio_venta) > 0) prev.precioVenta = Number(l.precio_venta);
         porProducto.set(l.producto_id, prev);
       }
       for (const [productoId, agg] of porProducto) {
-        const costoUnit = agg.cantidad > 0 ? agg.costoPonderado / agg.cantidad : 0;
-        const { rows: mov } = await client.query<{ id: string }>(
-          `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
-             costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id
-             ${destino ? ", ubicacion_id" : ""})
-           SELECT $1::uuid,$2::uuid,$3,COALESCE(p.sku::text,''),'ENTRADA',$4::numeric,$5::numeric,
-                  'compra',$6,now(),$7::uuid,$8,'compra',$9::uuid
-                  ${destino ? ", $10::uuid" : ""}
-             FROM ${tP} p WHERE p.id = $2::uuid AND p.empresa_id = $1::uuid
-           RETURNING id`,
-          [empresaId, productoId, agg.nombre, agg.cantidad, costoUnit, numero, d.created_by, d.usuario_nombre, compra.id,
-           ...(destino ? [destino] : [])]
-        );
-        if (!mov[0]?.id) throw new Error("No se pudo registrar el movimiento de inventario (producto inexistente).");
-        movimientoId = movimientoId ?? mov[0].id;
+        const costoUnit = agg.comprada > 0 ? agg.costoPonderado / agg.comprada : 0;
+        if (agg.cantidad > 0) {
+          const { rows: mov } = await client.query<{ id: string }>(
+            `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
+               costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id
+               ${destino ? ", ubicacion_id" : ""})
+             SELECT $1::uuid,$2::uuid,$3,COALESCE(p.sku::text,''),'ENTRADA',$4::numeric,$5::numeric,
+                    'compra',$6,now(),$7::uuid,$8,'compra',$9::uuid
+                    ${destino ? ", $10::uuid" : ""}
+               FROM ${tP} p WHERE p.id = $2::uuid AND p.empresa_id = $1::uuid
+             RETURNING id`,
+            [empresaId, productoId, agg.nombre, agg.cantidad, costoUnit, numero, d.created_by, d.usuario_nombre, compra.id,
+             ...(destino ? [destino] : [])]
+          );
+          if (!mov[0]?.id) throw new Error("No se pudo registrar el movimiento de inventario (producto inexistente).");
+          movimientoId = movimientoId ?? mov[0].id;
+        }
 
         const upd = await client.query(
           `UPDATE ${tP}
@@ -501,7 +576,7 @@ export async function insertCompraMultilinea(
 
         // Compra a un camión: la mercadería entra arriba de ese camión. El total
         // de la empresa ya subió arriba; acá se dice dónde está.
-        if (destino) {
+        if (destino && agg.cantidad > 0) {
           await client.query(
             `INSERT INTO ${tSU} (empresa_id, producto_id, ubicacion_id, stock_actual)
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4::numeric)
@@ -662,62 +737,219 @@ export async function updateCompraDocumento(
 }
 
 export interface CompraItemDetalle {
+  id: string;
   producto_id: string | null;
+  codigo: string | null;
   producto_nombre: string;
   cantidad: number;
+  /** Lo que ya entró al stock. Compras anteriores al SQL 52: todo. */
+  cantidad_ingresada: number;
   costo_unitario: number;
   iva_tipo: string | null;
   total_linea: number;
 }
 
+export interface CompraDetalle {
+  items: CompraItemDetalle[];
+  destino: string;
+  destino_camion_id: string | null;
+  fecha_vencimiento: string | null;
+  camion_transporte_id: string | null;
+  camion_transporte: string | null;
+  /** `false` hasta correr el SQL 52: no se puede dejar ni ingresar pendiente. */
+  admite_ingreso_parcial: boolean;
+}
+
 /**
- * Renglones de una compra y a dónde entró la mercadería: el camión (por la
- * ubicación de sus movimientos de inventario) o el salón.
+ * Renglones de una compra (con lo ingresado y lo pendiente) y a dónde entró
+ * la mercadería: el camión o el salón.
  */
 export async function getCompraDetalle(
   schemaRaw: string,
   empresaId: string,
   compraId: string
-): Promise<{ items: CompraItemDetalle[]; destino: string; destino_camion_id: string | null }> {
+): Promise<CompraDetalle> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const tCI = quoteSchemaTable(schema, "compra_items");
+  const tP = quoteSchemaTable(schema, "productos");
+  const ext = await columnasIngreso(pool(), schema);
   const { rows } = await pool().query<{
-    producto_id: string | null; producto_nombre: string | null; cantidad: string;
-    costo_unitario: string; iva_tipo: string | null; total_linea: string;
+    id: string; producto_id: string | null; sku: string | null; producto_nombre: string | null; cantidad: string;
+    ingresada: string | null; costo_unitario: string; iva_tipo: string | null; total_linea: string;
   }>(
-    `SELECT producto_id, producto_nombre, cantidad::text, costo_unitario::text, iva_tipo, total_linea::text
-       FROM ${tCI} WHERE compra_id = $1::uuid AND empresa_id = $2::uuid
-      ORDER BY orden_linea NULLS LAST, created_at`,
+    `SELECT ci.id, ci.producto_id, p.sku::text AS sku, ci.producto_nombre, ci.cantidad::text,
+            ${ext.ingresada ? "ci.cantidad_ingresada::text" : "NULL::text"} AS ingresada,
+            ci.costo_unitario::text, ci.iva_tipo, ci.total_linea::text
+       FROM ${tCI} ci LEFT JOIN ${tP} p ON p.id = ci.producto_id AND p.empresa_id = ci.empresa_id
+      WHERE ci.compra_id = $1::uuid AND ci.empresa_id = $2::uuid
+      ORDER BY ci.orden_linea NULLS LAST, ci.created_at`,
     [compraId, empresaId]
   );
   const items = rows.map((r) => ({
+    id: r.id,
     producto_id: r.producto_id,
+    codigo: r.sku,
     producto_nombre: r.producto_nombre ?? "",
     cantidad: Number(r.cantidad),
+    cantidad_ingresada: r.ingresada == null ? Number(r.cantidad) : Number(r.ingresada),
     costo_unitario: Number(r.costo_unitario),
     iva_tipo: r.iva_tipo,
     total_linea: Number(r.total_linea),
   }));
 
-  let destino = "Salón";
-  let destinoCamionId: string | null = null;
+  const out: CompraDetalle = {
+    items,
+    destino: "Salón",
+    destino_camion_id: null,
+    fecha_vencimiento: null,
+    camion_transporte_id: null,
+    camion_transporte: null,
+    admite_ingreso_parcial: ext.ingresada && ext.cabecera,
+  };
+  const tCam = quoteSchemaTable(schema, "camiones");
   try {
+    if (ext.cabecera) {
+      const c = await pool().query<{
+        fecha_vencimiento: string | null; destino_ubicacion_id: string | null; camion_transporte_id: string | null;
+        transporte: string | null; destino_alias: string | null; destino_id: string | null;
+      }>(
+        `SELECT c.fecha_vencimiento::text, c.destino_ubicacion_id, c.camion_transporte_id,
+                ct.alias AS transporte, cd.alias AS destino_alias, cd.id AS destino_id
+           FROM ${quoteSchemaTable(schema, "compras")} c
+           LEFT JOIN ${tCam} ct ON ct.id = c.camion_transporte_id
+           LEFT JOIN ${tCam} cd ON cd.ubicacion_id = c.destino_ubicacion_id
+          WHERE c.id = $1::uuid AND c.empresa_id = $2::uuid`,
+        [compraId, empresaId]
+      );
+      const r = c.rows[0];
+      if (r) {
+        out.fecha_vencimiento = r.fecha_vencimiento;
+        out.camion_transporte_id = r.camion_transporte_id;
+        out.camion_transporte = r.transporte;
+        if (r.destino_id) {
+          out.destino = `Camión ${r.destino_alias}`;
+          out.destino_camion_id = r.destino_id;
+          return out;
+        }
+      }
+    }
+    // Compras anteriores al SQL 52: el destino sale de sus movimientos.
     const d = await pool().query<{ alias: string; id: string }>(
       `SELECT c.alias, c.id
          FROM ${quoteSchemaTable(schema, "movimientos_inventario")} m
-         JOIN ${quoteSchemaTable(schema, "camiones")} c ON c.ubicacion_id = m.ubicacion_id
+         JOIN ${tCam} c ON c.ubicacion_id = m.ubicacion_id
         WHERE m.empresa_id = $1::uuid AND m.documento_tipo = 'compra' AND m.documento_id = $2::uuid
         LIMIT 1`,
       [empresaId, compraId]
     );
     if (d.rows[0]) {
-      destino = `Camión ${d.rows[0].alias}`;
-      destinoCamionId = d.rows[0].id;
+      out.destino = `Camión ${d.rows[0].alias}`;
+      out.destino_camion_id = d.rows[0].id;
     }
   } catch {
     // Sin camiones o sin ubicación en los movimientos: queda "Salón".
   }
-  return { items, destino, destino_camion_id: destinoCamionId };
+  return out;
+}
+
+/**
+ * Ingresa al stock lo que había quedado pendiente de una compra (SQL 52):
+ * entra al mismo destino de la compra (salón o camión), con un movimiento
+ * ENTRADA de la compra —así anularla también devuelve esto—.
+ */
+export async function registrarIngresoCompra(
+  schemaRaw: string,
+  empresaId: string,
+  compraId: string,
+  items: { compra_item_id: string; cantidad: number }[],
+  o: { usuario: string | null; createdBy: string | null }
+): Promise<{ ingresados: number }> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tC = quoteSchemaTable(schema, "compras");
+  const tCI = quoteSchemaTable(schema, "compra_items");
+  const tM = quoteSchemaTable(schema, "movimientos_inventario");
+  const tP = quoteSchemaTable(schema, "productos");
+  const tSU = quoteSchemaTable(schema, "inventario_stock_ubicacion");
+  const pedidos = items.filter((i) => Number(i.cantidad) > 0);
+  if (pedidos.length === 0) throw new ContabilidadError("Poné cuánto ingresa de algún producto.");
+
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const ext = await columnasIngreso(client, schema);
+    if (!ext.ingresada || !ext.cabecera) throw new ContabilidadError(FALTA_SQL_52, 409);
+    const { rows: cab } = await client.query<{
+      estado: string | null; origen_compra: string | null; numero_control: string; destino_ubicacion_id: string | null;
+    }>(
+      `SELECT estado, origen_compra, numero_control, destino_ubicacion_id
+         FROM ${tC} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+      [compraId, empresaId]
+    );
+    const c = cab[0];
+    if (!c) throw new ContabilidadError("La compra no existe.", 404);
+    if (c.estado === "anulada") throw new ContabilidadError("La compra está anulada.", 409);
+    if (c.origen_compra === "recepcion") throw new ContabilidadError("Esta compra viene de una recepción.", 409);
+    const destino = c.destino_ubicacion_id;
+
+    let ingresados = 0;
+    for (const it of pedidos) {
+      const { rows } = await client.query<{
+        producto_id: string | null; producto_nombre: string | null; cantidad: string; ingresada: string | null; costo_unitario: string;
+      }>(
+        `SELECT producto_id, producto_nombre, cantidad::text, cantidad_ingresada::text AS ingresada, costo_unitario::text
+           FROM ${tCI} WHERE id = $1::uuid AND compra_id = $2::uuid AND empresa_id = $3::uuid FOR UPDATE`,
+        [it.compra_item_id, compraId, empresaId]
+      );
+      const l = rows[0];
+      if (!l || !l.producto_id) throw new ContabilidadError("Hay un renglón que no es de esta compra.", 404);
+      const ya = l.ingresada == null ? Number(l.cantidad) : Number(l.ingresada);
+      const pendiente = Number(l.cantidad) - ya;
+      const cant = Number(it.cantidad);
+      if (cant > pendiente + 1e-9) {
+        throw new ContabilidadError(
+          `"${l.producto_nombre ?? "Producto"}": quedan ${pendiente} por ingresar y estás ingresando ${cant}.`,
+          409
+        );
+      }
+      await client.query(
+        `UPDATE ${tCI} SET cantidad_ingresada = COALESCE(cantidad_ingresada, cantidad) + $1::numeric
+          WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+        [cant, it.compra_item_id, empresaId]
+      );
+      await client.query(
+        `UPDATE ${tP} SET stock_actual = COALESCE(stock_actual, 0) + $1::numeric, updated_at = now()
+          WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+        [cant, l.producto_id, empresaId]
+      );
+      if (destino) {
+        await client.query(
+          `INSERT INTO ${tSU} (empresa_id, producto_id, ubicacion_id, stock_actual)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4::numeric)
+           ON CONFLICT (empresa_id, producto_id, ubicacion_id)
+           DO UPDATE SET stock_actual = ${tSU}.stock_actual + EXCLUDED.stock_actual, updated_at = now()`,
+          [empresaId, l.producto_id, destino, cant]
+        );
+      }
+      await client.query(
+        `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
+           costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id
+           ${destino ? ", ubicacion_id" : ""})
+         SELECT $1::uuid, $2::uuid, $3, COALESCE(p.sku::text, ''), 'ENTRADA', $4::numeric, $5::numeric,
+                'compra', $6, now(), $7::uuid, $8, 'compra', $9::uuid ${destino ? ", $10::uuid" : ""}
+           FROM ${tP} p WHERE p.id = $2::uuid AND p.empresa_id = $1::uuid`,
+        [empresaId, l.producto_id, l.producto_nombre, cant, Number(l.costo_unitario),
+         `Ingreso ${c.numero_control}`, o.createdBy, o.usuario, compraId, ...(destino ? [destino] : [])]
+      );
+      ingresados++;
+    }
+    await client.query("COMMIT");
+    return { ingresados };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 /**
