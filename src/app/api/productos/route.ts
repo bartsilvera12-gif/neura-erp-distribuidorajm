@@ -8,6 +8,7 @@ import {
   insertMovimientoInicial,
   rowToProductoApi,
   normalizarTipoIva,
+  buscarProductoPorSku,
   DuplicadoError,
 } from "@/lib/inventario/server/productos-pg";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
@@ -454,6 +455,26 @@ export async function POST(request: NextRequest) {
     const sku = normalizeUpperText(body.sku);
     if (!nombre) return NextResponse.json(errorResponse("El nombre es obligatorio."), { status: 400 });
     if (!sku) return NextResponse.json(errorResponse("El SKU es obligatorio."), { status: 400 });
+
+    // El SKU es único por empresa e incluye a los desactivados. Si ya hay uno
+    // —sobre todo si está desactivado y por eso no se ve ni se escanea—, en vez
+    // de un "SKU duplicado" a secas devolvemos el id para poder reactivarlo.
+    const existentePorSku = await buscarProductoPorSku(schema, empresaId, sku);
+    if (existentePorSku) {
+      if (existentePorSku.activo) {
+        return NextResponse.json(errorResponse("Ya existe un producto activo con ese SKU."), { status: 409 });
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Ya existe «${existentePorSku.nombre}» con ese SKU, pero está desactivado. Podés reactivarlo en vez de crear uno nuevo.`,
+          inactivo: true,
+          producto_id: existentePorSku.id,
+          nombre: existentePorSku.nombre,
+        },
+        { status: 409 }
+      );
+    }
 
     const codigoBarras = normalizeUpperCodigoBarras(body.codigo_barras);
     const codigoBarrasInterno = codigoBarras != null && body.codigo_barras_interno === true;

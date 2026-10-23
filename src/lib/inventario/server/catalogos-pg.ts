@@ -406,6 +406,7 @@ export async function deleteCategoriaProducto(
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = quoteSchemaTable(schema, "categorias_productos");
   const tRel = quoteSchemaTable(schema, "producto_categorias");
+  const tProd = quoteSchemaTable(schema, "productos");
 
   const { rows: hijas } = await pool().query<{ n: string }>(
     `SELECT count(*)::text AS n FROM ${t} WHERE parent_id = $1::uuid AND empresa_id = $2::uuid`,
@@ -417,13 +418,26 @@ export async function deleteCategoriaProducto(
     );
   }
 
+  // Un producto puede apuntar a la categoría de dos formas: como principal
+  // (productos.categoria_principal_id) o por el puente (producto_categorias).
+  // Se cuentan las dos, sin duplicar, porque cualquiera de las dos bloquea el
+  // borrado por clave foránea: contar solo una dejaba pasar un DELETE que después
+  // fallaba con un error técnico y sin explicación. Incluye inactivos: su
+  // referencia también existe. El conteo que se muestra en la lista es solo de
+  // activos, así que acá puede salir un número mayor, y por eso el mensaje lo dice.
   const { rows: usos } = await pool().query<{ n: string }>(
-    `SELECT count(*)::text AS n FROM ${tRel} WHERE categoria_id = $1::uuid AND empresa_id = $2::uuid`,
+    `SELECT count(*)::text AS n FROM (
+        SELECT id AS pid FROM ${tProd}
+         WHERE empresa_id = $2::uuid AND categoria_principal_id = $1::uuid
+        UNION
+        SELECT producto_id AS pid FROM ${tRel}
+         WHERE empresa_id = $2::uuid AND categoria_id = $1::uuid
+     ) x`,
     [id, empresaId]
   );
   if (Number(usos[0]?.n ?? 0) > 0) {
     throw new CatalogoEnUsoError(
-      `No se puede borrar: ${usos[0].n} producto(s) usan esta categoría. Desactivala si no querés que siga apareciendo.`
+      `No se puede borrar: ${usos[0].n} producto(s) usan esta categoría (contando desactivados). Desactivala si no querés que siga apareciendo, o cambiales la categoría a esos productos.`
     );
   }
 

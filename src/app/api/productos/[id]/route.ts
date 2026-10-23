@@ -111,6 +111,9 @@ export async function PATCH(
     if (body.tipo_iva !== undefined) {
       patch.tipo_iva = normalizarTipoIva(body.tipo_iva);
     }
+    if (body.activo !== undefined) {
+      patch.activo = body.activo === true;
+    }
 
     // Relaciones opcionales — validar ownership
     let categoriaCambia = false;

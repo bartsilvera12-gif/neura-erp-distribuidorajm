@@ -258,11 +258,28 @@ export async function saveProducto(
   });
   const json = await res.json().catch(() => ({} as Record<string, unknown>));
   if (!res.ok || !json?.success) {
-    const msg = (json as { error?: string })?.error ?? `Error ${res.status} al guardar producto.`;
-    // 409 (conflicto) o validacion: lanzar para que la UI lo muestre.
-    if (res.status === 409 || res.status === 400) throw new Error(msg);
-    console.error("[inventario] saveProducto:", msg);
-    throw new Error(msg);
+    const data = json as {
+      error?: string;
+      inactivo?: boolean;
+      producto_id?: string;
+      nombre?: string;
+    };
+    const msg = data?.error ?? `Error ${res.status} al guardar producto.`;
+    // Si el SKU choca con un producto DESACTIVADO, se adjunta su id al error
+    // para que la pantalla ofrezca reactivarlo en vez de un error seco.
+    const err = new Error(msg) as Error & {
+      inactivo?: boolean;
+      productoId?: string;
+      productoNombre?: string;
+    };
+    if (data?.inactivo && data.producto_id) {
+      err.inactivo = true;
+      err.productoId = data.producto_id;
+      err.productoNombre = data.nombre;
+    } else if (res.status !== 409 && res.status !== 400) {
+      console.error("[inventario] saveProducto:", msg);
+    }
+    throw err;
   }
 
   const data = (json.data as { producto?: ProductoRow } | undefined)?.producto;

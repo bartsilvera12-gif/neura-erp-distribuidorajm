@@ -89,6 +89,10 @@ export default function CategoriasProductosPage() {
   const [editParent, setEditParent] = useState("");
   const [porBorrar, setPorBorrar] = useState<Categoria | null>(null);
   const [borrando, setBorrando] = useState(false);
+  // El motivo de un borrado que no se pudo hacer, mostrado DENTRO de la ventana.
+  // Antes se usaba el `error` de arriba, que quedaba tapado por la propia ventana:
+  // parecía que "no hacía nada".
+  const [errorBorrar, setErrorBorrar] = useState<string | null>(null);
 
   // Ver los productos de una categoría (al tocar el número / el nombre).
   const [verProductosDe, setVerProductosDe] = useState<Categoria | null>(null);
@@ -129,7 +133,7 @@ export default function CategoriasProductosPage() {
 
   async function borrar(cat: Categoria) {
     setBorrando(true);
-    setError(null);
+    setErrorBorrar(null);
     try {
       const r = await fetch(`/api/inventario/categorias/${cat.id}`, {
         method: "DELETE",
@@ -138,7 +142,8 @@ export default function CategoriasProductosPage() {
       const j = await r.json().catch(() => ({}));
       if (r.ok && j?.success) { setPorBorrar(null); load(); }
       // El servidor explica por qué no se puede (sub-categorías, productos).
-      else setError(j?.error ?? "No se pudo borrar.");
+      // Se muestra DENTRO de la ventana, no detrás.
+      else setErrorBorrar(j?.error ?? "No se pudo borrar.");
     } finally {
       setBorrando(false);
     }
@@ -421,7 +426,7 @@ export default function CategoriasProductosPage() {
                           {c.activo ? "Desactivar" : "Activar"}
                         </button>
                         <button
-                          onClick={() => { setPorBorrar(c); setError(null); }}
+                          onClick={() => { setPorBorrar(c); setError(null); setErrorBorrar(null); }}
                           className="text-[11px] font-semibold text-rose-600 underline-offset-2 hover:underline"
                         >
                           Eliminar
@@ -449,9 +454,14 @@ export default function CategoriasProductosPage() {
             <p className="mt-2 text-sm text-slate-600">
               Si solo querés que deje de ofrecerse, <strong>desactivala</strong>.
             </p>
+            {errorBorrar ? (
+              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                {errorBorrar}
+              </p>
+            ) : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
-                onClick={() => setPorBorrar(null)}
+                onClick={() => { setPorBorrar(null); setErrorBorrar(null); }}
                 disabled={borrando}
                 className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               >

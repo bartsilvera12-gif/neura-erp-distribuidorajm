@@ -218,6 +218,29 @@ export interface UpdateProductoInput {
   ubicacion_principal_id?: string | null;
   proveedor_principal_id?: string | null;
   tipo_iva?: string | null;
+  /** Reactivar (true) o dar de baja (false) un producto. */
+  activo?: boolean;
+}
+
+/**
+ * Busca un producto por SKU, INCLUIDOS los desactivados. Sirve para el alta:
+ * el índice único de SKU cuenta también los inactivos, así que un alta puede
+ * fallar por un producto que no se ve en la lista —conviene reactivarlo en vez
+ * de crear otro—.
+ */
+export async function buscarProductoPorSku(
+  schemaRaw: string,
+  empresaId: string,
+  sku: string
+): Promise<{ id: string; nombre: string; activo: boolean } | null> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const t = tProd(schema);
+  const { rows } = await pool().query<{ id: string; nombre: string; activo: boolean }>(
+    `SELECT id, nombre, activo FROM ${t}
+      WHERE empresa_id = $1::uuid AND upper(btrim(sku)) = upper(btrim($2)) LIMIT 1`,
+    [empresaId, sku]
+  );
+  return rows[0] ?? null;
 }
 
 /** Update parcial. Devuelve la fila o null si no existe / no pertenece a la empresa. */
@@ -264,6 +287,7 @@ export async function updateProductoPg(
   // Solo si el schema tiene la columna; si no, el IVA elegido se ignora en
   // silencio (ese tenant no maneja IVA por producto).
   if (patch.tipo_iva !== undefined && hayIva) add("tipo_iva", normalizarTipoIva(patch.tipo_iva));
+  if (patch.activo !== undefined) add("activo", patch.activo, "::boolean");
   if (sets.length === 0) return await getProductoPg(schemaRaw, empresaId, id);
 
   sets.push(`updated_at = now()`);

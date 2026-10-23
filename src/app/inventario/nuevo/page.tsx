@@ -18,6 +18,34 @@ export default function NuevoProductoPage() {
   const router = useRouter();
   const [errorDuplicado, setErrorDuplicado] = useState<string | null>(null);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  // Cuando el SKU choca con un producto DESACTIVADO: se ofrece reactivarlo.
+  const [inactivoExistente, setInactivoExistente] = useState<{ id: string; nombre: string } | null>(null);
+  const [reactivando, setReactivando] = useState(false);
+
+  async function reactivarExistente() {
+    if (!inactivoExistente || reactivando) return;
+    setReactivando(true);
+    try {
+      const r = await fetch(`/api/productos/${inactivoExistente.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ activo: true }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j?.success) {
+        // Queda activo y vuelve a aparecer en la lista y al escanear: lo abrimos
+        // para ajustar lo que haga falta.
+        router.push(`/inventario/${inactivoExistente.id}/editar`);
+      } else {
+        setErrorGeneral(j?.error ?? "No se pudo reactivar el producto.");
+      }
+    } catch (e) {
+      setErrorGeneral(e instanceof Error ? e.message : "Error de red al reactivar.");
+    } finally {
+      setReactivando(false);
+    }
+  }
 
   const [form, setForm] = useState({
     nombre: "",
@@ -245,6 +273,7 @@ export default function NuevoProductoPage() {
     if (submitting) return;
     setErrorDuplicado(null);
     setErrorGeneral(null);
+    setInactivoExistente(null);
 
     const codigoEnInput = form.codigo_barras.trim();
     // Solo rechazar prefijo INT- si fue ESCRITO MANUALMENTE (no si vino del botón).
@@ -309,8 +338,11 @@ export default function NuevoProductoPage() {
           proveedor_principal_id: proveedorId,
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "No se pudo guardar el producto.";
-        setErrorGeneral(msg);
+        const e = err as Error & { inactivo?: boolean; productoId?: string; productoNombre?: string };
+        setErrorGeneral(e?.message ?? "No se pudo guardar el producto.");
+        if (e?.inactivo && e.productoId) {
+          setInactivoExistente({ id: e.productoId, nombre: e.productoNombre ?? "este producto" });
+        }
         return;
       }
 
@@ -380,6 +412,26 @@ export default function NuevoProductoPage() {
           {errorGeneral && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
               <p className="text-sm text-red-700">{errorGeneral}</p>
+            </div>
+          )}
+
+          {inactivoExistente && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-amber-800">
+                «{inactivoExistente.nombre}» ya existe con ese SKU, pero está desactivado.
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                Por eso no aparece en la lista ni al escanear, pero el SKU sigue ocupado. En vez de
+                crear uno nuevo, podés reactivarlo.
+              </p>
+              <button
+                type="button"
+                onClick={reactivarExistente}
+                disabled={reactivando}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {reactivando ? "Reactivando…" : `Reactivar «${inactivoExistente.nombre}»`}
+              </button>
             </div>
           )}
 
