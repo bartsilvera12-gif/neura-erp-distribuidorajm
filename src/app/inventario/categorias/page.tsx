@@ -10,6 +10,17 @@ interface Categoria {
   descripcion: string | null;
   parent_id: string | null;
   activo: boolean;
+  productos_count?: number;
+}
+
+interface ProductoDeCategoria {
+  id: string;
+  nombre: string;
+  sku: string;
+  precio_venta: number | string;
+  costo_promedio: number | string;
+  stock_actual: number | string;
+  unidad_medida: string;
 }
 
 const inputCls =
@@ -78,6 +89,29 @@ export default function CategoriasProductosPage() {
   const [editParent, setEditParent] = useState("");
   const [porBorrar, setPorBorrar] = useState<Categoria | null>(null);
   const [borrando, setBorrando] = useState(false);
+
+  // Ver los productos de una categoría (al tocar el número / el nombre).
+  const [verProductosDe, setVerProductosDe] = useState<Categoria | null>(null);
+  const [productos, setProductos] = useState<ProductoDeCategoria[]>([]);
+  const [cargandoProductos, setCargandoProductos] = useState(false);
+
+  async function abrirProductos(cat: Categoria) {
+    setVerProductosDe(cat);
+    setProductos([]);
+    setCargandoProductos(true);
+    try {
+      const r = await fetch(`/api/inventario/categorias/${cat.id}/productos`, { credentials: "include" });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j?.success) setProductos((j.data?.productos ?? []) as ProductoDeCategoria[]);
+    } catch {
+      // Si falla, el modal queda sin lista; el usuario puede cerrarlo y reintentar.
+    } finally {
+      setCargandoProductos(false);
+    }
+  }
+
+  const fmtGs = (n: number | string) =>
+    "Gs. " + Math.round(Number(n) || 0).toLocaleString("es-PY");
 
   async function guardarEdicion(cat: Categoria) {
     const nombre = editNombre.trim();
@@ -265,6 +299,9 @@ export default function CategoriasProductosPage() {
                   Categoría padre
                 </th>
                 <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em]">
+                  Productos
+                </th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em]">
                   Estado
                 </th>
                 <th className="px-4 py-2.5"></th>
@@ -301,6 +338,7 @@ export default function CategoriasProductosPage() {
                         </select>
                       </td>
                       <td className="px-4 py-2 text-slate-400">—</td>
+                      <td className="px-4 py-2 text-slate-400">—</td>
                       <td className="px-4 py-2 text-right">
                         <div className="flex items-center justify-end gap-3">
                           <button
@@ -324,19 +362,35 @@ export default function CategoriasProductosPage() {
                 return (
                   <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-3 font-medium text-slate-800">
-                      {c.nivel === 1 ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="text-slate-300" aria-hidden="true">└─</span>
-                          <span className="text-slate-700">{c.nombre}</span>
-                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            sub
+                      <button
+                        type="button"
+                        onClick={() => abrirProductos(c)}
+                        title="Ver los productos de esta categoría"
+                        className="text-left transition-colors hover:text-[#3F8E91] hover:underline underline-offset-2"
+                      >
+                        {c.nivel === 1 ? (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="text-slate-300" aria-hidden="true">└─</span>
+                            <span>{c.nombre}</span>
+                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              sub
+                            </span>
                           </span>
-                        </span>
-                      ) : (
-                        c.nombre
-                      )}
+                        ) : (
+                          c.nombre
+                        )}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-slate-500">{parent?.nombre ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => abrirProductos(c)}
+                        className="rounded-full bg-[#4FAEB2]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/20"
+                      >
+                        {c.productos_count ?? 0} {(c.productos_count ?? 0) === 1 ? "producto" : "productos"}
+                      </button>
+                    </td>
                     <td className="px-4 py-3">
                       {c.activo ? (
                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
@@ -409,6 +463,73 @@ export default function CategoriasProductosPage() {
                 className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
               >
                 {borrando ? "Eliminando…" : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {verProductosDe ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-800">
+                  Productos de «{verProductosDe.nombre}»
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {cargandoProductos
+                    ? "Cargando…"
+                    : `${productos.length} ${productos.length === 1 ? "producto" : "productos"}`}
+                </p>
+              </div>
+              <button
+                onClick={() => setVerProductosDe(null)}
+                aria-label="Cerrar"
+                className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="min-h-[6rem] flex-1 overflow-y-auto">
+              {cargandoProductos ? (
+                <p className="p-6 text-sm text-slate-400">Cargando productos…</p>
+              ) : productos.length === 0 ? (
+                <p className="p-6 text-sm text-slate-400">
+                  Esta categoría todavía no tiene productos. Al cargar o editar un producto, elegí esta
+                  categoría como principal.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {productos.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        href={`/inventario/${p.id}/editar`}
+                        className="flex items-center justify-between gap-3 px-5 py-2.5 hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-slate-800">{p.nombre}</span>
+                          <span className="block text-[11px] text-slate-400">
+                            SKU {p.sku} · Stock {Number(p.stock_actual) || 0} {p.unidad_medida}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums text-[#3F8E91]">
+                          {fmtGs(p.precio_venta)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 px-5 py-3 text-right">
+              <button
+                onClick={() => setVerProductosDe(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Cerrar
               </button>
             </div>
           </div>

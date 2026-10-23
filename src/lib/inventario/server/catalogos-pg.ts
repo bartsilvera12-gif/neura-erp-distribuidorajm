@@ -30,6 +30,9 @@ export interface CategoriaProductoRow {
   activo: boolean;
   created_at: string;
   updated_at: string;
+  /** Cuántos productos activos tienen esta categoría como principal. Solo lo
+   *  trae el listado; en insert/update queda sin definir. */
+  productos_count?: number;
 }
 
 /**
@@ -87,14 +90,56 @@ export async function listCategoriasProducto(
     await seedCategoriasFromProveedor(schema, empresaId);
   }
 
-  const where = ["empresa_id = $1::uuid"];
-  if (opts.soloActivas !== false) where.push("activo = true");
+  const tP = quoteSchemaTable(schema, "productos");
+  const where = ["c.empresa_id = $1::uuid"];
+  if (opts.soloActivas !== false) where.push("c.activo = true");
+  // `productos_count`: productos activos que tienen esta categoría como
+  // principal. La subconsulta corre por categoría, pero la lista es corta
+  // (decenas), así que no hace falta más que esto.
   const { rows } = await p.query<CategoriaProductoRow>(
-    `SELECT id, empresa_id, nombre, codigo, descripcion, parent_id, activo, created_at, updated_at
-       FROM ${t}
+    `SELECT c.id, c.empresa_id, c.nombre, c.codigo, c.descripcion, c.parent_id,
+            c.activo, c.created_at, c.updated_at,
+            (SELECT count(*)::int FROM ${tP} p
+              WHERE p.empresa_id = c.empresa_id
+                AND p.categoria_principal_id = c.id
+                AND COALESCE(p.activo, true)) AS productos_count
+       FROM ${t} c
       WHERE ${where.join(" AND ")}
-      ORDER BY nombre`,
+      ORDER BY c.nombre`,
     [empresaId]
+  );
+  return rows;
+}
+
+/** Fila mínima de un producto para listar los de una categoría. */
+export interface ProductoDeCategoriaRow {
+  id: string;
+  nombre: string;
+  sku: string;
+  precio_venta: string | number;
+  costo_promedio: string | number;
+  stock_actual: string | number;
+  unidad_medida: string;
+  activo: boolean;
+}
+
+/**
+ * Los productos que tienen esta categoría como principal. Para la pantalla de
+ * Categorías: al tocar una, se ven los productos que caen ahí.
+ */
+export async function listProductosDeCategoria(
+  schemaRaw: string,
+  empresaId: string,
+  categoriaId: string
+): Promise<ProductoDeCategoriaRow[]> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const t = quoteSchemaTable(schema, "productos");
+  const { rows } = await pool().query<ProductoDeCategoriaRow>(
+    `SELECT id, nombre, sku, precio_venta, costo_promedio, stock_actual, unidad_medida, activo
+       FROM ${t}
+      WHERE empresa_id = $1::uuid AND categoria_principal_id = $2::uuid AND COALESCE(activo, true)
+      ORDER BY nombre`,
+    [empresaId, categoriaId]
   );
   return rows;
 }
