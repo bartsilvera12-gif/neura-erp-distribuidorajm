@@ -28,7 +28,6 @@ import { useEmisor } from "@/shared/hooks/useEmisor";
 import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
 import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
-import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
 import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
@@ -106,8 +105,8 @@ export default function CajaDesktop() {
   }, [listo]);
 
   return (
-    <div className="mx-auto max-w-[1600px] p-6">
-      <header className="mb-5 flex items-center justify-between gap-4">
+    <div className="mx-auto max-w-[1600px] px-6 py-4">
+      <header className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Caja</h1>
           <p className="mt-0.5 text-sm text-slate-500">
@@ -138,12 +137,12 @@ export default function CajaDesktop() {
         </div>
       </header>
 
-      {/* Una sola columna centrada: el recuadro de la venta (total + cobrar)
-          arriba, a la vista, y debajo los más vendidos para cargar rápido. El
-          resto del catálogo sigue a un toque con el buscador. */}
-      <div className="mx-auto flex max-w-[640px] flex-col gap-5">
-        <PanelCobro caja={caja} imprimir={imprimir} setImprimir={setImprimir} />
+      {/* Como la caja de un súper: a la izquierda el buscador, la venta en
+          forma de ticket y los más vendidos; a la derecha, fijo, el TOTAL
+          grande y Finalizar. Todo entra en la pantalla sin scrollear. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_290px] items-start gap-4 xl:grid-cols-[minmax(0,1fr)_330px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <Catalogo caja={caja} />
+        <PanelCobro caja={caja} imprimir={imprimir} setImprimir={setImprimir} />
       </div>
 
       {listo ? (
@@ -212,7 +211,6 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
       })
       .slice(0, 9);
   }, [conStock, idsTop]);
-  const mostrados = sinBusqueda ? topNueve : filtrados;
 
   // El producto marcado con las flechas: Enter agrega ese. Vuelve al primero
   // cada vez que cambia la búsqueda.
@@ -302,128 +300,262 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   }
 
 
+  // Buscando: la lista de resultados se despliega debajo del buscador, sobre
+  // el ticket, y se cierra al agregar.
+  const buscando = !sinBusqueda;
+
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          id="caja-buscar"
-          autoFocus
-          autoComplete="off"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setResaltado(0);
-            setAviso(null);
-          }}
-          onKeyDown={alTeclear}
-          placeholder="Buscar por nombre, SKU o escaneá el código (F2)…"
-          className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-        />
-        <ScanBarcode
-          aria-hidden="true"
-          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-        />
-      </div>
-      {aviso ? (
-        <p
-          role="status"
-          className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
-            aviso.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
-          }`}
-        >
-          {aviso.texto}
-        </p>
-      ) : null}
-
-      {errorCatalogo ? (
-        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
-          <p className="text-sm font-semibold text-rose-700">
-            No se pudo cargar la lista de productos.
-          </p>
-          <p className="mt-1 text-xs text-rose-600">{errorCatalogo}</p>
-          <p className="mt-1 text-xs text-rose-600">
-            Esto no es falta de stock: la consulta falló.
-          </p>
+    <div className="flex min-w-0 flex-col gap-3">
+      <section className="relative">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            id="caja-buscar"
+            autoFocus
+            autoComplete="off"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setResaltado(0);
+              setAviso(null);
+            }}
+            onKeyDown={alTeclear}
+            placeholder="Buscar por nombre o código, o escaneá (F2)…   ·   3*arroz = 3 unidades"
+            className="w-full rounded-xl border-2 border-slate-200 bg-white py-3.5 pl-12 pr-12 text-base shadow-sm outline-none focus:border-[#4FAEB2] focus:ring-4 focus:ring-[#4FAEB2]/15"
+          />
+          <ScanBarcode
+            aria-hidden="true"
+            className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+          />
         </div>
-      ) : null}
 
-      {isLoading ? null : (
-        <AvisoCatalogoCaja origen={origen} ocultos={ocultosSinStock} />
-      )}
+        {buscando ? (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+            {isLoading ? (
+              <p className="px-4 py-6 text-center text-sm text-slate-400">Cargando productos…</p>
+            ) : filtrados.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-slate-500">{textoSinResultado(productos, texto)}</p>
+            ) : (
+              <ul ref={listaRef} className="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto">
+                {filtrados.map((p, i) => {
+                  const pesable = esPesable(p.unidad_medida);
+                  const cantidad = caja.cantidadDe(p.id);
+                  return (
+                    <li
+                      key={p.id}
+                      data-indice={i}
+                      onMouseEnter={() => setResaltado(i)}
+                      className={`flex items-center gap-3 px-4 py-2 ${i === resaltado ? "bg-[#4FAEB2]/10" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => {
+                          agregar(p, pesable ? null : multiplicador);
+                          enfocarBuscador();
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <span className="w-16 shrink-0 font-mono text-xs text-slate-400">{p.sku}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{p.nombre}</span>
+                        <span className="w-24 shrink-0 text-right text-xs text-slate-400">
+                          {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
+                        </span>
+                        <span className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">
+                          {formatGs(precioSegunLista(p.precio_venta, caja.lista))}
+                        </span>
+                      </button>
+                      {pesable ? (
+                        <div className="shrink-0">
+                          <SelectorCantidad
+                            producto={p}
+                            cantidad={cantidad}
+                            cambiarCantidad={caja.cambiarCantidad}
+                            fijarCantidad={caja.fijarCantidad}
+                            size="sm"
+                          />
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="border-t border-slate-100 bg-slate-50 px-4 py-1.5 text-[11px] text-slate-400">
+              ↑ ↓ para elegir · Enter agrega · Esc cierra
+            </p>
+          </div>
+        ) : null}
 
-      {isLoading ? (
-        <p className="py-16 text-center text-sm text-slate-400">Cargando productos…</p>
-      ) : errorCatalogo ? null : mostrados.length === 0 ? (
-        <p className="py-16 text-center text-sm text-slate-400">
-          {texto.trim()
-            ? textoSinResultado(productos, texto)
-            : caja.repartoId
+        {aviso ? (
+          <p
+            role="status"
+            className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+              aviso.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            {aviso.texto}
+          </p>
+        ) : null}
+        {errorCatalogo ? (
+          <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
+            <p className="text-sm font-semibold text-rose-700">No se pudo cargar la lista de productos.</p>
+            <p className="mt-1 text-xs text-rose-600">{errorCatalogo}</p>
+            <p className="mt-1 text-xs text-rose-600">Esto no es falta de stock: la consulta falló.</p>
+          </div>
+        ) : null}
+        {isLoading ? null : <AvisoCatalogoCaja origen={origen} ocultos={ocultosSinStock} />}
+      </section>
+
+      <TicketActual caja={caja} />
+
+      {/* Más vendidos: un toque y se agrega. */}
+      {!isLoading && !errorCatalogo ? (
+        topNueve.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+            {caja.repartoId
               ? "El camión está vacío. Se carga con una compra que tenga este camión como destino."
               : "No hay stock disponible para vender en el salón. Cargalo con una compra con destino Salón, o pasá mercadería de un camión al salón desde Camiones."}
-              {textoMotivoSalon(origen) ? (
-                <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
-              ) : null}
-        </p>
-      ) : (
-        <>
-          {sinBusqueda ? (
-            <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
-              Más vendidos
-            </p>
-          ) : null}
-          <ul ref={listaRef} className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-            {mostrados.map((p, i) => {
-            const cantidad = caja.cantidadDe(p.id);
-            const marcado = texto.trim() !== "" && i === resaltado;
-            return (
-              <li
-                key={p.id}
-                data-indice={i}
-                className={`flex flex-col rounded-xl border p-2.5 transition-colors ${
-                  cantidad > 0 ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200"
-                } ${marcado ? "ring-2 ring-[#4FAEB2] ring-offset-1" : ""}`}
-              >
-                <div className="flex items-start gap-2">
-                  <MiniaturaProducto producto={p} />
-                  <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900">{p.nombre}</p>
-                </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Stock: {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
-                </p>
-                <p className="mt-0.5 text-sm font-bold text-[#4FAEB2]">
-                  {formatGs(precioSegunLista(p.precio_venta, caja.lista))}
-                </p>
+            {textoMotivoSalon(origen) ? (
+              <span className="mt-2 block text-slate-500">{textoMotivoSalon(origen)}</span>
+            ) : null}
+          </p>
+        ) : (
+          <section>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Más vendidos</p>
+            {/* Una sola fila: entran los que caben en el ancho (las demás filas
+                miden 0), así el ticket nunca queda empujado fuera de la pantalla. */}
+            <div
+              className="grid gap-2 overflow-hidden"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gridAutoRows: 0, gridTemplateRows: "auto", rowGap: 0 }}
+            >
+              {topNueve.map((p) => {
+                const cantidad = caja.cantidadDe(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => {
+                      agregar(p, null);
+                      enfocarBuscador();
+                    }}
+                    className={`relative rounded-xl border bg-white px-3 py-2 text-left transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/5 ${
+                      cantidad > 0 ? "border-[#4FAEB2]" : "border-slate-200"
+                    }`}
+                  >
+                    <span className="line-clamp-2 pr-5 text-xs font-semibold leading-tight text-slate-800">{p.nombre}</span>
+                    <span className="mt-1 block text-xs font-bold tabular-nums text-[#3F8E91]">
+                      {formatGs(precioSegunLista(p.precio_venta, caja.lista))}
+                    </span>
+                    {cantidad > 0 ? (
+                      <span className="absolute right-1.5 top-1.5 rounded-full bg-[#4FAEB2] px-1.5 text-[10px] font-bold text-white">
+                        {formatCantidad(cantidad, p.unidad_medida)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )
+      ) : null}
+    </div>
+  );
+}
 
-                <div className="mt-2 flex items-center gap-2">
-                  {cantidad > 0 || esPesable(p.unidad_medida) ? (
+/**
+ * La venta en curso como el ticket de un súper: una fila por producto, con
+ * código, cantidad editable, precio, IVA y subtotal. El último que se agregó
+ * queda marcado y a la vista.
+ */
+function TicketActual({ caja }: { caja: CajaVenta }) {
+  const ultimo = caja.carrito[caja.carrito.length - 1]?.producto.id ?? null;
+  const finRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    finRef.current?.scrollIntoView({ block: "nearest" });
+  }, [caja.carrito.length]);
+
+  return (
+    <section className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="grid grid-cols-[44px_minmax(0,1fr)_108px_80px_52px_92px_24px] 2xl:grid-cols-[64px_minmax(0,1fr)_130px_100px_64px_112px_32px] items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <span>Código</span>
+        <span>Producto</span>
+        <span className="text-center">Cantidad</span>
+        <span className="text-right">Precio</span>
+        <span className="text-center">IVA</span>
+        <span className="text-right">Subtotal</span>
+        <span />
+      </div>
+      <div className="max-h-[calc(100vh-430px)] min-h-[200px] flex-1 overflow-y-auto">
+        {caja.carrito.length === 0 ? (
+          <p className="flex h-full min-h-[200px] items-center justify-center px-4 text-center text-sm text-slate-400">
+            Escaneá o buscá un producto para empezar la venta.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {caja.carrito.map((item) => {
+              const linea = caja.lineas.find((l) => l.producto_id === item.producto.id);
+              const esUltimo = item.producto.id === ultimo;
+              return (
+                <li
+                  key={item.producto.id}
+                  className={`grid grid-cols-[44px_minmax(0,1fr)_108px_80px_52px_92px_24px] 2xl:grid-cols-[64px_minmax(0,1fr)_130px_100px_64px_112px_32px] items-center gap-2 px-4 py-2 ${
+                    esUltimo ? "bg-[#4FAEB2]/10" : ""
+                  }`}
+                >
+                  <span className="truncate font-mono text-xs text-slate-400">{item.producto.sku}</span>
+                  <span className="line-clamp-2 text-sm font-medium leading-tight text-slate-900" title={item.producto.nombre}>
+                    {item.producto.nombre}
+                  </span>
+                  <span className="flex justify-center">
                     <SelectorCantidad
-                      producto={p}
-                      cantidad={cantidad}
+                      producto={item.producto}
+                      cantidad={item.cantidad}
                       cambiarCantidad={caja.cambiarCantidad}
                       fijarCantidad={caja.fijarCantidad}
+                      size="sm"
                     />
-                  ) : (
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => {
-                        caja.cambiarCantidad(p, 1);
-                        enfocarBuscador();
-                      }}
-                      className="flex-1 rounded-lg py-1.5 text-xs font-semibold text-white"
-                      style={{ backgroundColor: TEAL }}
+                  </span>
+                  <span className="text-right text-sm tabular-nums text-slate-600">
+                    {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
+                  </span>
+                  <span className="flex justify-center">
+                    <select
+                      value={item.tipoIva}
+                      onChange={(e) => caja.cambiarIva(item.producto.id, e.target.value as TipoIvaVenta)}
+                      aria-label={`IVA de ${item.producto.nombre}`}
+                      className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] text-slate-600"
                     >
-                      Agregar
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+                      {IVAS.map((iva) => (
+                        <option key={iva} value={iva}>
+                          {iva === "EXENTA" ? "Ex." : iva}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                  <span className="text-right text-sm font-semibold tabular-nums text-slate-900">
+                    {formatGs(linea?.total_linea ?? 0)}
+                  </span>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => {
+                      caja.quitarItem(item.producto.id);
+                      enfocarBuscador();
+                    }}
+                    aria-label={`Quitar ${item.producto.nombre} de la venta`}
+                    className="flex justify-center rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
-        </>
-      )}
+        )}
+        <div ref={finRef} />
+      </div>
     </section>
   );
 }
@@ -453,107 +585,58 @@ function PanelCobro({
     setCobrando(true);
   }
   return (
-    <aside>
-      {/* El recuadro de la venta va centrado y arriba del catálogo: el cajero
-          ve el total mientras carga, y el detalle crece hacia abajo (la página
-          scrollea) en vez de quedar encajonado en una columna lateral. */}
-      <div className="flex flex-col rounded-2xl border border-slate-200 bg-white">
-        <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
-          <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Precio
+    <aside className="sticky top-4">
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="bg-slate-900 px-5 py-5 text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Total a cobrar</p>
+          <p className="mt-1 break-all text-4xl font-bold leading-none tabular-nums xl:text-[2.6rem] 2xl:text-5xl">
+            {formatGs(caja.totales.total)}
           </p>
-          <div className="flex-1">
-            <SelectorListaPrecio caja={caja} />
+          <p className="mt-2 text-sm text-slate-400">
+            {caja.totales.renglones === 0
+              ? "Sin productos"
+              : `${caja.totales.renglones} ${caja.totales.renglones === 1 ? "producto" : "productos"}${
+                  caja.totales.unidades > 0 ? ` · ${formatCantidad(caja.totales.unidades, "u")} u.` : ""
+                }`}
+          </p>
+        </div>
+
+        <div className="space-y-2 px-5 py-4 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">IVA incluido</span>
+            <span className="tabular-nums text-slate-700">{formatGs(caja.totales.montoIva)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="shrink-0 text-slate-500">Precio</span>
+            <div className="min-w-0">
+              <SelectorListaPrecio caja={caja} />
+            </div>
           </div>
         </div>
 
-        <div className="min-h-[7rem] max-h-[45vh] overflow-y-auto px-5">
-          {caja.carrito.length === 0 ? (
-            <p className="py-10 text-center text-sm text-slate-400">
-              Agregá productos desde el catálogo.
-            </p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {caja.carrito.map((item) => {
-                const linea = caja.lineas.find((l) => l.producto_id === item.producto.id);
-                return (
-                  <li key={item.producto.id} className="py-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-slate-900">
-                        {item.producto.nombre}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => caja.quitarItem(item.producto.id)}
-                        aria-label={`Quitar ${item.producto.nombre} de la venta`}
-                        className="shrink-0 rounded p-1 text-slate-300 hover:text-red-500"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="mt-1.5 flex items-center justify-between gap-2">
-                      <SelectorCantidad
-                        producto={item.producto}
-                        cantidad={item.cantidad}
-                        cambiarCantidad={caja.cambiarCantidad}
-                        fijarCantidad={caja.fijarCantidad}
-                        size="sm"
-                      />
-                      <span className="min-w-0 truncate text-[11px] text-slate-400">
-                        × {formatGs(precioSegunLista(item.producto.precio_venta, caja.lista))}
-                      </span>
-                      <span className="text-sm font-semibold tabular-nums text-slate-900">
-                        {formatGs(linea?.total_linea ?? 0)}
-                      </span>
-                    </div>
-                    <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400">
-                      IVA
-                      <select
-                        value={item.tipoIva}
-                        onChange={(e) =>
-                          caja.cambiarIva(item.producto.id, e.target.value as TipoIvaVenta)
-                        }
-                        aria-label={`IVA de ${item.producto.nombre}`}
-                        className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px]"
-                      >
-                        {IVAS.map((iva) => (
-                          <option key={iva} value={iva}>
-                            {iva}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-
-        <div className="border-t border-slate-100 p-5">
-          <div className="flex items-center justify-between py-0.5">
-            <span className="text-sm text-slate-500">IVA incluido</span>
-            <span className="text-sm tabular-nums text-slate-700">
-              {formatGs(caja.totales.montoIva)}
-            </span>
-          </div>
-          <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="text-sm font-semibold text-slate-900">Total</span>
-            <span className="text-2xl font-bold tabular-nums text-slate-900">
-              {formatGs(caja.totales.total)}
-            </span>
-          </div>
-
+        <div className="space-y-2 border-t border-slate-100 p-5">
           <button
             id="caja-cobrar"
             type="button"
             onClick={abrirCobro}
             disabled={caja.carrito.length === 0}
-            className="mt-3 w-full rounded-xl py-3.5 text-base font-semibold text-white transition-opacity disabled:opacity-40"
+            className="w-full rounded-xl py-4 text-lg font-bold text-white shadow-sm transition-opacity disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
-            Finalizar venta · {formatGs(caja.totales.total)}
-            <span className="ml-2 text-xs font-medium opacity-80">Enter</span>
+            Finalizar venta
+            <span className="ml-2 rounded bg-white/20 px-1.5 py-0.5 text-xs font-semibold">F9</span>
+          </button>
+          <button
+            type="button"
+            disabled={caja.carrito.length === 0}
+            onClick={() => {
+              if (!window.confirm("¿Cancelar esta venta? Se sacan todos los productos.")) return;
+              for (const i of [...caja.carrito]) caja.quitarItem(i.producto.id);
+              enfocarBuscador();
+            }}
+            className="w-full rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Cancelar venta
           </button>
         </div>
       </div>
