@@ -178,7 +178,19 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/notas-credito",
     icon: ScrollText,
   },
-  { key: "usuarios", slug: "usuarios", label: "RRHH", href: "/usuarios", icon: UserCog },
+  {
+    key: "usuarios",
+    slug: "usuarios",
+    label: "RRHH",
+    href: "/rrhh/funcionarios",
+    icon: UserCog,
+    children: [
+      { label: "Funcionarios", href: "/rrhh/funcionarios" },
+      { label: "Pagos de salarios", href: "/rrhh/salarios" },
+      { label: "Pagos de IPS", href: "/rrhh/ips" },
+      { label: "Usuarios del sistema", href: "/usuarios" },
+    ],
+  },
   {
     // Soporte: la visibilidad la da el módulo, pero el permiso real es de rol
     // (`puedeUsarSoporte`) y lo vuelven a verificar el layout y cada API.
