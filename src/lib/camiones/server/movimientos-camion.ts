@@ -156,6 +156,96 @@ export async function contarCamion(opts: {
 }
 
 /**
+ * Cargar mercadería del salón al camión: lo contrario de pasarAlSalon. El
+ * camión sube; el total de la empresa queda igual, así que el salón
+ * (total − ubicaciones) baja solo. No es una venta ni una compra: es una
+ * transferencia interna, por eso el total no se toca.
+ *
+ * El salón disponible de un producto = total de la empresa − lo que ya está
+ * en cualquier ubicación (los camiones). No se puede cargar más que eso.
+ */
+export async function cargarDesdeSalon(opts: {
+  schema: string;
+  empresaId: string;
+  camionId: string;
+  items: { producto_id: string; cantidad: number }[];
+  usuario: string | null;
+}): Promise<{ movidos: number }> {
+  const { schema, empresaId, camionId, items } = opts;
+  const { client, alias, ubicacionId } = await abrir(schema, empresaId, camionId);
+  try {
+    const ids = items.map((i) => i.producto_id);
+    // Por producto: nombre, sku, lo que ya tiene el camión, el total de la
+    // empresa y lo que está repartido en todas las ubicaciones (los camiones).
+    const q = await client.query(
+      `SELECT p.id AS producto_id, p.nombre, COALESCE(p.sku::text, '') AS sku,
+              COALESCE(p.stock_actual, 0)::text AS total,
+              COALESCE(cam.stock_actual, 0)::text AS camion_actual,
+              COALESCE(ub.suma, 0)::text AS en_ubicaciones
+         FROM ${quoteSchemaTable(schema, "productos")} p
+         LEFT JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} cam
+           ON cam.producto_id = p.id AND cam.ubicacion_id = $2::uuid AND cam.empresa_id = $1::uuid
+         LEFT JOIN (
+           SELECT producto_id, SUM(stock_actual) AS suma
+             FROM ${quoteSchemaTable(schema, "inventario_stock_ubicacion")}
+            WHERE empresa_id = $1::uuid
+            GROUP BY producto_id
+         ) ub ON ub.producto_id = p.id
+        WHERE p.empresa_id = $1::uuid AND p.id = ANY($3::uuid[])
+        FOR UPDATE OF p`,
+      [empresaId, ubicacionId, ids]
+    );
+    const info = new Map(
+      q.rows.map((r) => [
+        String(r.producto_id),
+        {
+          nombre: String(r.nombre),
+          sku: String(r.sku),
+          camionActual: Number(r.camion_actual),
+          salonDisponible: Number(r.total) - Number(r.en_ubicaciones),
+        },
+      ])
+    );
+    const tM = quoteSchemaTable(schema, "movimientos_inventario");
+    let movidos = 0;
+    for (const it of items) {
+      const f = info.get(it.producto_id);
+      if (!f) throw new CamionError("Hay un producto que no existe.", 404);
+      if (!(it.cantidad > 0)) continue;
+      if (it.cantidad > f.salonDisponible + 1e-9) {
+        throw new CamionError(
+          `El salón tiene ${f.salonDisponible} de "${f.nombre}" y querés cargar ${it.cantidad}.`,
+          409
+        );
+      }
+      movidos += 1;
+      await fijarStockCamion(client, schema, empresaId, it.producto_id, ubicacionId, f.camionActual + it.cantidad);
+      // Par SALIDA (del salón, sin ubicación) / ENTRADA (al camión): el total
+      // de la empresa queda igual en el historial.
+      await client.query(
+        `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku,
+           tipo, cantidad, origen, referencia, fecha, usuario_nombre)
+         VALUES ($1::uuid, $2::uuid, $3, $4, 'SALIDA', $5::numeric, 'transferencia', $6, now(), $7)`,
+        [empresaId, it.producto_id, f.nombre, f.sku, it.cantidad, `Salón → camión ${alias}`, opts.usuario]
+      );
+      await client.query(
+        `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku,
+           tipo, cantidad, origen, referencia, fecha, ubicacion_id, usuario_nombre)
+         VALUES ($1::uuid, $2::uuid, $3, $4, 'ENTRADA', $5::numeric, 'transferencia', $6, now(), $7::uuid, $8)`,
+        [empresaId, it.producto_id, f.nombre, f.sku, it.cantidad, `Salón → camión ${alias}`, ubicacionId, opts.usuario]
+      );
+    }
+    await client.query("COMMIT");
+    return { movidos };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Pasar mercadería del camión al salón. El camión baja; el total de la
  * empresa queda igual, así que el salón (total − camiones) sube solo.
  */

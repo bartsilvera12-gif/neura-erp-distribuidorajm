@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownToLine, ClipboardCheck, Package, RefreshCw, Truck } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Package, RefreshCw, Truck } from "lucide-react";
 import CamionesPanel from "@/shared/caja/CamionesPanel";
 import { useCamiones, useObjetivos } from "@/shared/hooks/useRepartos";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -10,7 +10,7 @@ import type { ObjetivoCamion } from "@/lib/repartos/types";
 
 const TEAL = "#4FAEB2";
 
-type Modo = "ver" | "contar" | "salon";
+type Modo = "ver" | "contar" | "salon" | "cargar";
 
 /**
  * Módulo Camiones. Sin repartos que abrir ni cerrar: cada camión tiene un
@@ -86,10 +86,11 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
 
   // Al contar se pueden encontrar productos que no figuraban: con "ver todos"
-  // aparece el catálogo entero.
+  // aparece el catálogo entero. Al cargar del salón también se ve todo, porque
+  // se cargan productos que el camión todavía no tiene.
   const visibles = useMemo(
-    () => (verTodos ? items : items.filter((i) => i.actual > 0)),
-    [items, verTodos]
+    () => (verTodos || modo === "cargar" ? items : items.filter((i) => i.actual > 0)),
+    [items, verTodos, modo]
   );
 
   function cambiarModo(m: Modo) {
@@ -125,13 +126,22 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
       url = `/api/camiones/${camionId}/conteo`;
       payload = cambios.map((i) => ({ producto_id: i.producto_id, contado: valorDe(i), motivo: motivos[i.producto_id] }));
     } else {
-      const aPasar = items.filter((i) => valorDe(i) > 0);
-      if (aPasar.length === 0) {
-        setAviso({ ok: false, texto: "Poné cuánto pasar al salón de algún producto." });
+      const aMover = items.filter((i) => valorDe(i) > 0);
+      if (aMover.length === 0) {
+        setAviso({
+          ok: false,
+          texto:
+            modo === "salon"
+              ? "Poné cuánto pasar al salón de algún producto."
+              : "Poné cuánto cargar al camión de algún producto.",
+        });
         return;
       }
-      url = `/api/camiones/${camionId}/a-salon`;
-      payload = aPasar.map((i) => ({ producto_id: i.producto_id, cantidad: valorDe(i) }));
+      url =
+        modo === "salon"
+          ? `/api/camiones/${camionId}/a-salon`
+          : `/api/camiones/${camionId}/desde-salon`;
+      payload = aMover.map((i) => ({ producto_id: i.producto_id, cantidad: valorDe(i) }));
     }
 
     setGuardando(true);
@@ -149,7 +159,12 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
       await mutate();
       setAviso({
         ok: true,
-        texto: modo === "contar" ? `Conteo de ${alias} guardado.` : `Mercadería pasada del ${alias} al salón.`,
+        texto:
+          modo === "contar"
+            ? `Conteo de ${alias} guardado.`
+            : modo === "salon"
+              ? `Mercadería pasada del ${alias} al salón.`
+              : `Mercadería cargada del salón al ${alias}.`,
       });
       setModo("ver");
       setValores({});
@@ -176,6 +191,14 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
             </button>
             <button
               type="button"
+              onClick={() => cambiarModo("cargar")}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <ArrowUpFromLine className="h-4 w-4" />
+              Cargar del salón
+            </button>
+            <button
+              type="button"
               onClick={() => cambiarModo("salon")}
               disabled={total === 0}
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
@@ -188,7 +211,9 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
           <p className="text-sm font-semibold text-slate-900">
             {modo === "contar"
               ? "Escribí lo que contaste arriba del camión. Si no coincide, poné el motivo."
-              : "Escribí cuánto baja al salón de cada producto."}
+              : modo === "salon"
+                ? "Escribí cuánto baja al salón de cada producto."
+                : "Escribí cuánto cargar del salón al camión."}
           </p>
         )}
         <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
@@ -211,7 +236,8 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
         <p className="py-6 text-sm text-slate-400">Cargando stock…</p>
       ) : visibles.length === 0 ? (
         <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500">
-          El camión está vacío. Cargalo con una compra que tenga a {alias} como destino.
+          El camión está vacío. Usá “Cargar del salón” para subirle mercadería, o cargalo con una
+          compra que tenga a {alias} como destino.
         </p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -231,7 +257,7 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
                       value={valores[i.producto_id] ?? ""}
                       onChange={(e) => setValores((p) => ({ ...p, [i.producto_id]: e.target.value }))}
                       placeholder={modo === "contar" ? formatCantidad(i.actual, i.unidad) : "0"}
-                      aria-label={`${modo === "contar" ? "Contado" : "A pasar"} de ${i.nombre}`}
+                      aria-label={`${modo === "contar" ? "Contado" : modo === "salon" ? "A pasar" : "A cargar"} de ${i.nombre}`}
                       className={`h-9 w-24 rounded-lg border px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2] ${
                         diferencia ? "border-amber-400" : "border-slate-200"
                       }`}
@@ -288,7 +314,13 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
             className="h-10 rounded-lg px-5 text-sm font-semibold text-white disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
-            {guardando ? "Guardando…" : modo === "contar" ? "Guardar conteo" : "Pasar al salón"}
+            {guardando
+              ? "Guardando…"
+              : modo === "contar"
+                ? "Guardar conteo"
+                : modo === "salon"
+                  ? "Pasar al salón"
+                  : "Cargar al camión"}
           </button>
         </div>
       ) : null}
