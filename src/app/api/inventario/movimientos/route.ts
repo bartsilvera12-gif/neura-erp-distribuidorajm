@@ -20,13 +20,22 @@ export async function GET(request: NextRequest) {
     const pool = getChatPostgresPool();
     if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
     const t = quoteSchemaTable(schema, "movimientos_inventario");
+    const tP = quoteSchemaTable(schema, "productos");
+    // `producto_nombre`/`producto_sku` en el movimiento son una foto tomada al
+    // registrarlo: no cambian si después se edita el producto. Para que el
+    // historial muestre el nombre y SKU ACTUALES (el cliente cambió el código y
+    // acá seguía el viejo), se trae del producto por su id, y solo se cae a la
+    // foto si el producto ya no existe.
     const { rows } = await queryWithRetry(pool,
-      `SELECT id, empresa_id, producto_id, producto_nombre, producto_sku,
-              tipo, cantidad, costo_unitario, origen, referencia, fecha, created_at, updated_at,
-              created_by, usuario_nombre
-         FROM ${t}
-        WHERE empresa_id = $1::uuid
-        ORDER BY fecha DESC
+      `SELECT m.id, m.empresa_id, m.producto_id,
+              COALESCE(p.nombre, m.producto_nombre) AS producto_nombre,
+              COALESCE(p.sku, m.producto_sku) AS producto_sku,
+              m.tipo, m.cantidad, m.costo_unitario, m.origen, m.referencia, m.fecha,
+              m.created_at, m.updated_at, m.created_by, m.usuario_nombre
+         FROM ${t} m
+         LEFT JOIN ${tP} p ON p.id = m.producto_id AND p.empresa_id = m.empresa_id
+        WHERE m.empresa_id = $1::uuid
+        ORDER BY m.fecha DESC
         LIMIT 500`,
       [empresaId]
     );
