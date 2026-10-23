@@ -10,6 +10,7 @@ import {
 } from "@/lib/cobranzas/credito";
 import { METODOS_COBRO } from "@/lib/ventas/types";
 import ReciboCobro, { type DatosReciboCobro } from "@/shared/caja/ReciboCobro";
+import CobranzasTabs from "@/shared/cobranzas/CobranzasTabs";
 
 const TEAL = "#4FAEB2";
 
@@ -259,6 +260,8 @@ export default function CobranzasCredito() {
         </button>
       </div>
 
+      <CobranzasTabs />
+
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Total adeudado" value={gs(resumen.total)} accent="danger" />
@@ -482,12 +485,14 @@ function ModalCobro({
     // mostramos la pantalla de "cobrado".
     setRecibo({
       cliente: clienteNombre,
+      clienteRuc: res.clienteRuc,
       ventaNumero: venta.numero_control,
       monto: montoNum,
       saldo: res.saldo,
       medioPago: medio,
       fecha: res.fecha,
-      reciboNumero: res.reciboId ? `REC-${res.reciboId.slice(0, 8).toUpperCase()}` : venta.numero_control,
+      reciboNumero:
+        res.reciboNumero ?? (res.reciboId ? `REC-${res.reciboId.slice(0, 8).toUpperCase()}` : venta.numero_control),
     });
   }
 
@@ -500,8 +505,8 @@ function ModalCobro({
             <h2 className="text-base font-bold text-emerald-700">Cobro registrado ✓</h2>
             <p className="mt-0.5 text-sm text-slate-600">
               Se cobró {gs(recibo.monto)} de {venta.numero_control}.
-              {recibo.saldo > 0.5
-                ? ` Queda debiendo ${gs(recibo.saldo)}.`
+              {(recibo.saldo ?? 0) > 0.5
+                ? ` Queda debiendo ${gs(recibo.saldo ?? 0)}.`
                 : " Venta cancelada."}
             </p>
 

@@ -6,6 +6,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
+import { emitirReciboCobro, numeroRecibo } from "@/lib/cobranzas/server/recibos-pg";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEDIOS = new Set(["efectivo", "tarjeta", "transferencia", "cheque", "otro"]);
@@ -60,12 +61,13 @@ export async function POST(request: NextRequest) {
     // pasarse del saldo entre los dos.
     const ventaQ = await client.query<{
       numero_control: string;
+      cliente_id: string | null;
       total: string;
       tipo_venta: string | null;
       estado: string | null;
       cobrado: string;
     }>(
-      `SELECT v.numero_control, v.total::text AS total, v.tipo_venta, v.estado,
+      `SELECT v.numero_control, v.cliente_id, v.total::text AS total, v.tipo_venta, v.estado,
               COALESCE((SELECT sum(m.monto) FROM ${tM} m
                          WHERE m.venta_id = v.id AND m.tipo = 'ingreso'
                            AND m.anulado_at IS NULL), 0)::text AS cobrado
@@ -116,6 +118,23 @@ export async function POST(request: NextRequest) {
     );
     const mov = ins.rows[0];
 
+    // Recibo de dinero numerado (SQL 53). Si falla, el cobro ya está hecho:
+    // no se lo hace fallar por el recibo, sale con la referencia del movimiento.
+    const recibo = await emitirReciboCobro(pool, schema, empresaId, {
+      ventaId,
+      ventaNumero: venta.numero_control,
+      clienteId: venta.cliente_id,
+      monto,
+      medioPago: medio,
+      saldoRestante: saldo - monto,
+      cajaMovimientoId: mov?.id ?? null,
+      fecha: mov?.created_at ?? null,
+      usuario: ctx.auth.user?.email ?? null,
+    }).catch((e) => {
+      console.error("[/api/cobranzas/credito/cobrar] recibo:", e instanceof Error ? e.message : e);
+      return null;
+    });
+
     return NextResponse.json(
       successResponse({
         venta_id: ventaId,
@@ -124,6 +143,8 @@ export async function POST(request: NextRequest) {
         // Datos del recibo de dinero: el cobro ya quedó registrado como
         // movimiento de caja; su id es la referencia del recibo.
         recibo_id: mov?.id ?? null,
+        recibo_numero: recibo ? numeroRecibo(recibo.numero) : null,
+        cliente_ruc: recibo?.cliente_ruc ?? null,
         fecha: mov?.created_at ?? new Date().toISOString(),
       })
     );

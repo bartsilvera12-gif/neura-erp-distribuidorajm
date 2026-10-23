@@ -26,7 +26,8 @@ export interface DatosReciboCobro {
   clienteRuc?: string | null;
   ventaNumero: string;
   monto: number;
-  saldo: number;
+  /** Lo que quedó debiendo después de este cobro (`null` = no se sabe: recibos viejos). */
+  saldo: number | null;
   medioPago: string;
   fecha: string;
   reciboNumero: string;
@@ -92,9 +93,11 @@ function Copia({
 }) {
   const ubicacion = ubicacionEmisor(emisor);
   const concepto =
-    datos.saldo > 0.5
-      ? `Pago de la venta a crédito N° ${datos.ventaNumero} (saldo pendiente: Gs. ${miles(datos.saldo)})`
-      : `Pago total de la venta a crédito N° ${datos.ventaNumero}`;
+    datos.saldo == null
+      ? `Pago de la venta a crédito N° ${datos.ventaNumero}`
+      : datos.saldo > 0.5
+        ? `Pago de la venta a crédito N° ${datos.ventaNumero} (saldo pendiente: Gs. ${miles(datos.saldo)})`
+        : `Pago total de la venta a crédito N° ${datos.ventaNumero}`;
 
   return (
     <section className="border-2 border-black">
@@ -109,6 +112,7 @@ function Copia({
           {emisor?.ruc ? <p>RUC: {emisor.ruc}</p> : null}
           {ubicacion ? <p>{ubicacion}</p> : null}
           {emisor?.telefono ? <p>Tel: {emisor.telefono}</p> : null}
+          {emisor?.email ? <p>{emisor.email}</p> : null}
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[13pt] font-bold">RECIBO DE DINERO</p>

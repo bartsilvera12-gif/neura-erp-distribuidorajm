@@ -65,7 +65,7 @@ export async function cobrarVenta(
   monto: number,
   medioPago: string
 ): Promise<
-  | { ok: true; saldo: number; reciboId: string | null; fecha: string }
+  | { ok: true; saldo: number; reciboId: string | null; reciboNumero: string | null; clienteRuc: string | null; fecha: string }
   | { ok: false; error: string }
 > {
   try {
@@ -76,7 +76,13 @@ export async function cobrarVenta(
     });
     const json = (await res.json()) as {
       success?: boolean;
-      data?: { saldo?: number; recibo_id?: string | null; fecha?: string };
+      data?: {
+        saldo?: number;
+        recibo_id?: string | null;
+        recibo_numero?: string | null;
+        cliente_ruc?: string | null;
+        fecha?: string;
+      };
       error?: string;
     };
     if (!res.ok || !json.success) {
@@ -86,6 +92,8 @@ export async function cobrarVenta(
       ok: true,
       saldo: json.data?.saldo ?? 0,
       reciboId: json.data?.recibo_id ?? null,
+      reciboNumero: json.data?.recibo_numero ?? null,
+      clienteRuc: json.data?.cliente_ruc ?? null,
       fecha: json.data?.fecha ?? new Date().toISOString(),
     };
   } catch (e) {

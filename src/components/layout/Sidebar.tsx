@@ -151,7 +151,17 @@ const MENU_STRUCTURE: MenuItem[] = [
   },
   { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },
   { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
-  { key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: HandCoins },
+  {
+    key: "cobranzas",
+    slug: "cobranzas",
+    label: "Cobranzas",
+    href: "/cobranzas",
+    icon: HandCoins,
+    children: [
+      { label: "Créditos por cobrar", href: "/cobranzas", exactMatch: true },
+      { label: "Recibos de dinero", href: "/cobranzas/recibos" },
+    ],
+  },
   /**
    * Bancos vive en `/configuracion/bancos`, pero Configuración está oculta del
    * menú y ésta es la pantalla donde se carga la cuenta propia a la que el
