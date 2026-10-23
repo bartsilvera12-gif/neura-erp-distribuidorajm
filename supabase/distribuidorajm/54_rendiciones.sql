@@ -15,7 +15,20 @@
 -- Solo toca `distribuidorajmerp`. Idempotente.
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS distribuidorajmerp.rendiciones (
+-- Si ya hay una tabla con este nombre que no es la nuestra, se para acá con
+-- un mensaje claro en vez de fallar a mitad de camino.
+DO $guard$
+BEGIN
+  IF to_regclass('distribuidorajmerp.rendiciones_cobro') IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'distribuidorajmerp' AND table_name = 'rendiciones_cobro' AND column_name = 'responsable_id'
+  ) THEN
+    RAISE EXCEPTION 'Ya existe distribuidorajmerp.rendiciones_cobro con otras columnas: avisá antes de seguir (no se tocó nada).';
+  END IF;
+END;
+$guard$;
+
+CREATE TABLE IF NOT EXISTS distribuidorajmerp.rendiciones_cobro (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   empresa_id         uuid NOT NULL,
   numero             integer NOT NULL,
@@ -36,22 +49,22 @@ CREATE TABLE IF NOT EXISTS distribuidorajmerp.rendiciones (
   UNIQUE (empresa_id, numero),
   CHECK (hasta >= desde)
 );
-CREATE INDEX IF NOT EXISTS idx_rendiciones_fecha ON distribuidorajmerp.rendiciones (empresa_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_rendiciones_responsable ON distribuidorajmerp.rendiciones (empresa_id, responsable_id, hasta DESC);
+CREATE INDEX IF NOT EXISTS idx_rendiciones_cobro_fecha ON distribuidorajmerp.rendiciones_cobro (empresa_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rendiciones_cobro_responsable ON distribuidorajmerp.rendiciones_cobro (empresa_id, responsable_id, hasta DESC);
 
 DO $permisos$
 DECLARE r record;
 BEGIN
-  ALTER TABLE distribuidorajmerp.rendiciones ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE distribuidorajmerp.rendiciones_cobro ENABLE ROW LEVEL SECURITY;
   FOR r IN
     SELECT grantee, privilege_type FROM information_schema.role_table_grants
      WHERE table_schema = 'distribuidorajmerp' AND table_name = 'compras'
   LOOP
-    EXECUTE format('GRANT %s ON distribuidorajmerp.rendiciones TO %I', r.privilege_type, r.grantee);
+    EXECUTE format('GRANT %s ON distribuidorajmerp.rendiciones_cobro TO %I', r.privilege_type, r.grantee);
   END LOOP;
 END;
 $permisos$;
 
 SELECT pg_notify('pgrst', 'reload schema');
 
-SELECT to_regclass('distribuidorajmerp.rendiciones') AS tabla_creada;
+SELECT to_regclass('distribuidorajmerp.rendiciones_cobro') AS tabla_creada;

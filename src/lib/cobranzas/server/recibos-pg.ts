@@ -29,7 +29,7 @@ export function numeroRecibo(n: number): string {
 }
 
 async function hayTabla(pool: Pool, schema: string): Promise<boolean> {
-  const q = await pool.query<{ t: string | null }>(`SELECT to_regclass($1)::text AS t`, [`${schema}.recibos_dinero`]);
+  const q = await pool.query<{ t: string | null }>(`SELECT to_regclass($1)::text AS t`, [`${schema}.recibos_cobro`]);
   return !!q.rows[0]?.t;
 }
 
@@ -78,7 +78,7 @@ export async function emitirReciboCobro(
     d.saldoRestante > 0.5
       ? `Pago de la venta a crédito N° ${d.ventaNumero}`
       : `Pago total de la venta a crédito N° ${d.ventaNumero}`;
-  const tR = quoteSchemaTable(schema, "recibos_dinero");
+  const tR = quoteSchemaTable(schema, "recibos_cobro");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -127,7 +127,7 @@ export async function listarRecibos(
     `SELECT r.id, r.numero, r.fecha::text AS fecha, r.cliente_nombre, r.cliente_ruc, r.monto::float AS monto,
             r.medio_pago, r.concepto, r.venta_numero, r.saldo_restante::float AS saldo_restante, r.usuario_nombre,
             (m.anulado_at IS NOT NULL) AS anulado
-       FROM ${quoteSchemaTable(schema, "recibos_dinero")} r
+       FROM ${quoteSchemaTable(schema, "recibos_cobro")} r
        LEFT JOIN ${quoteSchemaTable(schema, "caja_movimientos")} m ON m.id = r.caja_movimiento_id
       WHERE r.empresa_id = $1::uuid
         AND (r.fecha AT TIME ZONE 'America/Asuncion')::date BETWEEN $2::date AND $3::date

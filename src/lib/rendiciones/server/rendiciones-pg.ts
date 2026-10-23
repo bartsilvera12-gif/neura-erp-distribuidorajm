@@ -81,7 +81,7 @@ async function tablas(pool: Pool, schema: string) {
   const q = await pool.query<{ r: string | null; c: string | null; m: string | null; v: string | null; cam: string | null }>(
     `SELECT to_regclass($1)::text AS r, to_regclass($2)::text AS c, to_regclass($3)::text AS m,
             to_regclass($4)::text AS v, to_regclass($5)::text AS cam`,
-    [`${schema}.rendiciones`, `${schema}.cajas`, `${schema}.caja_movimientos`, `${schema}.ventas`, `${schema}.camiones`]
+    [`${schema}.rendiciones_cobro`, `${schema}.cajas`, `${schema}.caja_movimientos`, `${schema}.ventas`, `${schema}.camiones`]
   );
   return q.rows[0];
 }
@@ -106,7 +106,7 @@ export async function ultimaRendicion(
   const schema = assertAllowedChatDataSchema(schemaRaw);
   if (!(await tablas(pool, schema)).r) return null;
   const q = await pool.query<{ hasta: string }>(
-    `SELECT hasta::text FROM ${quoteSchemaTable(schema, "rendiciones")}
+    `SELECT hasta::text FROM ${quoteSchemaTable(schema, "rendiciones_cobro")}
       WHERE empresa_id = $1::uuid AND responsable_id = $2::uuid ORDER BY hasta DESC LIMIT 1`,
     [empresaId, responsableId]
   );
@@ -210,7 +210,7 @@ export async function calcularRendicion(
   let superpuesta: CalculoRendicion["superpuesta"] = null;
   if (t.r) {
     const s = await pool.query<{ numero: number; hasta: string }>(
-      `SELECT numero, hasta::text FROM ${quoteSchemaTable(schema, "rendiciones")}
+      `SELECT numero, hasta::text FROM ${quoteSchemaTable(schema, "rendiciones_cobro")}
         WHERE empresa_id = $1::uuid AND responsable_id = $2::uuid AND hasta > $3::timestamptz AND desde < $4::timestamptz
         ORDER BY hasta DESC LIMIT 1`,
       [empresaId, responsable.id, desde, hasta]
@@ -263,7 +263,7 @@ export async function registrarRendicion(
   const rendido = porMedio.reduce((s, m) => s + m.rendido, 0);
   const detalle = { por_medio: porMedio, resumen: calc.resumen, movimientos: calc.movimientos.slice(0, 2000) };
 
-  const tR = quoteSchemaTable(schema, "rendiciones");
+  const tR = quoteSchemaTable(schema, "rendiciones_cobro");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -302,7 +302,7 @@ export async function listarRendiciones(
   const schema = assertAllowedChatDataSchema(schemaRaw);
   if (!(await tablas(pool, schema)).r) return { disponible: false, rendiciones: [] };
   const { rows } = await pool.query(
-    `SELECT ${COLS} FROM ${quoteSchemaTable(schema, "rendiciones")}
+    `SELECT ${COLS} FROM ${quoteSchemaTable(schema, "rendiciones_cobro")}
       WHERE empresa_id = $1::uuid
         AND (created_at AT TIME ZONE 'America/Asuncion')::date BETWEEN $2::date AND $3::date
       ORDER BY numero DESC LIMIT 1000`,
@@ -315,7 +315,7 @@ export async function getRendicion(pool: Pool, schemaRaw: string, empresaId: str
   const schema = assertAllowedChatDataSchema(schemaRaw);
   if (!(await tablas(pool, schema)).r) return null;
   const { rows } = await pool.query(
-    `SELECT ${COLS}, detalle FROM ${quoteSchemaTable(schema, "rendiciones")} WHERE empresa_id = $1::uuid AND id = $2::uuid`,
+    `SELECT ${COLS}, detalle FROM ${quoteSchemaTable(schema, "rendiciones_cobro")} WHERE empresa_id = $1::uuid AND id = $2::uuid`,
     [empresaId, id]
   );
   return (rows[0] as Rendicion) ?? null;
