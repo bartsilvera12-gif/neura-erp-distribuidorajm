@@ -34,17 +34,6 @@ function formatFecha(iso: string) {
   }
 }
 
-const tipoPagoBadge: Record<TipoPago, string> = {
-  contado: "bg-blue-50 text-blue-700",
-  credito: "bg-orange-50 text-orange-700",
-};
-
-const ivaLabel: Record<string, string> = {
-  exenta: "Exenta",
-  "5": "IVA 5%",
-  "10": "IVA 10%",
-};
-
 export default function ComprasPage() {
   const [todas, setTodas] = useState<Compra[]>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -196,23 +185,17 @@ export default function ComprasPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-600 text-sm font-semibold">
               <tr>
-                <th className="py-3 pr-4 font-medium">N° Control</th>
-                <th className="py-3 pr-4 font-medium">Proveedor</th>
-                <th className="py-3 pr-4 font-medium">Producto</th>
-                <th className="py-3 pr-4 font-medium text-right">Cant.</th>
-                <th className="py-3 pr-4 font-medium text-right">Costo unit.</th>
-                <th className="py-3 pr-4 font-medium">IVA</th>
-                <th className="py-3 pr-4 font-medium text-right">Total</th>
-                <th className="py-3 pr-4 font-medium text-right">Margen</th>
-                <th className="py-3 pr-4 font-medium">Pago</th>
                 <th className="py-3 pr-4 font-medium">Fecha</th>
+                <th className="py-3 pr-4 font-medium">N° Factura</th>
+                <th className="py-3 pr-4 font-medium">Proveedor</th>
+                <th className="py-3 pr-4 font-medium text-right">Total</th>
                 <th className="py-3 font-medium text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-gray-400">
+                  <td colSpan={5} className="py-12 text-center text-gray-400">
                     {cargando
                       ? "Cargando compras…"
                       : errorCarga
@@ -241,43 +224,17 @@ export default function ComprasPage() {
                       c.estado === "anulada" ? "opacity-50" : ""
                     }`}
                   >
-                    <td className="py-4 pr-4 font-mono text-xs text-gray-500">
-                      {c.numero_control}
+                    <td className="py-4 pr-4 text-gray-600 text-xs tabular-nums">
+                      {formatFecha(c.fecha)}
+                    </td>
+                    <td className="py-4 pr-4 font-mono text-xs text-gray-600">
+                      {c.numero_comprobante || c.numero_control}
                     </td>
                     <td className="py-4 pr-4 font-medium text-gray-800">
                       {c.proveedor_nombre}
                     </td>
-                    <td className="py-4 pr-4 text-gray-600">{c.producto_nombre}</td>
-                    <td className="py-4 pr-4 text-right tabular-nums text-gray-700">
-                      {c.cantidad}
-                    </td>
-                    <td className="py-4 pr-4 text-right tabular-nums text-gray-600 text-xs">
-                      {c.moneda === "USD" && c.costo_unitario_original != null ? (
-                        <span>
-                          USD {c.costo_unitario_original.toLocaleString("es-PY")}
-                          <br />
-                          <span className="text-gray-400">≈ {formatGs(c.costo_unitario)}</span>
-                        </span>
-                      ) : (
-                        formatGs(c.costo_unitario ?? c.total)
-                      )}
-                    </td>
-                    <td className="py-4 pr-4 text-xs text-gray-500">
-                      {c.iva_tipo ? ivaLabel[c.iva_tipo] : "—"}
-                    </td>
                     <td className="py-4 pr-4 text-right tabular-nums font-semibold text-gray-800">
                       {formatGs(c.total)}
-                    </td>
-                    <td className="py-4 pr-4 text-right tabular-nums text-sm font-medium text-green-600">
-                      {c.margen_venta != null ? `${c.margen_venta.toFixed(1)}%` : "—"}
-                    </td>
-                    <td className="py-4 pr-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${c.tipo_pago ? tipoPagoBadge[c.tipo_pago] : "bg-gray-100 text-gray-500"}`}>
-                        {c.tipo_pago === "contado" ? "Contado" : c.tipo_pago === "credito" ? `Crédito ${c.plazo_dias ?? ""}d` : "—"}
-                      </span>
-                    </td>
-                    <td className="py-4 pr-4 text-gray-500 text-xs tabular-nums">
-                      {formatFecha(c.fecha)}
                     </td>
                     <td className="py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       {c.estado === "anulada" ? (

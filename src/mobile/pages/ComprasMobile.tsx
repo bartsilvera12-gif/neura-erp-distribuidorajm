@@ -99,20 +99,16 @@ function CompraCard({ compra }: { compra: Compra }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#0EA5E9]">
-                {compra.numero_control}
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#0EA5E9]">
+                {compra.numero_comprobante || compra.numero_control}
               </span>
               <TipoPagoBadge tipo={compra.tipo_pago} />
             </div>
             <p className="mt-1 truncate text-sm font-semibold text-slate-900">{compra.proveedor_nombre}</p>
-            <p className="truncate text-[11px] text-slate-500">
-              {compra.producto_nombre} · {compra.cantidad}
-            </p>
             <p className="mt-0.5 text-[11px] text-slate-500">{formatFecha(compra.fecha)}</p>
           </div>
           <div className="shrink-0 text-right">
             <p className="text-base font-bold tabular-nums text-slate-900">{formatGs(compra.total)}</p>
-            <p className="text-[10px] text-slate-500">{compra.iva_tipo === "exenta" ? "Exenta" : `IVA ${compra.iva_tipo}%`}</p>
           </div>
         </div>
       </div>
