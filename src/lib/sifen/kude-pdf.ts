@@ -3,6 +3,7 @@
  * Estilo factura PY; acento Neura #0EA5E9; textos en negro.
  */
 import fs from "node:fs";
+import { emailVisible, telefonoVisible } from "./contacto-relleno";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFPage, type PDFFont, type RGB } from "pdf-lib";
 import QRCode from "qrcode";
@@ -331,10 +332,14 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
     { lines: wrapByChars(parsed.emisor.dNomEmi, leftMaxChars), size: 9, bold: true, col: BLACK },
     { lines: wrapByChars(parsed.emisor.dDirEmi, leftMaxChars), size: 7.5, bold: false, col: BLACK },
   ];
-  // Teléfono del emisor, tal como va en el XML; sin correo.
-  const telEmisor = parsed.emisor.dTelEmi.trim();
+  // Teléfono y correo del emisor, tal como van en el XML (los de relleno no se muestran).
+  const telEmisor = telefonoVisible(parsed.emisor.dTelEmi);
   if (telEmisor) {
     leftChunks.push({ lines: [`Tel.: ${telEmisor}`], size: 7.5, bold: false, col: BLACK });
+  }
+  const emailEmisor = emailVisible(parsed.emisor.dEmailE);
+  if (emailEmisor) {
+    leftChunks.push({ lines: wrapByChars(emailEmisor, leftMaxChars), size: 7.5, bold: false, col: BLACK });
   }
 
   const rightLines = 6;

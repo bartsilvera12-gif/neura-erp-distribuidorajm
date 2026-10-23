@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, Printer } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { LOGO_FACTURA } from "@/lib/ventas/comprobante";
+import { emailVisible, telefonoVisible } from "@/lib/sifen/contacto-relleno";
 import type { KudeParsedFromXml } from "@/lib/sifen/parse-kude-from-signed-xml";
 
 /**
@@ -162,7 +163,8 @@ export default function KudeTicket({ facturaId }: { facturaId: string }) {
             <p className="mt-1 font-bold uppercase">{p.emisor.dNomEmi}</p>
             <p>RUC: {p.emisor.dRucEm}-{p.emisor.dDVEmi}</p>
             {p.emisor.dDirEmi ? <p className="uppercase">{p.emisor.dDirEmi}</p> : null}
-            {p.emisor.dTelEmi ? <p>Tel: {p.emisor.dTelEmi}</p> : null}
+            {telefonoVisible(p.emisor.dTelEmi) ? <p>Tel: {telefonoVisible(p.emisor.dTelEmi)}</p> : null}
+            {emailVisible(p.emisor.dEmailE) ? <p>{emailVisible(p.emisor.dEmailE)}</p> : null}
             <Linea />
             <p>Timbrado N° {p.timbrado.dNumTim}</p>
             {p.timbrado.dFeIniT ? <p>Inicio de vigencia: {fechaXml(p.timbrado.dFeIniT)}</p> : null}

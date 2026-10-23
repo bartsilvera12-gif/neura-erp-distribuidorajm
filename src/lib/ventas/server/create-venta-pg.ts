@@ -343,6 +343,36 @@ export async function createVentaTransaccionalPg(
           );
         }
       }
+    } else if (
+      ubicacionId === null &&
+      hayStockPorUbicacion &&
+      (await tablaExiste(client, params.schema, "inventario_ubicaciones"))
+    ) {
+      // Venta del salón: solo puede llevarse lo que está en el salón. Lo que
+      // está arriba de los camiones es parte del total de la empresa pero no
+      // está acá (salón = total − lo que tienen los camiones).
+      const enCamiones = await client.query<{ producto_id: string; suma: string }>(
+        // Misma cuenta que el catálogo de la caja (`/api/productos`).
+        `SELECT su.producto_id, SUM(su.stock_actual)::text AS suma
+           FROM ${stockUbiT} su
+           JOIN ${quoteSchemaTable(params.schema, "inventario_ubicaciones")} u ON u.id = su.ubicacion_id
+          WHERE su.empresa_id = $1::uuid AND su.producto_id = ANY($2::uuid[])
+            AND lower(btrim(COALESCE(u.tipo, ''))) = 'camion'
+          GROUP BY su.producto_id`,
+        [params.empresaId, ids]
+      );
+      const fuera = new Map(enCamiones.rows.map((r) => [r.producto_id, Number(r.suma)]));
+      for (const [pid, need] of qtyByProduct) {
+        const enSalon = (stockMap.get(pid)?.stock ?? 0) - (fuera.get(pid) ?? 0);
+        if (enSalon + 1e-9 < need) {
+          const nombre = stockMap.get(pid)?.nombre ?? "ese producto";
+          throw new Error(
+            enSalon <= 0
+              ? `"${nombre}" no tiene stock en el salón (lo que hay está en los camiones).`
+              : `En el salón hay ${enSalon} de "${nombre}" y la venta pide ${need}.`
+          );
+        }
+      }
     }
 
     // Movimiento de caja del cobro. Solo para ventas de contado: una venta a

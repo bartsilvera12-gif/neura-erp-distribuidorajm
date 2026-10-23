@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contactoEmisorSifen } from "@/lib/sifen/contacto-emisor";
 import { getFacturasSupabaseFromAuth } from "@/lib/facturacion/facturas-service-client";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
@@ -136,14 +137,15 @@ export async function POST(
 
     const fecha = loaded.payload.documento.fecha.trim();
     const yAnio = /^(\d{4})/.exec(fecha)?.[1] ?? String(new Date().getFullYear());
+    const contacto = await contactoEmisorSifen(auth.empresa_id);
     let xmlString: string;
     try {
       xmlString = buildOfficialRdeFacturaElectronicaXml(loaded.payload, {
         timbradoFechaInicio: loaded.payload.emisor.timbrado_fecha_inicio_vigencia,
         timbradoFechaFin: `${yAnio}-12-31`,
         ambiente: loaded.ambiente,
-        emisorTelefono: "021000000",
-        emisorEmail: "facturacion@configurar-empresa.com.py",
+        emisorTelefono: contacto.telefono,
+        emisorEmail: contacto.email,
         emisorDireccion: loaded.payload.emisor.direccion_fiscal.trim(),
         emisorNumCasa: 0,
         actividadEconomicaCodigo: loaded.payload.emisor.actividad_economica_codigo,

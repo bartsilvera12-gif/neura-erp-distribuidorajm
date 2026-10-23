@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { contactoEmisorSifen } from "@/lib/sifen/contacto-emisor";
 import type { UsuarioConEmpresaYRol } from "@/lib/middleware/auth";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
@@ -121,12 +122,13 @@ export async function handleNcSifenXmlPost(opts: {
 
   const fecha = loaded.payload.notaCredito.fecha_emision.trim();
   const yAnio = /^(\d{4})/.exec(fecha)?.[1] ?? String(new Date().getFullYear());
+  const contacto = await contactoEmisorSifen(auth.empresa_id);
   const xmlOpts: BuildRdeXmlOptions = {
     timbradoFechaInicio: loaded.payload.emisor.timbrado_fecha_inicio_vigencia,
     timbradoFechaFin: `${yAnio}-12-31`,
     ambiente: loaded.ambiente,
-    emisorTelefono: "021000000",
-    emisorEmail: "facturacion@configurar-empresa.com.py",
+    emisorTelefono: contacto.telefono,
+    emisorEmail: contacto.email,
     emisorDireccion: loaded.payload.emisor.direccion_fiscal.trim(),
     emisorNumCasa: 0,
     actividadEconomicaCodigo: loaded.payload.emisor.actividad_economica_codigo,

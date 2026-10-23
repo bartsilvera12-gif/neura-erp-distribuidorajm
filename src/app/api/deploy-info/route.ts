@@ -41,7 +41,7 @@ export async function GET() {
      * versiones distintas dicen lo mismo y el campo no sirve para lo único que
      * existe: saber si lo último que se subió ya está corriendo.
      */
-    incluye: "rrhh-salarios-ips",
+    incluye: "contacto-sifen-stock-salon",
     vercel_env: vercelEnv,
     supabase_api_hostname: hostnameFromNextPublicSupabaseUrl(),
     neura_auth_bundle: "api-auth-context-v2-rls",
