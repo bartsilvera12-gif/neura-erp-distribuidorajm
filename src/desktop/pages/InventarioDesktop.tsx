@@ -30,6 +30,7 @@ function margenColor(margen: number): string {
 }
 
 interface UbicacionMin { id: string; nombre: string; tipo: string }
+interface CatalogoMin { id: string; nombre: string }
 
 export default function InventarioPage() {
   const { isAdmin } = useIsAdmin();
@@ -42,6 +43,10 @@ export default function InventarioPage() {
    */
   const [cargando, setCargando] = useState(true);
   const [ubicaciones, setUbicaciones] = useState<UbicacionMin[]>([]);
+  const [categorias, setCategorias] = useState<CatalogoMin[]>([]);
+  const [proveedores, setProveedores] = useState<CatalogoMin[]>([]);
+  const [filtroCategoria, setFiltroCategoria] = useState("");
+  const [filtroProveedor, setFiltroProveedor] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Borrado: el producto elegido, el error del intento y el aviso de cómo
@@ -53,7 +58,32 @@ export default function InventarioPage() {
 
   // Busqueda unica global + paginado
   const [query, setQuery] = useState("");
-  const [pageSize, setPageSize] = useState<25 | 50 | 100 | "all">(25);
+  // Arranca mostrando todos: el cliente pidió no tener que cambiar el número
+  // cada vez. Si elige un tamaño, se recuerda para la próxima visita.
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | "all">("all");
+
+  useEffect(() => {
+    try {
+      const guardado = localStorage.getItem("inventario:filas");
+      if (guardado === "25" || guardado === "50" || guardado === "100") {
+        setPageSize(Number(guardado) as 25 | 50 | 100);
+      } else if (guardado === "all") {
+        setPageSize("all");
+      }
+    } catch {
+      /* localStorage puede no estar disponible; se queda en "Todos". */
+    }
+  }, []);
+
+  function cambiarPageSize(valor: string) {
+    const next = valor === "all" ? "all" : (Number(valor) as 25 | 50 | 100);
+    setPageSize(next);
+    try {
+      localStorage.setItem("inventario:filas", String(next));
+    } catch {
+      /* si no se puede guardar, igual aplica en esta sesión */
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +103,25 @@ export default function InventarioPage() {
         setUbicaciones((j.data?.ubicaciones ?? []) as UbicacionMin[]);
       })
       .catch(() => undefined);
+    // Categorías y proveedores para los filtros de productos.
+    fetch("/api/inventario/categorias", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j?.success) return;
+        setCategorias(
+          ((j.data?.categorias ?? []) as CatalogoMin[]).map((c) => ({ id: c.id, nombre: c.nombre }))
+        );
+      })
+      .catch(() => undefined);
+    fetch("/api/proveedores", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j?.success) return;
+        setProveedores(
+          ((j.data?.proveedores ?? []) as CatalogoMin[]).map((p) => ({ id: p.id, nombre: p.nombre }))
+        );
+      })
+      .catch(() => undefined);
     return () => { cancelled = true; };
   }, [refreshKey]);
 
@@ -81,6 +130,9 @@ export default function InventarioPage() {
   // Filtro unico: matchea contra cualquier dato visible del producto.
   // El query se separa por palabras y todas deben matchear (AND), case-insensitive.
   const filtradosTodos = todos.filter((p) => {
+    // Filtros por proveedor y categoría (se pueden combinar).
+    if (filtroCategoria && (p.categoria_principal_id ?? "") !== filtroCategoria) return false;
+    if (filtroProveedor && (p.proveedor_principal_id ?? "") !== filtroProveedor) return false;
     const q = query.trim().toLowerCase();
     if (q === "") return true;
     const u = p.ubicacion_principal_id ? ubicacionById.get(p.ubicacion_principal_id) : null;
@@ -195,22 +247,50 @@ export default function InventarioPage() {
               className={`${inputFilterClass} w-full pl-9`}
             />
           </div>
+          <select
+            value={filtroProveedor}
+            onChange={(e) => setFiltroProveedor(e.target.value)}
+            className={inputFilterClass}
+            aria-label="Filtrar por proveedor"
+          >
+            <option value="">Todos los proveedores</option>
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>{p.nombre}</option>
+            ))}
+          </select>
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+            className={inputFilterClass}
+            aria-label="Filtrar por categoría"
+          >
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+          {(filtroProveedor || filtroCategoria) && (
+            <button
+              type="button"
+              onClick={() => { setFiltroProveedor(""); setFiltroCategoria(""); }}
+              className="text-[11px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
+            >
+              Limpiar filtros
+            </button>
+          )}
           <div className="flex items-center gap-2">
             <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
               Filas
             </label>
             <select
               value={String(pageSize)}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPageSize(v === "all" ? "all" : (Number(v) as 25 | 50 | 100));
-              }}
+              onChange={(e) => cambiarPageSize(e.target.value)}
               className={inputFilterClass}
             >
+              <option value="all">Todos</option>
               <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
-              <option value="all">Todo</option>
             </select>
           </div>
           <span className="ml-auto text-[11px] text-slate-400">
