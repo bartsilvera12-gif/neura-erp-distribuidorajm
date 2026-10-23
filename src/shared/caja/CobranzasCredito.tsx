@@ -9,6 +9,7 @@ import {
   type VentaCobranza,
 } from "@/lib/cobranzas/credito";
 import { METODOS_COBRO } from "@/lib/ventas/types";
+import ReciboCobro, { type DatosReciboCobro } from "@/shared/caja/ReciboCobro";
 
 const TEAL = "#4FAEB2";
 
@@ -175,7 +176,7 @@ function TramoBadge({ tramo }: { tramo: TramoKey }) {
  */
 export default function CobranzasCredito() {
   const { cobranza, isLoading, mutate } = useCobranzaCredito();
-  const [cobrando, setCobrando] = useState<VentaCobranza | null>(null);
+  const [cobrando, setCobrando] = useState<{ venta: VentaCobranza; cliente: string } | null>(null);
   const [tramoFiltro, setTramoFiltro] = useState<TramoKey | "todos">("todos");
   const [soloVencido, setSoloVencido] = useState(false);
   const [query, setQuery] = useState("");
@@ -347,7 +348,7 @@ export default function CobranzasCredito() {
                 key={cliente.cliente_id ?? cliente.cliente}
                 cliente={cliente}
                 tramo={tramo}
-                onCobrar={setCobrando}
+                onCobrar={(v, nombre) => setCobrando({ venta: v, cliente: nombre })}
               />
             ))}
           </ul>
@@ -356,7 +357,8 @@ export default function CobranzasCredito() {
 
       {cobrando ? (
         <ModalCobro
-          venta={cobrando}
+          venta={cobrando.venta}
+          clienteNombre={cobrando.cliente}
           onCerrar={() => setCobrando(null)}
           onCobrado={() => {
             setCobrando(null);
@@ -375,7 +377,7 @@ function TarjetaCliente({
 }: {
   cliente: ClienteCobranzaCredito;
   tramo: TramoKey;
-  onCobrar: (v: VentaCobranza) => void;
+  onCobrar: (v: VentaCobranza, clienteNombre: string) => void;
 }) {
   return (
     <li className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -427,7 +429,7 @@ function TarjetaCliente({
                 <span className="text-sm font-bold tabular-nums text-slate-900">{gs(v.saldo)}</span>
                 <button
                   type="button"
-                  onClick={() => onCobrar(v)}
+                  onClick={() => onCobrar(v, cliente.cliente)}
                   className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
                   style={{ backgroundColor: TEAL }}
                 >
@@ -444,10 +446,12 @@ function TarjetaCliente({
 
 function ModalCobro({
   venta,
+  clienteNombre,
   onCerrar,
   onCobrado,
 }: {
   venta: VentaCobranza;
+  clienteNombre: string;
   onCerrar: () => void;
   onCobrado: () => void;
 }) {
@@ -457,6 +461,9 @@ function ModalCobro({
   const [medio, setMedio] = useState("efectivo");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Una vez cobrado: los datos del recibo y si se está mirando/imprimiendo.
+  const [recibo, setRecibo] = useState<DatosReciboCobro | null>(null);
+  const [verRecibo, setVerRecibo] = useState(false);
 
   const montoNum = Number(monto.replace(/\./g, "").replace(",", ".")) || 0;
   const parcial = montoNum > 0 && montoNum < venta.saldo - 0.5;
@@ -471,7 +478,55 @@ function ModalCobro({
       setError(res.error);
       return;
     }
-    onCobrado();
+    // El cobro ya quedó registrado. Preparamos el recibo para imprimir y
+    // mostramos la pantalla de "cobrado".
+    setRecibo({
+      cliente: clienteNombre,
+      ventaNumero: venta.numero_control,
+      monto: montoNum,
+      saldo: res.saldo,
+      medioPago: medio,
+      fecha: res.fecha,
+      reciboNumero: res.reciboId ? `REC-${res.reciboId.slice(0, 8).toUpperCase()}` : venta.numero_control,
+    });
+  }
+
+  // Pantalla de "cobro registrado": da el recibo y cierra.
+  if (recibo) {
+    return (
+      <>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4">
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl">
+            <h2 className="text-base font-bold text-emerald-700">Cobro registrado ✓</h2>
+            <p className="mt-0.5 text-sm text-slate-600">
+              Se cobró {gs(recibo.monto)} de {venta.numero_control}.
+              {recibo.saldo > 0.5
+                ? ` Queda debiendo ${gs(recibo.saldo)}.`
+                : " Venta cancelada."}
+            </p>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setVerRecibo(true)}
+                className="flex-1 rounded-xl py-3 text-sm font-semibold text-white"
+                style={{ backgroundColor: TEAL }}
+              >
+                Imprimir recibo
+              </button>
+              <button
+                type="button"
+                onClick={onCobrado}
+                className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-600"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </div>
+        {verRecibo ? <ReciboCobro datos={recibo} onCerrar={() => setVerRecibo(false)} /> : null}
+      </>
+    );
   }
 
   return (

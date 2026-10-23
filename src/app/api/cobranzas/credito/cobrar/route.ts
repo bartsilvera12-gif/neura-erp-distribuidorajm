@@ -108,14 +108,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("No hay caja donde registrar el cobro."), { status: 409 });
     }
 
-    await pool.query(
+    const ins = await pool.query<{ id: string; created_at: string }>(
       `INSERT INTO ${tM} (empresa_id, caja_id, tipo, concepto, monto, medio_pago, venta_id)
-       VALUES ($1::uuid, $2::uuid, 'ingreso', $3, $4::numeric, $5, $6::uuid)`,
+       VALUES ($1::uuid, $2::uuid, 'ingreso', $3, $4::numeric, $5, $6::uuid)
+       RETURNING id, created_at`,
       [empresaId, cajaId, `Cobro ${venta.numero_control}`, monto, medio, ventaId]
     );
+    const mov = ins.rows[0];
 
     return NextResponse.json(
-      successResponse({ venta_id: ventaId, cobrado: monto, saldo: saldo - monto })
+      successResponse({
+        venta_id: ventaId,
+        cobrado: monto,
+        saldo: saldo - monto,
+        // Datos del recibo de dinero: el cobro ya quedó registrado como
+        // movimiento de caja; su id es la referencia del recibo.
+        recibo_id: mov?.id ?? null,
+        fecha: mov?.created_at ?? new Date().toISOString(),
+      })
     );
   } catch (err) {
     await client?.query("ROLLBACK").catch(() => undefined);

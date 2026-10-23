@@ -59,12 +59,15 @@ export async function getCobranzaCredito(): Promise<CobranzaCredito> {
   }
 }
 
-/** Registra un cobro. Devuelve el saldo que queda, o el motivo del rechazo. */
+/** Registra un cobro. Devuelve el saldo que queda y los datos del recibo, o el motivo del rechazo. */
 export async function cobrarVenta(
   ventaId: string,
   monto: number,
   medioPago: string
-): Promise<{ ok: true; saldo: number } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; saldo: number; reciboId: string | null; fecha: string }
+  | { ok: false; error: string }
+> {
   try {
     const res = await fetchWithSupabaseSession("/api/cobranzas/credito/cobrar", {
       method: "POST",
@@ -73,13 +76,18 @@ export async function cobrarVenta(
     });
     const json = (await res.json()) as {
       success?: boolean;
-      data?: { saldo?: number };
+      data?: { saldo?: number; recibo_id?: string | null; fecha?: string };
       error?: string;
     };
     if (!res.ok || !json.success) {
       return { ok: false, error: json.error ?? "No se pudo registrar el cobro." };
     }
-    return { ok: true, saldo: json.data?.saldo ?? 0 };
+    return {
+      ok: true,
+      saldo: json.data?.saldo ?? 0,
+      reciboId: json.data?.recibo_id ?? null,
+      fecha: json.data?.fecha ?? new Date().toISOString(),
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
