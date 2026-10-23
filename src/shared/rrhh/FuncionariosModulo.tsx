@@ -248,11 +248,26 @@ function FormFuncionario({
   );
 }
 
-export function Campo({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+/**
+ * Etiqueta + campo. `div` para un combo (SmartCombobox): dentro de un label,
+ * el clic en una opción se reenvía al botón del combo y lo vuelve a abrir.
+ */
+export function Campo({
+  label,
+  children,
+  className = "",
+  div = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+  div?: boolean;
+}) {
+  const Tag = div ? "div" : "label";
   return (
-    <label className={`block ${className}`}>
+    <Tag className={`block ${className}`}>
       <span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
       {children}
-    </label>
+    </Tag>
   );
 }

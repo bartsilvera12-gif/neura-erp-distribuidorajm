@@ -160,6 +160,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     children: [
       { label: "Créditos por cobrar", href: "/cobranzas", exactMatch: true },
       { label: "Recibos de dinero", href: "/cobranzas/recibos" },
+      { label: "Rendiciones", href: "/cobranzas/rendiciones" },
     ],
   },
   /**

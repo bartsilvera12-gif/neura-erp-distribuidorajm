@@ -395,7 +395,7 @@ function NuevoPago({
       pie={<Pie onCerrar={onCerrar} onGuardar={guardar} guardando={guardando} texto="Guardar" />}
     >
       <div className="grid grid-cols-2 gap-3">
-        <Campo label="Funcionario *" className="col-span-2">
+        <Campo label="Funcionario *" className="col-span-2" div>
           <SmartCombobox options={opciones} value={funcionarioId} onChange={elegir} placeholder="Buscar funcionario…" />
         </Campo>
         <Campo label="Mes *">

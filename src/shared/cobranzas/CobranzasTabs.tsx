@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/cobranzas", label: "Créditos por cobrar", exacto: true },
   { href: "/cobranzas/recibos", label: "Recibos de dinero", exacto: false },
+  { href: "/cobranzas/rendiciones", label: "Rendiciones", exacto: false },
 ];
 
 /** Pestañas de Cobranzas: sirven también en el celular. */

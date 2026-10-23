@@ -35,9 +35,10 @@ function fechaHora(iso: string): string {
     timeZone: "America/Asuncion",
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    year: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -153,7 +154,7 @@ export default function RecibosDinero() {
         </p>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <table className="w-full whitespace-nowrap text-sm">
+          <table className="w-full whitespace-nowrap text-sm [&_td]:px-3 [&_th]:px-3">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">N° recibo</th>
@@ -175,7 +176,9 @@ export default function RecibosDinero() {
                     {r.cliente_nombre}
                     {r.cliente_ruc ? <span className="block text-xs font-normal text-slate-400">{r.cliente_ruc}</span> : null}
                   </td>
-                  <td className="max-w-72 truncate px-4 py-3 text-slate-600">{r.concepto ?? "—"}</td>
+                  <td className="max-w-48 truncate px-4 py-3 text-slate-600" title={r.concepto ?? ""}>
+                    {r.venta_numero ? `Venta ${r.venta_numero}` : (r.concepto ?? "—")}
+                  </td>
                   <td className="px-4 py-3">{medioLabel(r.medio_pago)}</td>
                   <td className="px-4 py-3 text-right font-semibold tabular-nums">{gs(r.monto)}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{r.usuario_nombre ?? "—"}</td>
