@@ -151,8 +151,8 @@ export default function OrdenesClient() {
               <th className="px-3 py-2.5 text-left">Fecha</th>
               <th className="px-3 py-2.5 text-left">Proveedor</th>
               <th className="px-3 py-2.5 text-right">Solicitado</th>
-              <th className="px-3 py-2.5 text-right">Recibido</th>
-              <th className="px-3 py-2.5 text-right">Pendiente</th>
+              <th className="px-3 py-2.5 text-right">Ingresado</th>
+              <th className="px-3 py-2.5 text-right">Pend. ingresar</th>
               <th className="px-3 py-2.5 text-right">Facturado</th>
               <th className="px-3 py-2.5 text-right">Pend. facturar</th>
               <th className="px-3 py-2.5 text-right">Total estimado</th>
@@ -194,7 +194,7 @@ export default function OrdenesClient() {
           onClose={() => setModalAbierto(false)} onSaved={() => { setModalAbierto(false); cargar(); }} />
       )}
       {detalle && (
-        <ModalDetalle data={detalle} onClose={() => setDetalle(null)}
+        <ModalDetalle data={detalle} productos={productos} onClose={() => setDetalle(null)}
           onChanged={() => { cargar(); abrirDetalle(detalle.orden.id); }} />
       )}
     </div>
@@ -324,11 +324,18 @@ function ModalOrden({ proveedores, productos, cuentas, onClose, onSaved }: {
 }
 
 /* ── modal: detalle + acciones + recepción ─────────────────────────────── */
-function ModalDetalle({ data, onClose, onChanged }: {
+function ModalDetalle({ data, productos, onClose, onChanged }: {
   data: { orden: Orden; items: OrdenItem[]; tiene_recepciones: boolean };
+  productos: ComboOption[];
   onClose: () => void; onChanged: () => void;
 }) {
   const { orden, items } = data;
+  // Código (SKU) de cada producto, para mostrarlo en el detalle como pide el
+  // cliente. Viene en el `sub` de la opción del producto.
+  const skuById = useMemo(
+    () => new Map(productos.map((p) => [p.id, p.sub ?? ""])),
+    [productos]
+  );
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -373,19 +380,24 @@ function ModalDetalle({ data, onClose, onChanged }: {
       {orden.motivo_cancelacion && <p className="mt-2 text-sm text-red-700">Cancelación: {orden.motivo_cancelacion}</p>}
 
       {modoRecepcion ? (
-        <FormRecepcion orden={orden} items={items}
+        <FormRecepcion orden={orden} items={items} skuById={skuById}
           onCancel={() => setModoRecepcion(false)}
           onSaved={() => { setModoRecepcion(false); setOk("Recepción registrada: el stock se actualizó."); onChanged(); }} />
       ) : (
         <>
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[720px] text-xs">
+          <p className="mt-4 text-xs text-slate-500">
+            <b>Ingresado</b> = lo que ya entró (al salón o depósito). <b>Pend. ingresar</b> = lo que
+            todavía falta recibir de esta orden.
+          </p>
+          <div className="mt-1.5 overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[760px] text-xs">
               <thead className="border-b bg-slate-50 uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-2 py-1.5 text-left">Ítem</th>
-                  <th className="px-2 py-1.5 text-right">Solicitado</th>
-                  <th className="px-2 py-1.5 text-right">Recibido</th>
-                  <th className="px-2 py-1.5 text-right">Pendiente</th>
+                  <th className="px-2 py-1.5 text-left">Código</th>
+                  <th className="px-2 py-1.5 text-left">Descripción</th>
+                  <th className="px-2 py-1.5 text-right">Cantidad</th>
+                  <th className="px-2 py-1.5 text-right">Ingresado</th>
+                  <th className="px-2 py-1.5 text-right">Pend. ingresar</th>
                   <th className="px-2 py-1.5 text-right">Facturado</th>
                   <th className="px-2 py-1.5 text-right">Pend. facturar</th>
                   <th className="px-2 py-1.5 text-right">Costo est.</th>
@@ -394,6 +406,7 @@ function ModalDetalle({ data, onClose, onChanged }: {
               <tbody>
                 {items.map((it) => (
                   <tr key={it.id} className="border-b last:border-0">
+                    <td className="px-2 py-1.5 font-mono text-slate-500">{(it.producto_id && skuById.get(it.producto_id)) || "—"}</td>
                     <td className="px-2 py-1.5">{it.producto_nombre || it.descripcion || "—"}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.cantidad)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.recibida)}</td>
@@ -436,8 +449,8 @@ function ModalDetalle({ data, onClose, onChanged }: {
 }
 
 /* ── formulario de recepción (dentro del detalle de la orden) ──────────── */
-function FormRecepcion({ orden, items, onCancel, onSaved }: {
-  orden: Orden; items: OrdenItem[]; onCancel: () => void; onSaved: () => void;
+function FormRecepcion({ orden, items, skuById, onCancel, onSaved }: {
+  orden: Orden; items: OrdenItem[]; skuById: Map<string, string>; onCancel: () => void; onSaved: () => void;
 }) {
   const [fecha, setFecha] = useState(hoy());
   const [ubicacionId, setUbicacionId] = useState<string | null>(null);
@@ -515,11 +528,12 @@ function FormRecepcion({ orden, items, onCancel, onSaved }: {
         <table className="w-full min-w-[720px] text-xs">
           <thead className="border-b bg-slate-50 uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-2 py-1.5 text-left">Ítem</th>
+              <th className="px-2 py-1.5 text-left">Código</th>
+              <th className="px-2 py-1.5 text-left">Descripción</th>
               <th className="px-2 py-1.5 text-right">Solicitado</th>
-              <th className="px-2 py-1.5 text-right">Recibido antes</th>
-              <th className="px-2 py-1.5 text-right">Pendiente</th>
-              <th className="px-2 py-1.5 text-right">Recibir ahora</th>
+              <th className="px-2 py-1.5 text-right">Ingresado antes</th>
+              <th className="px-2 py-1.5 text-right">Pend. ingresar</th>
+              <th className="px-2 py-1.5 text-right">Ingresar ahora</th>
               <th className="px-2 py-1.5 text-right">Costo unitario</th>
             </tr>
           </thead>
@@ -529,6 +543,7 @@ function FormRecepcion({ orden, items, onCancel, onSaved }: {
               const ahora = n(cant[it.id] ?? "");
               return (
                 <tr key={it.id} className="border-b last:border-0">
+                  <td className="px-2 py-1.5 font-mono text-slate-500">{(it.producto_id && skuById.get(it.producto_id)) || "—"}</td>
                   <td className="px-2 py-1.5">{it.producto_nombre || it.descripcion || "—"}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.cantidad)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.recibida)}</td>

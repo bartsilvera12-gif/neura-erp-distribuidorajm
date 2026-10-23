@@ -34,6 +34,25 @@ function formatFecha(iso: string) {
   }
 }
 
+/** Fecha corta dd/mm/yyyy a partir de un Date. */
+function formatFechaCorta(d: Date) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+/**
+ * Fecha de vencimiento de la factura: solo tiene sentido a crédito. No se
+ * guarda en la base; se calcula con la fecha de compra + los días de plazo.
+ */
+function fechaVencimiento(c: Compra): string | null {
+  if (c.tipo_pago !== "credito" || !c.plazo_dias) return null;
+  const d = new Date(c.fecha);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + c.plazo_dias);
+  return formatFechaCorta(d);
+}
+
 export default function ComprasPage() {
   const [todas, setTodas] = useState<Compra[]>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -332,6 +351,14 @@ function CompraDetalleModal({ compra, onClose }: { compra: Compra; onClose: () =
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Destino</dt>
               <dd className="text-slate-700">{detalle?.destino ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Fecha de compra</dt>
+              <dd className="text-slate-700">{formatFecha(compra.fecha)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Vencimiento</dt>
+              <dd className="text-slate-700">{fechaVencimiento(compra) ?? "—"}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Pago</dt>

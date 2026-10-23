@@ -47,6 +47,21 @@ function ivaDe(p: Producto): TipoIva {
 }
 const IVA_FACTOR: Record<TipoIva, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
 
+/**
+ * Vencimiento calculado: fecha de la compra + días de plazo. No se guarda; es
+ * una ayuda para que se vea cuándo vence la factura a crédito.
+ */
+function vencimientoDesde(baseIso: string | null, diasStr: string): string | null {
+  const dias = parseInt(diasStr, 10);
+  if (!Number.isFinite(dias) || dias <= 0) return null;
+  const base = baseIso ? new Date(baseIso) : new Date();
+  if (Number.isNaN(base.getTime())) return null;
+  base.setDate(base.getDate() + dias);
+  const dd = String(base.getDate()).padStart(2, "0");
+  const mm = String(base.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${base.getFullYear()}`;
+}
+
 const MAX_COMPROBANTE_MB = 8;
 const ALLOWED_COMPROBANTE = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
@@ -688,6 +703,11 @@ export default function NuevaCompraModal({
                     <input inputMode="numeric" value={plazoDias}
                       onChange={(e) => setPlazoDias(e.target.value.replace(/\D/g, ""))}
                       placeholder="Ej: 30" className={INPUT} />
+                    {vencimientoDesde(editar?.fecha ?? null, plazoDias) ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Vence el {vencimientoDesde(editar?.fecha ?? null, plazoDias)}
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </div>
