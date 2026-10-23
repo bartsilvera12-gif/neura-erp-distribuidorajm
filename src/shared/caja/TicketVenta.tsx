@@ -86,6 +86,8 @@ export default function TicketVenta({ datos }: { datos: DatosComprobante }) {
                 "Distribuidora JM"}
             </p>
             {emisor?.ruc ? <p>RUC: {emisor.ruc}</p> : null}
+            {emisor?.telefono ? <p>Tel: {emisor.telefono}</p> : null}
+            {emisor?.email ? <p>{emisor.email}</p> : null}
             {legal ? (
               <>
                 <p>Timbrado N° {emisor!.timbrado_numero}</p>
