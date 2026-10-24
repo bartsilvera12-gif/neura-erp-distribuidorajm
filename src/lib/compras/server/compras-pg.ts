@@ -283,9 +283,14 @@ async function columnasIngreso(
 
 const FALTA_SQL_52 = "Falta correr el SQL 52 (compras: vencimiento, camión e ingreso parcial).";
 
-/** Fecha de la factura a las 12:00 de Paraguay; `null` si no vino o es inválida. */
+/**
+ * Fecha de la factura. Si es hoy (o no vino) va `null` y queda la hora real
+ * (now()); una fecha pasada va a las 12:00 de Paraguay.
+ */
 function fechaCompraTs(fecha: string | null | undefined): string | null {
   if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return null;
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion" }).format(new Date());
+  if (fecha === hoy) return null;
   return `${fecha}T12:00:00-03:00`;
 }
 
