@@ -8,7 +8,7 @@ import type { Producto } from "@/lib/inventario/types";
 import {
   CheckCircle2,
   FileText,
-  Receipt,
+  MessageCircle,
   ScanBarcode,
   Search,
   Share2,
@@ -22,10 +22,9 @@ import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
-import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import { useEmisor } from "@/shared/hooks/useEmisor";
-import { compartirComprobante } from "@/lib/ventas/compartir-comprobante";
+import { compartirComprobante, whatsappComprobante } from "@/lib/ventas/compartir-comprobante";
 import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
@@ -720,7 +719,6 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
   // `null`: todavía nadie la abrió ni la cerró; con "imprimir al cobrar" se
   // abre sola en cuanto está lista.
   const [verFactura, setVerFactura] = useState<boolean | null>(null);
-  const [verRecibo, setVerRecibo] = useState(false);
   const [verKude, setVerKude] = useState<boolean | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const { fecha, hora } = fechaHora(venta.fecha);
@@ -760,40 +758,25 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
 
   const legal = esFacturaLegal(emisor);
 
-  // Recibo de dinero: solo al contado, que es cuando entra plata.
-  const botonRecibo = comp.aCredito ? null : (
+  // Mandarle el comprobante al cliente: abre su chat de WhatsApp (o el
+  // selector de contactos si la venta no tiene teléfono) con el texto listo.
+  const botonWhatsapp = (
     <button
       type="button"
-      onClick={() => setVerRecibo(true)}
-      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-semibold"
-      style={{ borderColor: TEAL, color: "#3F8E91" }}
+      onClick={() => whatsappComprobante(datos, comp.telefonoCliente)}
+      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] py-3 text-sm font-semibold text-white hover:bg-[#1EBE5A]"
     >
-      <Receipt className="h-4 w-4" />
-      Imprimir recibo
+      <MessageCircle className="h-4 w-4" />
+      Enviar por WhatsApp
     </button>
   );
-
-  if (verRecibo) {
-    return (
-      <div className="relative w-full max-w-[880px] rounded-2xl bg-[#F8FAFC] pb-4">
-        <button
-          type="button"
-          onClick={() => setVerRecibo(false)}
-          className="no-imprimir absolute left-4 top-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-        >
-          ← Volver
-        </button>
-        <ReciboVenta datos={datos} />
-      </div>
-    );
-  }
 
   // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
   if (comp.documento === "ticket") {
     return (
       <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl print:max-w-none print:rounded-none print:bg-white print:p-0 print:shadow-none">
         <TicketVenta datos={datos} />
-        <div className="no-imprimir mb-2">{botonRecibo}</div>
+        <div className="no-imprimir mb-2">{botonWhatsapp}</div>
         <div className="no-imprimir flex gap-2">
           <Link
             href="/ventas/arqueo"
@@ -912,7 +895,6 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
           </button>
         </div>
 
-        {botonRecibo ? <div className="mt-2">{botonRecibo}</div> : null}
 
         <div className="mt-2 flex gap-2">
           <Link

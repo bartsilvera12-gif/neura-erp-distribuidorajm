@@ -34,7 +34,6 @@ import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
 import { coincideBusqueda, textoSinResultado } from "@/shared/caja/lector-codigo";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
-import ReciboVenta from "@/shared/caja/ReciboVenta";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import {
   compartirComprobante,
@@ -777,7 +776,6 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const venta = caja.ventaCreada!;
   const { emisor } = useEmisor();
   const [verFactura, setVerFactura] = useState(false);
-  const [verRecibo, setVerRecibo] = useState(false);
   const [verKude, setVerKude] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -805,19 +803,6 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   const legal = esFacturaLegal(emisor);
   const { fecha, hora } = fechaHora(venta.fecha);
 
-  // Recibo de dinero: solo al contado, que es cuando entra plata.
-  const botonRecibo = comp.aCredito ? null : (
-    <button
-      type="button"
-      onClick={() => setVerRecibo(true)}
-      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 py-3.5 text-sm font-semibold"
-      style={{ borderColor: TEAL, color: TEAL_OSCURO }}
-    >
-      <Receipt className="h-4 w-4" />
-      Imprimir recibo
-    </button>
-  );
-
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
       <div className="no-imprimir flex items-center gap-2 bg-[var(--zentra-sidebar)] px-4 py-3 text-white">
@@ -828,24 +813,19 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
       {/* El comprobante empieza cerrado: lo que el vendedor necesita ver de un
           vistazo es el número y el total, y lo que necesita hacer es mandárselo
           al cliente. La factura entera queda a un toque. */}
-      {verRecibo ? (
-        <>
-          <ReciboVenta datos={datos} />
-          <div className="no-imprimir px-4">
-            <button
-              type="button"
-              onClick={() => setVerRecibo(false)}
-              className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-600"
-            >
-              Volver
-            </button>
-          </div>
-        </>
-      ) : comp.documento === "ticket" ? (
+      {comp.documento === "ticket" ? (
         // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
         <>
           <TicketVenta datos={datos} />
-          <div className="no-imprimir px-4">{botonRecibo}</div>
+          <div className="no-imprimir px-4">
+            <button
+              type="button"
+              onClick={() => whatsappComprobante(datos, comp.telefonoCliente)}
+              className="w-full rounded-xl bg-[#25D366] py-3.5 text-sm font-semibold text-white"
+            >
+              Enviar por WhatsApp
+            </button>
+          </div>
         </>
       ) : verKude && emision.facturaId ? (
         <div className="px-4 py-4 print:p-0">
@@ -938,7 +918,6 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
             >
               Enviar por WhatsApp
             </button>
-            {botonRecibo}
           </div>
         </div>
       )}
