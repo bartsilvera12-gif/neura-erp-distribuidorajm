@@ -90,3 +90,14 @@ export function stockEnCajas(p: { stock_actual: number; empaques?: { factor: num
   const palabra = /^paq/i.test(mayor.nombre) ? (cajas === 1 ? "paquete" : "paquetes") : cajas === 1 ? "caja" : "cajas";
   return `${cajas} ${palabra}${sueltas > 0 ? ` + ${sueltas.toLocaleString("es-PY")} u.` : ""}`;
 }
+
+/**
+ * Orden por código de menor a mayor, como números: 2 antes que 10 (y no
+ * "10" antes que "2", que es lo que da ordenar texto). Sin código, al final.
+ */
+export function compararPorCodigo(a: { sku: string; nombre: string }, b: { sku: string; nombre: string }): number {
+  const ca = (a.sku ?? "").trim();
+  const cb = (b.sku ?? "").trim();
+  if (!ca !== !cb) return ca ? -1 : 1;
+  return ca.localeCompare(cb, "es", { numeric: true }) || a.nombre.localeCompare(b.nombre, "es");
+}

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, Plus, Package, Search } from "lucide-react";
 import { useProductos } from "@/shared/hooks/useInventario";
 import type { Producto } from "@/lib/inventario/types";
-import { stockEnCajas } from "@/lib/inventario/unidades";
+import { compararPorCodigo, stockEnCajas } from "@/lib/inventario/unidades";
 
 /**
  * Lista mobile de productos del inventario. Diseño:
@@ -31,7 +31,7 @@ export default function InventarioMobile() {
 
   const productosFiltrados = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const ordenados = [...productos].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const ordenados = [...productos].sort(compararPorCodigo);
     return ordenados.filter((p) => {
       if (stockFilter === "bajo" && Number(p.stock_actual ?? 0) > Number(p.stock_minimo ?? 0)) return false;
       if (!q) return true;

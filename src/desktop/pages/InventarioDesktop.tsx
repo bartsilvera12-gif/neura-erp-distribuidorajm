@@ -6,7 +6,7 @@ import { deleteProducto, getProductos } from "@/lib/inventario/storage";
 import type { Producto } from "@/lib/inventario/types";
 import { Pencil, Trash2 } from "lucide-react";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
-import { formatCantidad, stockEnCajas } from "@/lib/inventario/unidades";
+import { compararPorCodigo, formatCantidad, stockEnCajas } from "@/lib/inventario/unidades";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import ImportExcelButton from "@/components/ui/ImportExcelButton";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
@@ -153,7 +153,7 @@ export default function InventarioPage() {
       .toLowerCase();
     const terms = q.split(/\s+/).filter(Boolean);
     return terms.every((t) => haystack.includes(t));
-  });
+  }).sort(compararPorCodigo);
 
   const productos =
     pageSize === "all" ? filtradosTodos : filtradosTodos.slice(0, pageSize);
