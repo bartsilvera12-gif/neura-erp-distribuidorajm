@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2, Printer, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2, MessageCircle, Printer, RefreshCw } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import KudeTicket from "@/shared/caja/KudeTicket";
 
@@ -265,7 +265,7 @@ export function VisorKude({ facturaId }: { facturaId: string }) {
 
   return (
     <div>
-      <div className="no-imprimir mb-3 flex justify-center">
+      <div className="no-imprimir mb-3 flex flex-wrap items-center justify-center gap-2">
         <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
           {(
             [
@@ -286,6 +286,7 @@ export function VisorKude({ facturaId }: { facturaId: string }) {
             </button>
           ))}
         </div>
+        <BotonWhatsappFactura facturaId={facturaId} />
       </div>
       {formato === "ticket" ? <KudeTicket facturaId={facturaId} /> : <KudePdf facturaId={facturaId} />}
     </div>
@@ -381,6 +382,83 @@ function KudePdf({ facturaId }: { facturaId: string }) {
         title="Factura electrónica (KuDE)"
         className="h-[75vh] w-full rounded-lg border border-slate-200 bg-white"
       />
+    </div>
+  );
+}
+
+/**
+ * Mandar la factura al cliente por WhatsApp. WhatsApp no deja adjuntar un
+ * archivo desde un link, así que hace las dos cosas: baja el PDF de la factura
+ * y abre el chat del cliente (wa.me con su teléfono) con el mensaje escrito;
+ * queda arrastrar el PDF al chat.
+ */
+function BotonWhatsappFactura({ facturaId }: { facturaId: string }) {
+  const [trabajando, setTrabajando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  async function enviar() {
+    setAviso(null);
+    // La pestaña se abre YA (con el clic): abierta después de esperar al
+    // servidor, el navegador la bloquea como ventana emergente.
+    const pestana = window.open("about:blank", "_blank");
+    setTrabajando(true);
+    try {
+      const [datosRes, pdfRes] = await Promise.all([
+        fetchWithSupabaseSession(`/api/facturas/${facturaId}/whatsapp`),
+        fetchWithSupabaseSession(`/api/facturas/${facturaId}/sifen/kude`),
+      ]);
+      const j = (await datosRes.json().catch(() => ({}))) as {
+        data?: { cliente: string; telefono: string | null; numero: string; total: number };
+        error?: string;
+      };
+      if (!datosRes.ok || !j.data) throw new Error(j.error ?? "No se pudieron leer los datos del cliente.");
+      const d = j.data;
+
+      if (pdfRes.ok) {
+        const url = URL.createObjectURL(await pdfRes.blob());
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `factura-${(d.numero || facturaId.slice(0, 8)).replace(/[^\w-]/g, "")}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+
+      const texto =
+        `Hola${d.cliente ? ` ${d.cliente}` : ""}, te enviamos tu factura electrónica N° ${d.numero}` +
+        ` por Gs. ${Math.round(d.total).toLocaleString("es-PY")}. ¡Gracias por tu compra!`;
+      const wa = `https://wa.me/${d.telefono ?? ""}?text=${encodeURIComponent(texto)}`;
+      if (pestana) pestana.location.href = wa;
+      else window.open(wa, "_blank");
+
+      setAviso(
+        d.telefono
+          ? pdfRes.ok
+            ? "Se descargó la factura: arrastrala al chat de WhatsApp que se abrió."
+            : "Se abrió WhatsApp, pero no se pudo descargar el PDF: usá «Descargar»."
+          : "El cliente no tiene teléfono cargado: elegí el contacto en WhatsApp y arrastrá la factura descargada."
+      );
+    } catch (e) {
+      pestana?.close();
+      setAviso(e instanceof Error ? e.message : "No se pudo preparar el envío.");
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center">
+      <button
+        type="button"
+        onClick={enviar}
+        disabled={trabajando}
+        className="flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1EBE5A] disabled:opacity-50"
+      >
+        {trabajando ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+        Enviar por WhatsApp
+      </button>
+      {aviso ? <p className="mt-1 max-w-xs text-center text-xs text-slate-500">{aviso}</p> : null}
     </div>
   );
 }
