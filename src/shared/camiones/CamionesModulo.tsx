@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Package, RefreshCw, Truck } from "lucide-react";
 import CamionesPanel from "@/shared/caja/CamionesPanel";
 import InventarioCamion from "./InventarioCamion";
+import ComprasCamion from "./ComprasCamion";
 import { useCamiones, useObjetivos } from "@/shared/hooks/useRepartos";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { formatCantidad, parseCantidad } from "@/lib/inventario/unidades";
@@ -86,6 +87,8 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const [version, setVersion] = useState(0);
+  /** Qué se mira del camión: sus compras (cada una se despliega) o el inventario. */
+  const [vista, setVista] = useState<"compras" | "inventario">("compras");
 
   // Al contar se pueden encontrar productos que no figuraban: con "ver todos"
   // aparece el catálogo entero. Al cargar del salón también se ve todo, porque
@@ -239,7 +242,32 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
       </div>
 
       {modo === "ver" ? (
-        <InventarioCamion camionId={camionId} version={version} />
+        <>
+          <div className="mb-3 flex gap-1 border-b border-slate-200">
+            {(
+              [
+                ["compras", "Compras"],
+                ["inventario", "Inventario"],
+              ] as const
+            ).map(([v, texto]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVista(v)}
+                className={`border-b-2 px-3 py-2 text-sm font-semibold ${
+                  vista === v ? "border-[#4FAEB2] text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+          {vista === "compras" ? (
+            <ComprasCamion camionId={camionId} version={version} />
+          ) : (
+            <InventarioCamion camionId={camionId} version={version} />
+          )}
+        </>
       ) : error ? (
         <p className="rounded-lg bg-red-50 p-3 text-xs text-red-700">{error.message}</p>
       ) : isLoading ? (
