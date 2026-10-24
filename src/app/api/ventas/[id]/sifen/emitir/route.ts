@@ -4,6 +4,7 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { facturaDeVenta } from "@/lib/ventas/server/venta-a-factura";
 import { correrPaso, estadoSifen, pasosPendientes } from "@/lib/ventas/server/sifen-pasos";
+import { soltarFactura, tomarFactura } from "@/lib/ventas/server/sifen-vigilante";
 
 /**
  * POST /api/ventas/[id]/sifen/emitir
@@ -37,15 +38,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const fac = await facturaDeVenta(supabase, auth.empresa_id, ventaId);
     if (!fac.ok) return NextResponse.json(errorResponse(fac.message), { status: fac.status });
 
-    const antes = await estadoSifen(supabase, auth.empresa_id, fac.facturaId);
-    for (const paso of pasosPendientes(antes.estado_sifen)) {
-      const r = await correrPaso(request, fac.facturaId, paso);
-      if (!r.ok) {
-        const ahora = await estadoSifen(supabase, auth.empresa_id, fac.facturaId);
-        return NextResponse.json(
-          { ...errorResponse(r.message), data: { sifen_activo: true, factura_id: fac.facturaId, ...ahora } },
-          { status: 400 }
-        );
+    // Si el vigilante ya la está mandando, no se manda dos veces: la caja
+    // sigue preguntando el estado como siempre.
+    if (tomarFactura(fac.facturaId)) {
+      try {
+        const antes = await estadoSifen(supabase, auth.empresa_id, fac.facturaId);
+        for (const paso of pasosPendientes(antes.estado_sifen)) {
+          const r = await correrPaso(request, fac.facturaId, paso);
+          if (!r.ok) {
+            const ahora = await estadoSifen(supabase, auth.empresa_id, fac.facturaId);
+            return NextResponse.json(
+              { ...errorResponse(r.message), data: { sifen_activo: true, factura_id: fac.facturaId, ...ahora } },
+              { status: 400 }
+            );
+          }
+        }
+      } finally {
+        soltarFactura(fac.facturaId);
       }
     }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlarmClock,
   Banknote,
+  FileWarning,
   Bell,
   CalendarClock,
   Check,
@@ -55,6 +56,7 @@ type TipoNotificacion =
   | "proyecto_estado_cambio"
   | "proyecto_entregado"
   | "cobro_pendiente"
+  | "sifen_problema"
   | "comentario_proyecto"
   | "agenda_recordatorio"
   | "qa_vence"
@@ -78,6 +80,7 @@ type Notificacion = {
     sala_id?: string;
     mencion?: boolean;
     conversation_id?: string;
+    factura_id?: string;
   } | null;
   /**
    * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
@@ -194,6 +197,12 @@ const ESTILO_TIPO: Record<
     // Ámbar: requiere una acción (aprobar/rechazar en Conciliación).
     wrap: "bg-amber-50 text-amber-600",
     label: "Cobro por aprobar",
+  },
+  sifen_problema: {
+    icon: FileWarning,
+    // Rojo: la factura no está aprobada por la SET y hay que corregirla.
+    wrap: "bg-red-50 text-red-600",
+    label: "Factura electrónica",
   },
   comentario_proyecto: {
     icon: MessageSquare,
@@ -618,6 +627,8 @@ export default function NotificacionesBell() {
                     }`
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"
+                  : n.tipo === "sifen_problema" && n.metadata?.factura_id
+                  ? `/facturas/${n.metadata.factura_id}`
                   : n.tipo === "comentario_proyecto" && n.proyecto_id
                   ? // Abre el MODAL del proyecto en el Kanban, directo en la solapa
                     // Comentarios y en la sección del canal (para PM/QA que ven
