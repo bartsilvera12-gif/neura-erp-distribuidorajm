@@ -1,4 +1,5 @@
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import type { ConteoEfectivo } from "./conteo";
 import type { CajaAbierta } from "./types";
 
 /**
@@ -54,7 +55,8 @@ export async function abrirCaja(montoApertura: number): Promise<ResultadoCaja> {
 export async function cerrarCaja(
   cajaId: string,
   montoContado: number,
-  sencillo?: number
+  sencillo?: number,
+  conteo?: ConteoEfectivo
 ): Promise<
   { ok: true; contado: number; esperado: number; diferencia: number } | { ok: false; error: string }
 > {
@@ -67,6 +69,7 @@ export async function cerrarCaja(
         body: JSON.stringify({
           monto_cierre_contado: montoContado,
           ...(sencillo !== undefined ? { sencillo } : {}),
+          ...(conteo ? { conteo } : {}),
         }),
       }
     );

@@ -1,3 +1,4 @@
+import type { ConteoEfectivo } from "./conteo";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 export interface IngresoPorMedio {
@@ -26,6 +27,8 @@ export interface ArqueoCaja {
   monto_apertura: number;
   /** Sencillo (cambio) que el cajero tiene en el cajón; suma al esperado. */
   sencillo?: number;
+  /** Conteo de billetes y monedas guardado al cerrar (SQL 55). */
+  conteo?: ConteoEfectivo | null;
   /** Lo vendido en esta caja por categoría de producto (mayor primero). */
   por_categoria?: { categoria: string; total: number }[];
   ingresos: { total: number; por_medio: IngresoPorMedio[] };

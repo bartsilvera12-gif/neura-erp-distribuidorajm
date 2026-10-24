@@ -8,6 +8,7 @@ import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import type { ConteoEfectivo } from "@/lib/cajas/conteo";
 
 const TZ = "America/Asuncion";
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -162,6 +163,7 @@ export async function GET(request: NextRequest) {
       monto_esperado_efectivo: string | null;
       diferencia: string | null;
       sencillo: string;
+      conteo: ConteoEfectivo | null;
     }>(
       pool,
       `SELECT id, numero_caja, estado,
@@ -171,7 +173,8 @@ export async function GET(request: NextRequest) {
               monto_cierre_contado::text    AS monto_cierre_contado,
               monto_esperado_efectivo::text AS monto_esperado_efectivo,
               diferencia::text              AS diferencia,
-              ${cols.has("sencillo") ? "sencillo::text" : "'0'"} AS sencillo
+              ${cols.has("sencillo") ? "sencillo::text" : "'0'"} AS sencillo,
+              ${cols.has("conteo_efectivo") ? "conteo_efectivo" : "NULL::jsonb"} AS conteo
          FROM ${tC}
         WHERE empresa_id = $1::uuid
           AND ( (fecha_apertura AT TIME ZONE $2)::date = $3::date
@@ -394,6 +397,7 @@ export async function GET(request: NextRequest) {
         fecha_cierre: c.fecha_cierre,
         monto_apertura: apertura,
         sencillo,
+        conteo: c.conteo ?? null,
         por_categoria: porCategoria.get(c.id) ?? [],
         ingresos: {
           total: sumar(ingresosVentas, false),

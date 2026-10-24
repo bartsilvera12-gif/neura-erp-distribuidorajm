@@ -7,6 +7,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
+import { limpiarConteo, totalConteo } from "@/lib/cajas/conteo";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,7 +51,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    const crudo = body?.monto_cierre_contado;
+    // Con el conteo de billetes (SQL 55), lo contado es su total: no se confía
+    // en una cifra aparte que podría no coincidir.
+    const conteo = limpiarConteo(body?.conteo);
+    const crudo = conteo ? totalConteo(conteo) : body?.monto_cierre_contado;
     if (crudo === undefined || crudo === null || crudo === "") {
       return NextResponse.json(errorResponse("Contá el efectivo antes de cerrar."), {
         status: 400,
@@ -70,14 +74,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     client = await pool.connect();
     await client.query("BEGIN");
 
-    const hayColSencillo =
+    const colsCaja = new Set(
       (
-        await client.query(
-          `SELECT 1 FROM information_schema.columns
-            WHERE table_schema = $1 AND table_name = 'cajas' AND column_name = 'sencillo'`,
+        await client.query<{ c: string }>(
+          `SELECT column_name AS c FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = 'cajas' AND column_name IN ('sencillo', 'conteo_efectivo')`,
           [schema]
         )
-      ).rows.length > 0;
+      ).rows.map((r) => r.c)
+    );
+    const hayColSencillo = colsCaja.has("sencillo");
+    const guardarConteo = conteo !== null && colsCaja.has("conteo_efectivo");
 
     const cajaQ = await client.query<{
       estado: string;
@@ -112,7 +119,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     // `monto` se guarda siempre positivo y el signo lo da `tipo`.
     // El sencillo: el que se cargó al cerrar manda; si no, el guardado.
-    const sencilloBody = Number(body?.sencillo);
+    const sencilloBody = conteo ? conteo.sencillo : Number(body?.sencillo);
     const sencillo =
       hayColSencillo && Number.isFinite(sencilloBody) && sencilloBody >= 0
         ? Math.round(sencilloBody)
@@ -125,13 +132,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       (porTipo.get("retiro") ?? 0) +
       (porTipo.get("ajuste") ?? 0);
 
+    const params: unknown[] = [id, contado, esperado];
+    let extra = "";
+    if (hayColSencillo) {
+      params.push(sencillo);
+      extra += `, sencillo = $${params.length}`;
+    }
+    if (guardarConteo) {
+      params.push(JSON.stringify(conteo));
+      extra += `, conteo_efectivo = $${params.length}::jsonb`;
+    }
     await client.query(
       `UPDATE ${tC}
           SET estado = 'cerrada', fecha_cierre = now(),
               monto_cierre_contado = $2, monto_esperado_efectivo = $3
-              ${hayColSencillo ? ", sencillo = $4" : ""}
+              ${extra}
         WHERE id = $1::uuid`,
-      hayColSencillo ? [id, contado, esperado, sencillo] : [id, contado, esperado]
+      params
     );
 
     await client.query("COMMIT");

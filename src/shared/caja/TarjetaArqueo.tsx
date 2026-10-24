@@ -6,6 +6,7 @@ import { guardarSencillo } from "@/lib/cajas/storage";
 import { formatGs } from "@/shared/caja/useCajaVenta";
 import { fechaLarga, horaCorta, iconoMedio } from "@/shared/caja/arqueo-ui";
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
+import ConteoEfectivoTabla from "./ConteoEfectivo";
 
 /**
  * Arqueo de una caja: con cuánto abrió, qué entró y por qué medio, qué salió, y
@@ -105,6 +106,11 @@ export default function TarjetaArqueo({
 
         {caja.efectivo.contado !== null ? (
           <div className="mt-3 border-t border-slate-100 pt-3">
+            {caja.conteo ? (
+              <div className="mb-3">
+                <ConteoEfectivoTabla conteo={caja.conteo} soloLectura />
+              </div>
+            ) : null}
             <Fila label="Contado al cerrar" valor={formatGs(caja.efectivo.contado)} />
             <div className="flex items-center justify-between gap-3 py-1">
               <span className="text-sm text-slate-500">Diferencia</span>

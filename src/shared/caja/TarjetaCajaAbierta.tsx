@@ -18,6 +18,8 @@ import { cerrarCaja, registrarMovimientoCaja, type TipoMovimientoCaja } from "@/
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 import AperturaCaja from "./AperturaCaja";
 import ModalCaja from "./ModalCaja";
+import ConteoEfectivoTabla from "./ConteoEfectivo";
+import { totalConteo, type ConteoEfectivo } from "@/lib/cajas/conteo";
 import { VentasPorCategoria } from "./TarjetaArqueo";
 
 const TEAL = "#4FAEB2";
@@ -363,21 +365,24 @@ function ModalCierre({
   onListo: () => void;
   onCancelar: () => void;
 }) {
-  const [monto, setMonto] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Sencillo y monedas (cambio): arranca con lo cargado en el arqueo y suma al
-  // esperado. El esperado que llega ya trae el guardado: se lo saca y se suma
-  // el de este campo.
+  // Planilla de arqueo: billetes y monedas por cantidad, más el sencillo y las
+  // monedas sueltas. El sencillo arranca con lo cargado en el arqueo y también
+  // suma al esperado (es cambio que ya estaba en el cajón): el esperado que
+  // llega lo trae, se lo saca y se suma el de la planilla.
   const sencilloGuardado = detalle?.sencillo ?? 0;
-  const [sencilloTxt, setSencilloTxt] = useState(
-    sencilloGuardado > 0 ? String(Math.round(sencilloGuardado)) : ""
-  );
-  const sencillo = Number(sencilloTxt || "0");
+  const [conteo, setConteo] = useState<ConteoEfectivo>({
+    billetes: {},
+    sencillo: Math.round(sencilloGuardado),
+    monedas: 0,
+  });
+  const [tocado, setTocado] = useState(false);
+  const sencillo = conteo.sencillo;
   const esperadoConSencillo = esperado - sencilloGuardado + sencillo;
 
-  const valor = Number(monto);
-  const valido = monto.trim() !== "" && Number.isFinite(valor) && valor >= 0;
+  const valor = totalConteo(conteo);
+  const valido = tocado;
   const diferencia = valido ? valor - esperadoConSencillo : 0;
 
   const ventasEfectivo = porMedio(detalle, "efectivo");
@@ -395,7 +400,7 @@ function ModalCierre({
     }
     setGuardando(true);
     setError(null);
-    const res = await cerrarCaja(cajaId, valor, sencillo);
+    const res = await cerrarCaja(cajaId, valor, sencillo, conteo);
     setGuardando(false);
     if (!res.ok) {
       setError(res.error);
@@ -434,20 +439,7 @@ function ModalCierre({
             hay que creer; con esto se puede discutir dónde no cuadra. */}
         <div className="space-y-2 rounded-xl bg-slate-50 p-4">
           <FilaDesglose label="Apertura" valor={gs(apertura)} />
-          <label className="flex items-center justify-between gap-4">
-            <span className="text-sm text-slate-600">Sencillo y monedas (cambio)</span>
-            <input
-              inputMode="numeric"
-              value={conMiles(sencilloTxt)}
-              onChange={(e) => {
-                setError(null);
-                setSencilloTxt(soloDigitos(e.target.value));
-              }}
-              placeholder="0"
-              aria-label="Sencillo y monedas"
-              className="h-8 w-32 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-            />
-          </label>
+          {sencillo > 0 ? <FilaDesglose label="Sencillo (cambio)" valor={gs(sencillo)} /> : null}
           <FilaDesglose
             label={`Ventas efectivo${cantEfectivo > 0 ? ` (${cantEfectivo})` : ""}`}
             valor={gs(ventasEfectivo)}
@@ -477,20 +469,17 @@ function ModalCierre({
           </div>
         ) : null}
 
-        <label className="block">
-          <span className={ETIQUETA}>Efectivo contado (Gs.)</span>
-          <input
-            autoFocus
-            inputMode="numeric"
-            value={conMiles(monto)}
-            onChange={(e) => {
+        <div>
+          <span className={ETIQUETA}>Contá el efectivo del cajón</span>
+          <ConteoEfectivoTabla
+            conteo={conteo}
+            onChange={(c) => {
               setError(null);
-              setMonto(soloDigitos(e.target.value));
+              setTocado(true);
+              setConteo(c);
             }}
-            placeholder="0"
-            className={`${CAMPO} tabular-nums`}
           />
-        </label>
+        </div>
 
         {valido ? (
           <div
