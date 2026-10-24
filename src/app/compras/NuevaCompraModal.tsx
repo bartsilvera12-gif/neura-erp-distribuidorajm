@@ -17,6 +17,7 @@ import type { Proveedor } from "@/lib/proveedores/types";
 import type { Producto } from "@/lib/inventario/types";
 import type { Compra } from "@/lib/compras/types";
 import { getCompraDetalle } from "@/lib/compras/storage";
+import { precioSegunLista } from "@/lib/ventas/listas-precio";
 
 /**
  * Nueva compra: varios productos en una lista, y a dónde entra la mercadería —
@@ -625,7 +626,9 @@ export default function NuevaCompraModal({
                   options={[{ value: "minorista", label: "Minorista" }, { value: "mayorista", label: "Mayorista (−10%)" }]}
                   onChange={setLista} />
                 <p className="mt-1 text-[11px] text-slate-400">
-                  La caja vende con esta lista; no se elige al vender.
+                  {lista === "mayorista"
+                    ? `La caja ${tipoDestino === "camion" ? "del camión" : "del salón"} cobra el precio de venta con 10% de descuento (lo ves abajo, en cada producto). Vale para todo lo que venda, no solo esta compra.`
+                    : "La caja vende con esta lista; no se elige al vender."}
                 </p>
               </div>
             </div>
@@ -722,7 +725,9 @@ export default function NuevaCompraModal({
                       </th>
                       <th className="w-20 px-2 py-2 text-right">Pendiente</th>
                       <th className="w-32 px-2 py-2 text-right">Costo unit.</th>
-                      <th className="w-32 px-2 py-2 text-right">Precio venta</th>
+                      <th className="w-32 px-2 py-2 text-right">
+                        {lista === "mayorista" ? "Precio venta (base)" : "Precio venta"}
+                      </th>
                       <th className="w-40 px-2 py-2 text-left">Categoría</th>
                       <th className="w-28 px-3 py-2 text-right">Total</th>
                       <th className="w-10" />
@@ -758,6 +763,13 @@ export default function NuevaCompraModal({
                         <td className="px-2 py-2">
                           <MontoInput value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
                             decimals={false} placeholder="—" aria-label={`Precio de venta de ${l.nombre}`} className={CELDA} />
+                          {/* Con mayorista la caja cobra el 10% menos que este precio: se muestra
+                              acá para que se vea el precio real de venta. */}
+                          {lista === "mayorista" && calc[i].precio > 0 ? (
+                            <span className="mt-0.5 block text-right text-[11px] font-semibold text-[#3F8E91]">
+                              Mayorista: {fmt(precioSegunLista(calc[i].precio, "mayorista"))}
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2">
                           <SelectorCategoria value={l.categoria} categorias={categorias}
