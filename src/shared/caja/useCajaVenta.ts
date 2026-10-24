@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import type { Reparto } from "@/lib/repartos/types";
 import { saveVenta } from "@/lib/ventas/storage";
-import { clienteNombre } from "@/lib/clientes/storage";
+import { clienteNombre, getCliente } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Producto } from "@/lib/inventario/types";
 import { esPesable, normalizarCantidad } from "@/lib/inventario/unidades";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
+import { METODOS_COBRO, METODOS_PAGO } from "@/lib/ventas/types";
 import type {
   LineaVenta,
   MetodoPagoVenta,
@@ -81,6 +83,11 @@ export function useCajaVenta() {
   // sinNombre=false es "todavía no eligió" y no deja avanzar.
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [sinNombre, setSinNombre] = useState(false);
+
+  // ── Depósito del cliente ───────────────────────────────────────────────────
+  // Venta que viene de «Pasar a venta» en Recibos: el saldo del depósito paga
+  // la venta y solo se cobra la diferencia.
+  const [deposito, setDeposito] = useState<DepositoCaja | null>(null);
 
   // ── Carrito ────────────────────────────────────────────────────────────────
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
@@ -254,13 +261,19 @@ export function useCajaVenta() {
     };
   }, [lineas, carrito]);
 
+  /** Lo que el depósito paga de esta venta, y lo que queda por cobrar. */
+  const depositoAplicado = deposito && !aCredito ? Math.min(deposito.saldo, totales.total) : 0;
+  const aCobrar = Math.max(0, totales.total - depositoAplicado);
+  /** El depósito cubre toda la venta: no hay nada que cobrar ni medio que elegir. */
+  const cubiertaPorDeposito = depositoAplicado > 0 && aCobrar === 0;
+
   // ── Reglas de avance ───────────────────────────────────────────────────────
 
   const clienteElegido = cliente !== null || sinNombre;
   const esCredito = aCredito;
 
   /** El crédito necesita a quién cobrarle: sin cliente identificado no se ofrece. */
-  const creditoDisponible = cliente !== null;
+  const creditoDisponible = cliente !== null && deposito === null;
 
   // La caja ya no frena la venta: si al cobrar no hay ninguna abierta, el
   // servidor abre una en 0 y estampa la venta ahí. El camión sale sin plata en
@@ -275,7 +288,7 @@ export function useCajaVenta() {
     if (paso === "pago") {
       if (esCredito) {
         if (!creditoDisponible) return false;
-      } else if (metodoPago === null) {
+      } else if (metodoPago === null && !cubiertaPorDeposito) {
         return false;
       }
       if (faltaElegirReparto) return false;
@@ -283,6 +296,7 @@ export function useCajaVenta() {
     }
     return false;
   }, [
+    cubiertaPorDeposito,
     paso,
     clienteElegido,
     carrito.length,
@@ -315,10 +329,11 @@ export function useCajaVenta() {
     if (aCredito && !creditoDisponible) {
       return "Este cliente no puede comprar a crédito. Elegí otra forma de cobro.";
     }
-    if (!aCredito && metodoPago === null) return "Elegí con qué se cobra.";
+    if (!aCredito && metodoPago === null && !cubiertaPorDeposito) return "Elegí con qué se cobra.";
     if (faltaElegirReparto) return "Elegí de qué camión sale la mercadería.";
     return null;
   }, [
+    cubiertaPorDeposito,
     clienteElegido,
     carrito.length,
     moneda,
@@ -335,12 +350,13 @@ export function useCajaVenta() {
     if (moneda === "USD" && tipoCambioNum <= 0) return false;
     if (aCredito) {
       if (!creditoDisponible) return false;
-    } else if (metodoPago === null) {
+    } else if (metodoPago === null && !cubiertaPorDeposito) {
       return false;
     }
     if (faltaElegirReparto) return false;
     return true;
   }, [
+    cubiertaPorDeposito,
     clienteElegido,
     carrito.length,
     moneda,
@@ -354,14 +370,69 @@ export function useCajaVenta() {
   const elegirCliente = useCallback((c: Cliente) => {
     setCliente(c);
     setSinNombre(false);
+    // El depósito es de un cliente: si se cambia, deja de aplicarse.
+    setDeposito((d) => (d && d.cliente_id !== c.id ? null : d));
   }, []);
 
   const elegirSinNombre = useCallback(() => {
     setCliente(null);
     setSinNombre(true);
+    setDeposito(null);
     // Sin cliente identificado no hay a quién darle crédito.
     setACredito(false);
   }, []);
+
+  /**
+   * Trae el depósito (por su id, desde «Pasar a venta») y deja elegido a su
+   * cliente. Si ya no tiene saldo, avisa y la venta sigue como una común.
+   */
+  const cargarDeposito = useCallback(async (id: string): Promise<boolean> => {
+    setError(null);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/cobranzas/depositos/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: DepositoCaja & { anulado?: boolean };
+        error?: string;
+      };
+      if (!res.ok || !j.data) {
+        setError(j.error ?? "No se pudo leer el depósito.");
+        return false;
+      }
+      const d = j.data;
+      if (d.anulado) {
+        setError(`El depósito ${d.recibo_numero} está anulado.`);
+        return false;
+      }
+      if (!(d.saldo > 0)) {
+        setError(`El depósito ${d.recibo_numero} ya no tiene saldo.`);
+        return false;
+      }
+      const c = await getCliente(d.cliente_id);
+      if (!c) {
+        setError("No se encontró el cliente del depósito.");
+        return false;
+      }
+      setCliente(c);
+      setSinNombre(false);
+      setACredito(false);
+      setDeposito({
+        id: d.id,
+        recibo_numero: d.recibo_numero,
+        cliente_id: d.cliente_id,
+        saldo: d.saldo,
+        medio_pago: d.medio_pago ?? null,
+      });
+      setPaso("productos");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo leer el depósito.");
+      return false;
+    }
+  }, []);
+
+  const quitarDeposito = useCallback(() => setDeposito(null), []);
 
   const irA = useCallback((destino: PasoCaja) => {
     setError(null);
@@ -399,6 +470,7 @@ export function useCajaVenta() {
     setACredito(false);
     setPlazoDias("");
     setDocumento(null);
+    setDeposito(null);
     setError(null);
   }, []);
 
@@ -408,7 +480,7 @@ export function useCajaVenta() {
       setError("Agregá al menos un producto.");
       return false;
     }
-    if (!aCredito && metodoPago === null) {
+    if (!aCredito && metodoPago === null && !cubiertaPorDeposito) {
       setError("Elegí con qué se cobra.");
       return false;
     }
@@ -429,6 +501,12 @@ export function useCajaVenta() {
     setError(null);
 
     const plazo = aCredito ? parseInt(plazoDias, 10) : NaN;
+    // Si el depósito paga todo no se elige medio: la venta queda con el medio
+    // con que entró el depósito (a la caja no entra nada).
+    const medioDeposito = (METODOS_COBRO.map((m) => m.value) as string[]).includes(deposito?.medio_pago ?? "")
+      ? (deposito?.medio_pago as MetodoPagoVenta)
+      : "efectivo";
+    const metodoFinal: MetodoPagoVenta | null = aCredito ? null : (metodoPago ?? (cubiertaPorDeposito ? medioDeposito : null));
 
     const res = await saveVenta({
       items: lineas,
@@ -440,11 +518,12 @@ export function useCajaVenta() {
       tipo_venta: aCredito ? "CREDITO" : "CONTADO",
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
       // A crédito no se cobra ahora: el medio se registra recién al cobrar.
-      metodo_pago: aCredito ? null : metodoPago,
+      metodo_pago: metodoFinal,
       caja_id: aCredito ? null : (caja?.id ?? null),
       reparto_id: repartoId,
       cliente_id: cliente?.id ?? null,
       lista_precio: lista,
+      deposito_id: !aCredito && deposito ? deposito.id : null,
     });
 
     setGuardando(false);
@@ -462,8 +541,20 @@ export function useCajaVenta() {
       rucCliente: cliente ? cliente.ruc_factura || cliente.ruc || cliente.documento || null : null,
       direccionCliente: cliente?.direccion || null,
       aCredito,
-      metodoPago: aCredito ? null : metodoPago,
-      pagaCon: !aCredito && metodoPago === "efectivo" && pagaConNum >= totales.total ? pagaConNum : null,
+      metodoPago: metodoFinal,
+      // Con depósito el ticket no calcula vuelto sobre el total: se omite.
+      pagaCon:
+        !aCredito && metodoPago === "efectivo" && depositoAplicado === 0 && pagaConNum >= totales.total
+          ? pagaConNum
+          : null,
+      deposito:
+        res.depositoAplicado > 0 && deposito
+          ? {
+              recibo_numero: deposito.recibo_numero,
+              aplicado: res.depositoAplicado,
+              cubreTodo: res.depositoAplicado >= totales.total,
+            }
+          : null,
       unidades: Object.fromEntries(
         carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
       ),
@@ -473,6 +564,9 @@ export function useCajaVenta() {
     setPaso("listo");
     return true;
   }, [
+    deposito,
+    cubiertaPorDeposito,
+    depositoAplicado,
     carrito,
     limpiarVenta,
     documento,
@@ -508,6 +602,10 @@ export function useCajaVenta() {
     paso,
     cliente,
     sinNombre,
+    deposito,
+    depositoAplicado,
+    aCobrar,
+    cubiertaPorDeposito,
     clienteElegido,
     nombreCliente,
     carrito,
@@ -543,6 +641,8 @@ export function useCajaVenta() {
     // acciones
     elegirCliente,
     elegirSinNombre,
+    cargarDeposito,
+    quitarDeposito,
     cantidadDe,
     cambiarCantidad,
     fijarCantidad,
@@ -568,6 +668,25 @@ export function useCajaVenta() {
 
 export type CajaVenta = ReturnType<typeof useCajaVenta>;
 
+/** Depósito del cliente con que se paga la venta en curso. */
+export interface DepositoCaja {
+  id: string;
+  recibo_numero: string;
+  cliente_id: string;
+  saldo: number;
+  medio_pago: string | null;
+}
+
+/** «Forma de pago» del comprobante: el medio, o el depósito (y el medio de la diferencia). */
+export function etiquetaCobro(comp: ComprobanteCaja): string {
+  if (comp.aCredito) return "A crédito";
+  const medio = METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—";
+  if (!comp.deposito) return medio;
+  return comp.deposito.cubreTodo
+    ? `Depósito ${comp.deposito.recibo_numero}`
+    : `Depósito ${comp.deposito.recibo_numero} + ${medio}`;
+}
+
 /** El papel que sale al cobrar. */
 export type DocumentoVenta = "factura" | "ticket";
 
@@ -584,6 +703,8 @@ export interface ComprobanteCaja {
   metodoPago: MetodoPagoVenta | null;
   /** Efectivo entregado por el cliente (si se cargó): con él se imprime el vuelto. */
   pagaCon: number | null;
+  /** Parte de la venta pagada con un depósito del cliente. */
+  deposito?: { recibo_numero: string; aplicado: number; cubreTodo: boolean } | null;
   /** Unidad de cada producto: no viaja en la venta y sin ella 1,5 KG se lee 1,5 a secas. */
   unidades: Record<string, string>;
 }

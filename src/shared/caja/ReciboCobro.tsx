@@ -28,6 +28,8 @@ export interface DatosReciboCobro {
   monto: number;
   /** Lo que quedó debiendo después de este cobro (`null` = no se sabe: recibos viejos). */
   saldo: number | null;
+  /** Texto de «En concepto de» si no es el pago de una venta (p. ej. un depósito). */
+  concepto?: string;
   medioPago: string;
   fecha: string;
   reciboNumero: string;
@@ -92,8 +94,9 @@ function Copia({
   copia: string;
 }) {
   const ubicacion = ubicacionEmisor(emisor);
-  const concepto =
-    datos.saldo == null
+  const concepto = datos.concepto
+    ? datos.concepto
+    : datos.saldo == null
       ? `Pago de la venta a crédito N° ${datos.ventaNumero}`
       : datos.saldo > 0.5
         ? `Pago de la venta a crédito N° ${datos.ventaNumero} (saldo pendiente: Gs. ${miles(datos.saldo)})`

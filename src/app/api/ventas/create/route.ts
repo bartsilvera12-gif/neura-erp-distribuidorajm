@@ -235,7 +235,14 @@ export async function POST(request: NextRequest) {
         ? ((await listaDelSalon({ schema, empresaId: auth.empresa_id })) ?? listaPrecio)
         : listaPrecio;
 
-    const { ventaId, numeroControl, fechaIso } = await createVentaTransaccionalPg({
+    // Depósito del cliente con el que se paga (SQL 56). Solo de contado.
+    const depositoRaw = String(o.deposito_id ?? "").trim();
+    const depositoId =
+      tipoVenta === "CONTADO" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(depositoRaw)
+        ? depositoRaw
+        : null;
+
+    const { ventaId, numeroControl, fechaIso, depositoAplicado } = await createVentaTransaccionalPg({
       schema,
       empresaId: auth.empresa_id,
       clienteId,
@@ -247,6 +254,7 @@ export async function POST(request: NextRequest) {
       cajaId: cajaFinal,
       repartoId,
       ubicacionId: ubicacionCamion,
+      depositoId,
       listaPrecio: listaFinal,
       plazoDias: Number.isFinite(plazoDias as number) ? plazoDias : null,
       items,
@@ -277,7 +285,7 @@ export async function POST(request: NextRequest) {
       total: tot,
     });
 
-    return NextResponse.json(successResponse({ venta }));
+    return NextResponse.json(successResponse({ venta, deposito_aplicado: depositoAplicado }));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error al crear la venta.";
     const status =

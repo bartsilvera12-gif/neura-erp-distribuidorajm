@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revertirDepositoVentaEnTx } from "@/lib/cobranzas/server/recibos-pg";
 import { getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
@@ -219,6 +220,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         [id, empresaId]
       );
     }
+
+    // Pagada con un depósito del cliente: ese saldo vuelve a estar disponible.
+    await revertirDepositoVentaEnTx(client, schema, empresaId, id);
 
     const tieneObs = await tieneColumna(client, schema, "ventas", "observaciones");
     await client.query(

@@ -2,7 +2,7 @@ import type { Venta } from "./types";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 export type ResultadoGuardarVenta =
-  | { success: true; venta: Venta }
+  | { success: true; venta: Venta; depositoAplicado: number }
   | { success: false; error: string };
 
 /**
@@ -31,7 +31,7 @@ export async function getVentas(): Promise<Venta[]> {
  * Crea una venta en base de datos (transacción servidor: ítems, stock, movimientos).
  */
 export async function saveVenta(
-  datos: Omit<Venta, "id" | "numero_control" | "fecha">
+  datos: Omit<Venta, "id" | "numero_control" | "fecha"> & { deposito_id?: string | null }
 ): Promise<ResultadoGuardarVenta> {
   if (!datos.items || datos.items.length === 0) {
     return { success: false, error: "La venta debe tener al menos un producto." };
@@ -55,13 +55,14 @@ export async function saveVenta(
         reparto_id: datos.reparto_id ?? null,
         lista_precio: datos.lista_precio ?? "minorista",
         cliente_id: datos.cliente_id ?? null,
+        deposito_id: datos.deposito_id ?? null,
         observaciones: null,
       }),
     });
 
     const json = (await res.json()) as {
       success?: boolean;
-      data?: { venta?: Venta };
+      data?: { venta?: Venta; deposito_aplicado?: number };
       error?: string;
     };
 
@@ -72,7 +73,7 @@ export async function saveVenta(
       };
     }
 
-    return { success: true, venta: json.data.venta };
+    return { success: true, venta: json.data.venta, depositoAplicado: Number(json.data.deposito_aplicado ?? 0) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de red.";
     return { success: false, error: msg };

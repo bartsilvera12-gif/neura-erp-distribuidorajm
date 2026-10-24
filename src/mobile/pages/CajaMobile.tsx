@@ -31,6 +31,7 @@ import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
+import AvisoDeposito, { useDepositoDesdeUrl } from "@/shared/caja/AvisoDeposito";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
 import { coincideBusqueda, textoSinResultado } from "@/shared/caja/lector-codigo";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
@@ -42,7 +43,7 @@ import {
 import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { formatCantidad } from "@/lib/inventario/unidades";
-import { formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta, type ComprobanteCaja } from "@/shared/caja/useCajaVenta";
+import { etiquetaCobro, formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
@@ -64,6 +65,7 @@ const TEAL_OSCURO = "#3F8E91";
 
 export default function CajaMobile() {
   const caja = useCajaVenta();
+  useDepositoDesdeUrl(caja);
   // Buscar o registrar un cliente ocupa la pantalla entera: mientras está
   // abierto, la barra fija de abajo taparía el botón de guardar.
   const [subCliente, setSubCliente] = useState<null | "lista" | "nuevo">(null);
@@ -638,6 +640,11 @@ const ICONOS_PAGO: Record<MetodoPagoVenta, React.ComponentType<{ className?: str
 function PasoPago({ caja }: { caja: CajaVenta }) {
   return (
     <div className="pt-4">
+      {caja.deposito ? (
+        <div className="mb-4">
+          <AvisoDeposito caja={caja} />
+        </div>
+      ) : null}
       {/* El crédito no es un medio de cobro: es una condición de la venta. */}
       <div className="mb-4">
         <SelectorCondicionVenta caja={caja} grande />
@@ -651,10 +658,10 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
       </div>
 
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
-        {caja.aCredito ? "Plazo" : "Con qué se cobra"}
+        {caja.aCredito ? "Plazo" : caja.cubiertaPorDeposito ? "El depósito paga toda la venta" : "Con qué se cobra"}
       </p>
 
-      <ul className={`space-y-2 ${caja.aCredito ? "hidden" : ""}`}>
+      <ul className={`space-y-2 ${caja.aCredito || caja.cubiertaPorDeposito ? "hidden" : ""}`}>
         {METODOS_COBRO.map((o) => {
           const Icono = ICONOS_PAGO[o.value];
           const deshabilitado = false;
@@ -686,7 +693,9 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
         })}
       </ul>
 
-      {!caja.aCredito && caja.metodoPago === "efectivo" ? <CalculadoraVuelto caja={caja} grande /> : null}
+      {!caja.aCredito && !caja.cubiertaPorDeposito && caja.metodoPago === "efectivo" ? (
+        <CalculadoraVuelto caja={caja} grande />
+      ) : null}
 
       {caja.aCredito ? (
         <label className="block rounded-xl border border-slate-200 bg-white p-4">
@@ -710,7 +719,7 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
           Total a cobrar
         </p>
         <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-          {formatGs(caja.totales.total)}
+          {formatGs(caja.deposito ? caja.aCobrar : caja.totales.total)}
         </p>
       </div>
     </div>
@@ -952,7 +961,3 @@ function FilaComprobante({ termino, valor }: { termino: string; valor: string })
 }
 
 /** Cómo se cobró, en palabras: a crédito, o el medio elegido. */
-function etiquetaCobro(comp: ComprobanteCaja): string {
-  if (comp.aCredito) return "A crédito";
-  return METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—";
-}

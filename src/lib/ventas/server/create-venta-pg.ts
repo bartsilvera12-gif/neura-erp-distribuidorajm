@@ -1,4 +1,5 @@
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
+import { aplicarDepositoEnTx } from "@/lib/cobranzas/server/recibos-pg";
 import { quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
 
@@ -35,6 +36,11 @@ export interface CreateVentaPgParams {
    * mercadería sale de ahí.
    */
   ubicacionId?: string | null;
+  /**
+   * Depósito del cliente (SQL 56) con el que se paga la venta: se usa su saldo
+   * hasta el total, y a la caja entra solo la diferencia.
+   */
+  depositoId?: string | null;
   /** Lista de precio: minorista (precio de venta) o mayorista (−10%). */
   listaPrecio: ListaPrecio;
   items: CreateVentaItemInput[];
@@ -78,7 +84,7 @@ async function tablaExiste(
 
 export async function createVentaTransaccionalPg(
   params: CreateVentaPgParams
-): Promise<{ ventaId: string; numeroControl: string; fechaIso: string }> {
+): Promise<{ ventaId: string; numeroControl: string; fechaIso: string; depositoAplicado: number }> {
   const pool = getChatPostgresPool();
   if (!pool) {
     throw new Error("Sin conexión directa a Postgres (configura SUPABASE_DB_URL).");
@@ -375,12 +381,26 @@ export async function createVentaTransaccionalPg(
       }
     }
 
+    // Pagada (en todo o en parte) con un depósito del cliente: esa parte ya
+    // estaba anotada y no entra a la caja.
+    const depositoAplicado =
+      params.depositoId && params.tipoVenta === "CONTADO"
+        ? await aplicarDepositoEnTx(client, params.schema, params.empresaId, {
+            depositoId: params.depositoId,
+            clienteId: params.clienteId,
+            ventaId,
+            total: calc.total,
+          })
+        : 0;
+    const aCaja = calc.total - depositoAplicado;
+
     // Movimiento de caja del cobro. Solo para ventas de contado: una venta a
     // crédito no mete plata en la caja hoy, y registrarla descuadraría el arqueo.
     if (
       params.cajaId !== null &&
       params.tipoVenta === "CONTADO" &&
       params.metodoPago !== null &&
+      aCaja > 0 &&
       (await tablaExiste(client, params.schema, "caja_movimientos"))
     ) {
       const movT = quoteSchemaTable(params.schema, "caja_movimientos");
@@ -392,8 +412,8 @@ export async function createVentaTransaccionalPg(
         [
           params.empresaId,
           params.cajaId,
-          `Venta ${numeroControl}`,
-          calc.total,
+          depositoAplicado > 0 ? `Venta ${numeroControl} (resto del depósito)` : `Venta ${numeroControl}`,
+          aCaja,
           // `caja_movimientos.medio_pago` no tiene `mixto`: su equivalente es `otro`.
           params.metodoPago === "mixto" ? "otro" : params.metodoPago,
           ventaId,
@@ -501,7 +521,7 @@ export async function createVentaTransaccionalPg(
     }
 
     await client.query("COMMIT");
-    return { ventaId, numeroControl, fechaIso };
+    return { ventaId, numeroControl, fechaIso, depositoAplicado };
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;

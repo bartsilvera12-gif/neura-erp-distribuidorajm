@@ -19,6 +19,7 @@ import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogo
 import ModalComprobante from "@/shared/caja/ModalComprobante";
 import { coincideBusqueda, leerEtiquetaBalanza, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import FinalizarVenta from "@/shared/caja/FinalizarVenta";
+import AvisoDeposito, { useDepositoDesdeUrl } from "@/shared/caja/AvisoDeposito";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
@@ -28,7 +29,7 @@ import { compartirComprobante, whatsappComprobante } from "@/lib/ventas/comparti
 import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/comprobante";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import { esPesable, formatCantidad } from "@/lib/inventario/unidades";
-import { formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
+import { etiquetaCobro, formatGs, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, type TipoIvaVenta } from "@/lib/ventas/types";
 
@@ -58,6 +59,7 @@ function tocar(id: string) {
 
 export default function CajaDesktop() {
   const caja = useCajaVenta();
+  useDepositoDesdeUrl(caja);
   const soloCaja = useSoloCaja();
 
   // La venta ya está registrada y la caja limpia: el comprobante se abre en
@@ -587,11 +589,14 @@ function PanelCobro({
     <aside className="sticky top-4">
       <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="bg-slate-900 px-5 py-5 text-white">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Total a cobrar</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+            {caja.deposito ? "A cobrar (con depósito)" : "Total a cobrar"}
+          </p>
           <p className="mt-1 break-all text-4xl font-bold leading-none tabular-nums xl:text-[2.6rem] 2xl:text-5xl">
-            {formatGs(caja.totales.total)}
+            {formatGs(caja.deposito ? caja.aCobrar : caja.totales.total)}
           </p>
           <p className="mt-2 text-sm text-slate-400">
+            {caja.deposito && caja.totales.total > 0 ? `Total venta ${formatGs(caja.totales.total)} · ` : ""}
             {caja.totales.renglones === 0
               ? "Sin productos"
               : `${caja.totales.renglones} ${caja.totales.renglones === 1 ? "producto" : "productos"}${
@@ -601,6 +606,7 @@ function PanelCobro({
         </div>
 
         <div className="space-y-2 px-5 py-4 text-sm">
+          <AvisoDeposito caja={caja} />
           <div className="flex items-center justify-between">
             <span className="text-slate-500">IVA incluido</span>
             <span className="tabular-nums text-slate-700">{formatGs(caja.totales.montoIva)}</span>
@@ -741,9 +747,7 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
     comp.documento === "ticket" ? "ticket" : mostrarKude ? "kude" : mostrarFactura ? "factura" : null;
   useImprimirAlAbrir(imprimir ? objetivo : null);
 
-  const cobro = comp.aCredito
-    ? "A crédito"
-    : (METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—");
+  const cobro = etiquetaCobro(comp);
 
   const datos: DatosComprobante = {
     venta,

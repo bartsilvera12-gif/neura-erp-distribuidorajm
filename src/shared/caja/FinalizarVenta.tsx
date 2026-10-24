@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import ModalCaja from "@/shared/caja/ModalCaja";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
+import AvisoDeposito from "@/shared/caja/AvisoDeposito";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
@@ -143,14 +144,18 @@ export default function FinalizarVenta({
     {
       valor: "credito" as Pago,
       texto: "Crédito",
-      deshabilitado: !caja.cliente,
-      ayuda: caja.cliente ? undefined : "El crédito es solo para clientes identificados (Factura con nombre).",
+      deshabilitado: !caja.creditoDisponible,
+      ayuda: caja.deposito
+        ? "La venta se paga con el depósito del cliente."
+        : caja.cliente
+          ? undefined
+          : "El crédito es solo para clientes identificados (Factura con nombre).",
     },
   ];
 
   return (
     <ModalCaja
-      titulo={`Finalizar venta · ${formatGs(caja.totales.total)}`}
+      titulo={`Finalizar venta · ${formatGs(caja.deposito ? caja.aCobrar : caja.totales.total)}`}
       subtitulo={`${caja.carrito.length} ${caja.carrito.length === 1 ? "producto" : "productos"} · Enter avanza, flechas cambian la opción`}
       onCerrar={onCerrar}
       pie={
@@ -177,6 +182,12 @@ export default function FinalizarVenta({
         </>
       }
     >
+      {caja.deposito ? (
+        <div className="mb-4">
+          <AvisoDeposito caja={caja} quitable={false} />
+        </div>
+      ) : null}
+
       <Seccion numero={1} titulo="Comprobante">
         <FilaOpciones
           grupoRef={grupoComprobante}
@@ -185,7 +196,14 @@ export default function FinalizarVenta({
           onCambiar={elegirModo}
           onEnter={() => (faltaCliente ? foco.cliente() : foco.pago())}
           opciones={[
-            { valor: "sin-nombre", texto: "Ticket", detalle: "sin nombre", Icono: Receipt },
+            {
+              valor: "sin-nombre",
+              texto: "Ticket",
+              detalle: "sin nombre",
+              Icono: Receipt,
+              // El depósito es de un cliente: la venta va a su nombre.
+              deshabilitado: Boolean(caja.deposito),
+            },
             { valor: "con-nombre", texto: "Factura", detalle: "con nombre del cliente", Icono: FileText },
           ]}
         />
@@ -195,6 +213,11 @@ export default function FinalizarVenta({
       </Seccion>
 
       <Seccion numero={2} titulo="Forma de pago">
+        {caja.cubiertaPorDeposito ? (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+            El depósito paga toda la venta: no hay nada que cobrar.
+          </p>
+        ) : (
         <FilaOpciones
           grupoRef={grupoPago}
           etiqueta="Forma de pago"
@@ -204,8 +227,9 @@ export default function FinalizarVenta({
           columnas={4}
           opciones={opcionesPago.map((o) => ({ ...o, Icono: ICONOS[o.valor] ?? Banknote }))}
         />
+        )}
 
-        {pago === "efectivo" ? (
+        {pago === "efectivo" && !caja.cubiertaPorDeposito ? (
           <div
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && !e.ctrlKey) {

@@ -31,7 +31,8 @@ export default function CalculadoraVuelto({
   enfocar?: boolean;
   inputId?: string;
 }) {
-  const total = caja.totales.total;
+  // Con depósito se cobra solo la diferencia.
+  const total = caja.aCobrar;
   const entrega = caja.pagaConNum;
   const vuelto = entrega - total;
   const opciones = sugeridos(total);

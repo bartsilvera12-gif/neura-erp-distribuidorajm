@@ -24,7 +24,12 @@ export async function GET(request: NextRequest) {
     const desde = FECHA.test(sp.get("desde") ?? "") ? sp.get("desde")! : `${h.slice(0, 8)}01`;
     const hasta = FECHA.test(sp.get("hasta") ?? "") ? sp.get("hasta")! : h;
     const schema = await fetchDataSchemaForEmpresaId(ctx.auth.empresa_id);
-    const data = await listarRecibos(pool, schema, ctx.auth.empresa_id, { desde, hasta, q: sp.get("q") });
+    const data = await listarRecibos(pool, schema, ctx.auth.empresa_id, {
+      desde,
+      hasta,
+      q: sp.get("q"),
+      conSaldo: sp.get("con_saldo") === "1",
+    });
     return NextResponse.json(successResponse(data));
   } catch (e) {
     console.error("[/api/cobranzas/recibos]", e instanceof Error ? e.message : e);
