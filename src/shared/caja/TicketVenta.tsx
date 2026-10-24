@@ -76,10 +76,10 @@ export default function TicketVenta({ datos }: { datos: DatosComprobante }) {
         }}
       >
         {/* El margen va adentro: al imprimir, globals.css le saca el padding al papel. */}
-        <div style={{ padding: "4mm 3mm" }}>
+        <div style={{ padding: "1.5mm 3mm 3mm" }}>
           <div className="text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={LOGO_FACTURA} alt="" className="mx-auto h-12 w-auto" />
+            <img src={LOGO_FACTURA} alt="" className="mx-auto h-10 w-auto" />
             <p className="mt-1 font-bold uppercase">
               {emisor?.nombre_fantasia ??
                 emisor?.razon_social ??

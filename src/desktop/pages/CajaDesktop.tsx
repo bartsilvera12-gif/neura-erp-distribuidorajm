@@ -791,7 +791,7 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
   // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
   if (comp.documento === "ticket") {
     return (
-      <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl print:max-w-none print:rounded-none print:bg-white print:p-0 print:shadow-none">
         <TicketVenta datos={datos} />
         <div className="no-imprimir mb-2">{botonRecibo}</div>
         <div className="no-imprimir flex gap-2">
@@ -817,7 +817,7 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
 
   if (mostrarKude && emision.facturaId) {
     return (
-      <div className="relative w-full max-w-[900px] rounded-2xl bg-[#F8FAFC] p-4 pt-16">
+      <div className="relative w-full max-w-[900px] rounded-2xl bg-[#F8FAFC] p-4 pt-16 print:max-w-none print:rounded-none print:bg-white print:p-0 print:shadow-none">
         <button
           type="button"
           onClick={() => setVerKude(false)}

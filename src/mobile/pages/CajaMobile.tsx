@@ -848,7 +848,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           <div className="no-imprimir px-4">{botonRecibo}</div>
         </>
       ) : verKude && emision.facturaId ? (
-        <div className="px-4 py-4">
+        <div className="px-4 py-4 print:p-0">
           <VisorKude facturaId={emision.facturaId} />
           <button
             type="button"

@@ -129,7 +129,7 @@ export default function KudeTicket({ facturaId }: { facturaId: string }) {
   const t = p.totales;
 
   return (
-    <div className="flex flex-col items-center gap-4 py-2">
+    <div className="flex flex-col items-center gap-4 py-2 print:gap-0 print:py-0">
       <div className="no-imprimir flex items-center gap-4">
         <button
           type="button"
@@ -155,11 +155,11 @@ export default function KudeTicket({ facturaId }: { facturaId: string }) {
         className="factura-imprimible bg-white font-mono text-black shadow-sm ring-1 ring-slate-200 print:shadow-none print:ring-0"
         style={{ width: `${ancho}mm`, fontSize: angosto ? "9.5px" : "11px", lineHeight: 1.35 }}
       >
-        <div style={{ padding: "4mm 3mm" }}>
+        <div style={{ padding: "1.5mm 3mm 3mm" }}>
           {/* Emisor y timbrado */}
           <div className="text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={LOGO_FACTURA} alt="" className="mx-auto h-12 w-auto" />
+            <img src={LOGO_FACTURA} alt="" className="mx-auto h-10 w-auto" />
             <p className="mt-1 font-bold uppercase">{p.emisor.dNomEmi}</p>
             <p>RUC: {p.emisor.dRucEm}-{p.emisor.dDVEmi}</p>
             {p.emisor.dDirEmi ? <p className="uppercase">{p.emisor.dDirEmi}</p> : null}

@@ -910,7 +910,7 @@ function TicketRendicion({
           lineHeight: 1.35,
         }}
       >
-        <div style={{ padding: "4mm 3mm" }}>
+        <div style={{ padding: "1.5mm 3mm 3mm" }}>
           <div className="text-center">
             <p className="font-bold uppercase">
               {emisor?.razon_social ??
