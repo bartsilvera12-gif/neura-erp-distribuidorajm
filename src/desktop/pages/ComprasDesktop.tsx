@@ -59,6 +59,8 @@ export default function ComprasPage() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroTipoPago, setFiltroTipoPago] = useState<TipoPago | "">("");
   const [detalle, setDetalle] = useState<Compra | null>(null);
+  /** Abrir el detalle directo en «Registrar ingreso» (botón Ingresar de la lista). */
+  const [abrirIngreso, setAbrirIngreso] = useState(false);
   const [modalNueva, setModalNueva] = useState(false);
   const [editando, setEditando] = useState<Compra | null>(null);
   const [anulando, setAnulando] = useState<string | null>(null);
@@ -239,7 +241,7 @@ export default function ComprasPage() {
                 filtradas.map((c) => (
                   <tr
                     key={c.id}
-                    onClick={() => setDetalle(c)}
+                    onClick={() => { setAbrirIngreso(false); setDetalle(c); }}
                     className={`cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors ${
                       c.estado === "anulada" ? "opacity-50" : ""
                     }`}
@@ -266,6 +268,12 @@ export default function ComprasPage() {
                         <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">Anulada</span>
                       ) : (
                         <span className="inline-flex gap-1.5">
+                          {c.pendiente_ingreso ? (
+                            <button type="button" onClick={() => { setAbrirIngreso(true); setDetalle(c); }}
+                              className="rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-600">
+                              Ingresar
+                            </button>
+                          ) : null}
                           <button type="button" onClick={() => setEditando(c)}
                             className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                             Editar
@@ -287,7 +295,7 @@ export default function ComprasPage() {
       </section>
 
       {detalle && (
-        <CompraDetalleModal compra={detalle} onClose={() => setDetalle(null)} onCambio={recargar} />
+        <CompraDetalleModal compra={detalle} onClose={() => setDetalle(null)} onCambio={recargar} iniciarIngreso={abrirIngreso} />
       )}
 
       {modalNueva && (
@@ -317,7 +325,17 @@ function fechaCortaIso(iso: string | null | undefined): string | null {
 
 const cant = (n: number) => n.toLocaleString("es-PY", { maximumFractionDigits: 3 });
 
-function CompraDetalleModal({ compra, onClose, onCambio }: { compra: Compra; onClose: () => void; onCambio: () => void }) {
+function CompraDetalleModal({
+  compra,
+  onClose,
+  onCambio,
+  iniciarIngreso = false,
+}: {
+  compra: Compra;
+  onClose: () => void;
+  onCambio: () => void;
+  iniciarIngreso?: boolean;
+}) {
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [docLoading, setDocLoading] = useState(false);
   const [detalle, setDetalle] = useState<CompraDetalle | null>(null);
@@ -329,6 +347,13 @@ function CompraDetalleModal({ compra, onClose, onCambio }: { compra: Compra; onC
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const pendientes = (detalle?.items ?? []).filter((it) => it.cantidad - it.cantidad_ingresada > 1e-9);
   const puedeIngresar = compra.estado !== "anulada" && !!detalle?.admite_ingreso_parcial && pendientes.length > 0;
+
+  // Desde el botón Ingresar de la lista: apenas carga, ya queda para escribir lo que llegó.
+  const [ingresoIniciado, setIngresoIniciado] = useState(false);
+  if (iniciarIngreso && puedeIngresar && !ingresoIniciado) {
+    setIngresoIniciado(true);
+    setIngresando(true);
+  }
 
   async function recargarDetalle() {
     const d = await getCompraDetalle(compra.id);
