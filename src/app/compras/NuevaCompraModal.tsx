@@ -223,8 +223,10 @@ export default function NuevaCompraModal({
         : [{ producto_id: editar.producto_id, producto_nombre: editar.producto_nombre, cantidad: editar.cantidad,
              cantidad_ingresada: editar.cantidad, costo_unitario: editar.costo_unitario, iva_tipo: editar.iva_tipo,
              total_linea: editar.total }];
+      // Al editar, igual que al cargar: el último renglón de la factura arriba.
       setLineas(
-        items
+        [...items]
+          .reverse()
           .filter((it) => it.producto_id)
           .map((it) => {
             const p = productos.find((x) => x.id === it.producto_id);
@@ -328,9 +330,9 @@ export default function NuevaCompraModal({
   function agregar(p: Producto) {
     setErrorSubmit(null);
     const ya = lineas.findIndex((l) => l.producto_id === p.id);
+    // Lo último que se carga va arriba, a la vista (como el ticket de la caja).
     if (ya === -1) {
       setLineas((prev) => [
-        ...prev,
         {
           producto_id: p.id,
           nombre: p.nombre,
@@ -344,10 +346,11 @@ export default function NuevaCompraModal({
           precio: p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
           categoria: p.categoria_principal_id ?? "",
         },
+        ...prev,
       ]);
     }
     // El cursor va a la cantidad de ese renglón: se escribe y se sigue.
-    const idx = ya === -1 ? lineas.length : ya;
+    const idx = ya === -1 ? 0 : ya;
     requestAnimationFrame(() => {
       const el = document.getElementById(`compra-cant-${idx}`) as HTMLInputElement | null;
       el?.focus();
@@ -422,6 +425,8 @@ export default function NuevaCompraModal({
           fecha: fechaCompra,
           fecha_vencimiento: vencimiento || null,
           camion_transporte_id: !destino && transporte ? transporte : null,
+          // En pantalla lo último va arriba; se guarda en el orden en que se
+          // cargó (el de la factura), que es como se ve en el detalle.
           items: lineas.map((l, i) => ({
             producto_id: l.producto_id,
             producto_nombre: l.nombre,
@@ -431,7 +436,7 @@ export default function NuevaCompraModal({
             iva_tipo: l.iva,
             precio_venta: calc[i].precio > 0 ? calc[i].precio : null,
             categoria_id: l.categoria || null,
-          })),
+          })).reverse(),
         }),
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string; data?: { compra?: { id: string } } };
