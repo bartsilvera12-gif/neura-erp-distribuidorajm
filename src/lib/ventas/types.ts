@@ -51,6 +51,8 @@ export interface LineaVenta {
   total_linea:           number;  // = subtotal: el precio ya lleva el IVA
   /** Unidad del producto (KG, UNIDAD…), para mostrar 1,5 KG y no 1,5 a secas. */
   unidad_medida?:        string | null;
+  /** Vendido por caja (SQL 57): `cantidad` son cajas de `producto_id`. */
+  empaque_id?:           string | null;
 }
 
 /** Cabecera de venta: condiciones comerciales + totales consolidados. */

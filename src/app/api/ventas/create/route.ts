@@ -34,6 +34,8 @@ function asItems(body: unknown): CreateVentaItemInput[] | null {
       subtotal: Number(r.subtotal),
       monto_iva: Number(r.monto_iva),
       total_linea: Number(r.total_linea),
+      empaque_id:
+        typeof r.empaque_id === "string" && /^[0-9a-f-]{36}$/i.test(r.empaque_id) ? r.empaque_id : null,
     });
   }
   if (out.some((i) => !i.producto_id || !(i.cantidad > 0))) return null;

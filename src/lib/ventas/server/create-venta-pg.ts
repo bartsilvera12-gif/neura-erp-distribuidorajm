@@ -14,6 +14,8 @@ export interface CreateVentaItemInput {
   subtotal: number;
   monto_iva: number;
   total_linea: number;
+  /** Caja o paquete (SQL 57): `cantidad` son cajas y se descuentan cantidad × factor unidades. */
+  empaque_id?: string | null;
 }
 
 export interface CreateVentaPgParams {
@@ -104,11 +106,12 @@ export async function createVentaTransaccionalPg(
     throw new Error("Los totales no coinciden con los ítems; revisá el carrito.");
   }
 
+  // Unidades que mueve cada línea: una caja mueve las que trae. Se completa
+  // dentro de la transacción, cuando se leen las cajas.
+  const factorDe = new Map<string, { factor: number; precio: number | null; nombre: string; producto_id: string }>();
+  const unidadesDe = (it: CreateVentaItemInput) =>
+    it.empaque_id ? it.cantidad * (factorDe.get(it.empaque_id)?.factor ?? 1) : it.cantidad;
   const qtyByProduct = new Map<string, number>();
-  for (const it of items) {
-    const prev = qtyByProduct.get(it.producto_id) ?? 0;
-    qtyByProduct.set(it.producto_id, prev + it.cantidad);
-  }
 
   const ventasT = qTable(params.schema, "ventas");
   const itemsT = qTable(params.schema, "ventas_items");
@@ -129,6 +132,36 @@ export async function createVentaTransaccionalPg(
       if (ck.rows.length === 0) {
         throw new Error("Cliente no encontrado en esta empresa.");
       }
+    }
+
+    const empaqueIds = [...new Set(items.map((i) => i.empaque_id).filter((x): x is string => !!x))];
+    if (empaqueIds.length > 0) {
+      if (!(await tablaExiste(client, params.schema, "producto_empaques"))) {
+        throw new Error("Falta correr el SQL 57 (cajas de productos).");
+      }
+      const emp = await client.query<{ id: string; producto_id: string; factor: string; precio_venta: string | null; nombre: string }>(
+        `SELECT id, producto_id, factor::text AS factor, precio_venta::text AS precio_venta, nombre
+           FROM ${qTable(params.schema, "producto_empaques")}
+          WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
+        [params.empresaId, empaqueIds]
+      );
+      for (const e of emp.rows) {
+        factorDe.set(e.id, {
+          factor: Number(e.factor),
+          precio: e.precio_venta === null ? null : Number(e.precio_venta),
+          nombre: e.nombre,
+          producto_id: e.producto_id,
+        });
+      }
+      for (const it of items) {
+        const e = it.empaque_id ? factorDe.get(it.empaque_id) : null;
+        if (it.empaque_id && (!e || e.producto_id !== it.producto_id)) {
+          throw new Error(`La caja de "${it.producto_nombre}" ya no existe. Recargá la caja.`);
+        }
+      }
+    }
+    for (const it of items) {
+      qtyByProduct.set(it.producto_id, (qtyByProduct.get(it.producto_id) ?? 0) + unidadesDe(it));
     }
 
     const ids = [...qtyByProduct.keys()];
@@ -163,7 +196,11 @@ export async function createVentaTransaccionalPg(
      */
     const precioDb = new Map(locked.rows.map((r) => [r.id, Number(r.precio_venta ?? 0)]));
     for (const it of items) {
-      const esperado = precioSegunLista(precioDb.get(it.producto_id) ?? 0, params.listaPrecio);
+      const unidad = precioDb.get(it.producto_id) ?? 0;
+      const caja = it.empaque_id ? factorDe.get(it.empaque_id) : null;
+      // La caja tiene su precio; sin precio propio, vale sus unidades.
+      const base = caja ? (caja.precio ?? Math.round(unidad * caja.factor)) : unidad;
+      const esperado = precioSegunLista(base, params.listaPrecio);
       if (Math.abs(it.precio_venta - esperado) > 1) {
         throw new Error(
           `El precio de "${it.producto_nombre}" cambió (${params.listaPrecio}: Gs. ${esperado.toLocaleString("es-PY")}). Recargá la caja y volvé a cargar la venta.`
@@ -421,18 +458,31 @@ export async function createVentaTransaccionalPg(
       );
     }
 
+    // Columnas de cajas en las líneas (SQL 57): se escriben si están.
+    const itemColsQ = await client.query<{ columna: string }>(
+      `SELECT column_name AS columna FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'ventas_items'
+          AND column_name IN ('empaque_id', 'empaque_nombre', 'unidades')`,
+      [params.schema]
+    );
+    const itemConCajas = itemColsQ.rows.length === 3;
+
     for (const line of items) {
       const p = stockMap.get(line.producto_id)!;
+      const unidades = unidadesDe(line);
+      const caja = line.empaque_id ? factorDe.get(line.empaque_id) : null;
       await client.query(
         `
         INSERT INTO ${itemsT} (
           empresa_id, venta_id, producto_id, producto_nombre, sku,
           cantidad, precio_venta_original, precio_venta, tipo_iva,
           subtotal, monto_iva, total_linea
+          ${itemConCajas ? ", empaque_id, empaque_nombre, unidades" : ""}
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9,
           $10, $11, $12
+          ${itemConCajas ? ", $13::uuid, $14, $15" : ""}
         )
         `,
         [
@@ -448,10 +498,11 @@ export async function createVentaTransaccionalPg(
           line.subtotal,
           line.monto_iva,
           line.total_linea,
+          ...(itemConCajas ? [line.empaque_id ?? null, caja?.nombre ?? null, unidades] : []),
         ]
       );
 
-      const nuevoStock = p.stock - line.cantidad;
+      const nuevoStock = p.stock - unidades;
       await client.query(
         `UPDATE ${prodT} SET stock_actual = $1 WHERE id = $2 AND empresa_id = $3`,
         [nuevoStock, line.producto_id, params.empresaId]
@@ -473,9 +524,10 @@ export async function createVentaTransaccionalPg(
         [
           params.empresaId,
           line.producto_id,
-          line.producto_nombre,
+          // El movimiento es en unidades: lleva el nombre del producto, no el de la caja.
+          caja ? p.nombre : line.producto_nombre,
           line.sku,
-          line.cantidad,
+          unidades,
           p.costo,
           numeroControl,
           fechaIso,
@@ -496,7 +548,7 @@ export async function createVentaTransaccionalPg(
           DO UPDATE SET stock_actual = ${stockUbiT}.stock_actual + EXCLUDED.stock_actual,
                         updated_at = now()
           `,
-          [params.empresaId, line.producto_id, ubicacionId, -line.cantidad]
+          [params.empresaId, line.producto_id, ubicacionId, -unidades]
         );
       }
     }

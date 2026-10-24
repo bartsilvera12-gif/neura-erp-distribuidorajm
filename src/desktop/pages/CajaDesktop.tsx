@@ -495,8 +495,9 @@ function TicketActual({ caja }: { caja: CajaVenta }) {
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {caja.carrito.map((item) => {
-              const linea = caja.lineas.find((l) => l.producto_id === item.producto.id);
+            {caja.carrito.map((item, i) => {
+              // Misma posición que en el carrito: una caja y su unidad suelta comparten producto.
+              const linea = caja.lineas[i];
               const esUltimo = item.producto.id === ultimo;
               return (
                 <li

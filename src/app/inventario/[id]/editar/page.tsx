@@ -9,6 +9,7 @@ import { getProducto, productoExiste, updateProducto } from "@/lib/inventario/st
 import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
 import CrearRapido from "@/components/inventario/CrearRapido";
+import EmpaquesProducto from "@/components/inventario/EmpaquesProducto";
 
 interface CatRow { id: string; nombre: string }
 interface UbiRow { id: string; nombre: string; tipo: string }
@@ -538,6 +539,12 @@ export default function EditarProductoPage() {
               </div>
             )}
           </div>
+
+          <EmpaquesProducto
+            productoId={id}
+            precioUnidad={parseFloat(form.precio_venta) || 0}
+            stockUnidades={parseFloat(form.stock_actual) || 0}
+          />
 
           {/* IVA con el que se vende */}
           <div>

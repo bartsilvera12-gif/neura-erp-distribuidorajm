@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, Plus, Package, Search } from "lucide-react";
 import { useProductos } from "@/shared/hooks/useInventario";
 import type { Producto } from "@/lib/inventario/types";
+import { stockEnCajas } from "@/lib/inventario/unidades";
 
 /**
  * Lista mobile de productos del inventario. Diseño:
@@ -138,6 +139,7 @@ function ProductoCard({ producto }: { producto: Producto }) {
             {Number(producto.stock_actual ?? 0).toLocaleString("es-PY")}
           </p>
           <p className="text-[10px] text-slate-500">{producto.unidad_medida}</p>
+          {stockEnCajas(producto) ? <p className="text-[10px] text-slate-400">{stockEnCajas(producto)}</p> : null}
           {bajo ? (
             <p className="mt-0.5 inline-flex items-center gap-0.5 rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] font-semibold text-red-700">
               <AlertTriangle className="h-2.5 w-2.5" />

@@ -77,3 +77,16 @@ export function formatCantidadConUnidad(cantidad: number, unidad?: string | null
   const u = (unidad ?? "").trim();
   return u ? `${formatCantidad(cantidad, u)} ${u}` : formatCantidad(cantidad, u);
 }
+
+/**
+ * El stock en la caja más grande del producto: «3 cajas + 5 u.».
+ * `null` si el producto no tiene cajas o no alcanza para una.
+ */
+export function stockEnCajas(p: { stock_actual: number; empaques?: { factor: number; nombre: string }[] }): string | null {
+  const mayor = [...(p.empaques ?? [])].sort((a, b) => b.factor - a.factor)[0];
+  if (!mayor || !(p.stock_actual >= mayor.factor)) return null;
+  const cajas = Math.floor(p.stock_actual / mayor.factor);
+  const sueltas = Math.round((p.stock_actual - cajas * mayor.factor) * 1000) / 1000;
+  const palabra = /^paq/i.test(mayor.nombre) ? (cajas === 1 ? "paquete" : "paquetes") : cajas === 1 ? "caja" : "cajas";
+  return `${cajas} ${palabra}${sueltas > 0 ? ` + ${sueltas.toLocaleString("es-PY")} u.` : ""}`;
+}

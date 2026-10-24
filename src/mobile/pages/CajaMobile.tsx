@@ -511,8 +511,9 @@ function PasoResumen({ caja }: { caja: CajaVenta }) {
       </p>
 
       <ul className="space-y-2">
-        {caja.carrito.map((item) => {
-          const linea = caja.lineas.find((l) => l.producto_id === item.producto.id);
+        {caja.carrito.map((item, i) => {
+          // Misma posición que en el carrito: una caja y su unidad suelta comparten producto.
+          const linea = caja.lineas[i];
           return (
             <li key={item.producto.id} className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-start justify-between gap-3">

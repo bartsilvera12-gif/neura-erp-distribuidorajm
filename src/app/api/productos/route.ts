@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
+import { empaquesPorProducto } from "@/lib/inventario/server/empaques-pg";
 import { API_ERRORS } from "@/lib/api/errors";
 import {
   insertProducto,
@@ -392,6 +393,39 @@ export async function GET(request: NextRequest) {
       } catch (e) {
         console.error("[/api/productos] orden por más vendidos:", e);
       }
+    }
+
+    // Cajas y paquetes (SQL 57). En la caja, cada caja es además una fila
+    // propia del catálogo, justo debajo de su producto: se busca, se escanea
+    // y se cobra como cualquier otro, y la venta descuenta las unidades.
+    try {
+      const empaques = await empaquesPorProducto(pool, schema, empresaId);
+      if (empaques.size > 0) {
+        const conCajas: Record<string, unknown>[] = [];
+        for (const prod of productos as Record<string, unknown>[]) {
+          const lista = empaques.get(String(prod.id)) ?? [];
+          conCajas.push({ ...prod, empaques: lista });
+          if (!paraVenta) continue;
+          for (const e of lista) {
+            const precioUnidad = Number(prod.precio_venta ?? 0);
+            conCajas.push({
+              ...prod,
+              id: `emp:${e.id}`,
+              nombre: `${String(prod.nombre)} · ${e.nombre}`,
+              precio_venta: e.precio_venta ?? Math.round(precioUnidad * e.factor),
+              stock_actual: Math.floor(Number(prod.stock_actual ?? 0) / e.factor),
+              unidad_medida: /^paq/i.test(e.nombre) ? "PAQUETE" : "CAJA",
+              codigo_barras: e.codigo_barras,
+              codigo_barras_interno: false,
+              empaques: [],
+              empaque: { id: e.id, producto_id: String(prod.id), factor: e.factor, nombre: e.nombre },
+            });
+          }
+        }
+        productos = conCajas as typeof productos;
+      }
+    } catch (e) {
+      console.error("[/api/productos] cajas:", e);
     }
 
     return NextResponse.json(successResponse({ productos, origen }));

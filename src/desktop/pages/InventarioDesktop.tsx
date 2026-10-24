@@ -6,7 +6,7 @@ import { deleteProducto, getProductos } from "@/lib/inventario/storage";
 import type { Producto } from "@/lib/inventario/types";
 import { Pencil, Trash2 } from "lucide-react";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
-import { formatCantidad } from "@/lib/inventario/unidades";
+import { formatCantidad, stockEnCajas } from "@/lib/inventario/unidades";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import ImportExcelButton from "@/components/ui/ImportExcelButton";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
@@ -373,6 +373,9 @@ export default function InventarioPage() {
                       <span className={`font-semibold ${stockBajo ? "text-red-600" : "text-gray-800"}`}>
                         {formatCantidad(p.stock_actual, p.unidad_medida)}
                       </span>
+                      {stockEnCajas(p) ? (
+                        <span className="block text-[11px] text-gray-400">{stockEnCajas(p)}</span>
+                      ) : null}
                     </td>
                     <td className="py-4 pr-4 text-center text-gray-500">
                       {formatCantidad(p.stock_minimo, p.unidad_medida)}

@@ -229,7 +229,10 @@ export function useCajaVenta() {
       const montoIva = calcIva(item.tipoIva, subtotal);
 
       return {
-        producto_id: item.producto.id,
+        // Una caja es una fila propia del catálogo (`emp:…`): la venta va al
+        // producto de verdad y el servidor descuenta las unidades que trae.
+        producto_id: item.producto.empaque?.producto_id ?? item.producto.id,
+        empaque_id: item.producto.empaque?.id ?? null,
         producto_nombre: item.producto.nombre,
         sku: item.producto.sku,
         cantidad: item.cantidad,
@@ -556,7 +559,7 @@ export function useCajaVenta() {
             }
           : null,
       unidades: Object.fromEntries(
-        carrito.map((i) => [i.producto.id, i.producto.unidad_medida])
+        carrito.map((i) => [i.producto.empaque?.producto_id ?? i.producto.id, i.producto.unidad_medida])
       ),
     });
     limpiarVenta();

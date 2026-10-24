@@ -74,6 +74,8 @@ function rowToProducto(row: ProductoRow): Producto {
     ubicacion_principal_id: row.ubicacion_principal_id ?? null,
     proveedor_principal_id: row.proveedor_principal_id ?? null,
     tipo_iva: row.tipo_iva ?? null,
+    empaques: (row as { empaques?: Producto["empaques"] }).empaques ?? [],
+    empaque: (row as { empaque?: Producto["empaque"] }).empaque ?? null,
   };
 }
 

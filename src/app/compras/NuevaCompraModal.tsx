@@ -93,6 +93,13 @@ type Linea = {
   precio: string;
   /** Categoría principal del producto ("" = sin categoría). */
   categoria: string;
+  /**
+   * Se compra por caja (SQL 57): cantidad, ingresa y costo son por caja, y al
+   * guardar se pasan a unidades (× factor). 1 = por unidad.
+   */
+  factor: number;
+  /** Cajas del producto para elegir. */
+  empaques: { factor: number; nombre: string }[];
 };
 
 type Categoria = { id: string; nombre: string };
@@ -243,6 +250,8 @@ export default function NuevaCompraModal({
               iva: iva as TipoIva,
               precio: p && p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
               categoria: p?.categoria_principal_id ?? "",
+              factor: 1,
+              empaques: p?.empaques ?? [],
             };
           })
       );
@@ -327,9 +336,10 @@ export default function NuevaCompraModal({
     () => proveedores.map((p) => ({ id: p.id, label: p.nombre, sub: p.ruc ? `RUC ${p.ruc}` : null })), [proveedores]);
 
   // ── Lista de productos ──
-  function agregar(p: Producto) {
+  function agregar(p: Producto, factor = 1) {
     setErrorSubmit(null);
     const ya = lineas.findIndex((l) => l.producto_id === p.id);
+    const costoUnidad = p.costo_promedio > 0 ? p.costo_promedio : 0;
     // Lo último que se carga va arriba, a la vista (como el ticket de la caja).
     if (ya === -1) {
       setLineas((prev) => [
@@ -341,10 +351,12 @@ export default function NuevaCompraModal({
           cantidad: "1",
           ingresa: "1",
           ingresaTocado: false,
-          costo: p.costo_promedio > 0 ? String(Math.round(p.costo_promedio)) : "",
+          costo: costoUnidad > 0 ? String(Math.round(costoUnidad * factor)) : "",
           iva: ivaDe(p),
           precio: p.precio_venta > 0 ? String(Math.round(p.precio_venta)) : "",
           categoria: p.categoria_principal_id ?? "",
+          factor,
+          empaques: p.empaques ?? [],
         },
         ...prev,
       ]);
@@ -378,7 +390,19 @@ export default function NuevaCompraModal({
     const costo = parseFloat(l.costo) || 0;
     const total = cantidad * costo;
     const iva = Math.round(total * IVA_FACTOR[l.iva]);
-    return { cantidad, ingresa, pendiente: cantidad - ingresa, costo, total, iva, precio: parseFloat(l.precio) || 0 };
+    return {
+      cantidad,
+      ingresa,
+      pendiente: cantidad - ingresa,
+      costo,
+      total,
+      iva,
+      precio: parseFloat(l.precio) || 0,
+      // Lo que se guarda, siempre en unidades: el stock se lleva así.
+      unidades: cantidad * l.factor,
+      unidadesIngresa: ingresa * l.factor,
+      costoUnidad: costo / l.factor,
+    };
   });
   const hayPendiente = calc.some((c) => c.pendiente > 1e-9);
   const total = calc.reduce((s, c) => s + c.total, 0);
@@ -430,9 +454,9 @@ export default function NuevaCompraModal({
           items: lineas.map((l, i) => ({
             producto_id: l.producto_id,
             producto_nombre: l.nombre,
-            cantidad: calc[i].cantidad,
-            cantidad_ingresada: calc[i].ingresa,
-            costo_unitario: calc[i].costo,
+            cantidad: calc[i].unidades,
+            cantidad_ingresada: calc[i].unidadesIngresa,
+            costo_unitario: calc[i].costoUnidad,
             iva_tipo: l.iva,
             precio_venta: calc[i].precio > 0 ? calc[i].precio : null,
             categoria_id: l.categoria || null,
@@ -729,7 +753,7 @@ export default function NuevaCompraModal({
                         {tipoDestino === "camion" ? "Ingresa" : "Ingresa al salón"}
                       </th>
                       <th className="w-20 px-2 py-2 text-right">Pendiente</th>
-                      <th className="w-32 px-2 py-2 text-right">Costo unit.</th>
+                      <th className="w-32 px-2 py-2 text-right">Costo</th>
                       <th className="w-32 px-2 py-2 text-right">
                         {lista === "mayorista" ? "Precio venta (base)" : "Precio venta"}
                       </th>
@@ -746,11 +770,36 @@ export default function NuevaCompraModal({
                           <span className="block text-[11px] text-slate-400">
                             {l.codigo ? `Cód. ${l.codigo} · ` : ""}{l.unidad}
                           </span>
+                          {l.empaques.length > 0 ? (
+                            <select
+                              value={l.factor}
+                              onChange={(e) => {
+                                const f = Number(e.target.value);
+                                // El costo cargado se pasa a la nueva forma: de unidad a caja o al revés.
+                                const c = parseFloat(l.costo) || 0;
+                                cambiar(i, { factor: f, costo: c > 0 ? String(Math.round((c / l.factor) * f)) : l.costo });
+                              }}
+                              aria-label={`Se compra por (${l.nombre})`}
+                              className="mt-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-700"
+                            >
+                              <option value={1}>Por unidad</option>
+                              {l.empaques.map((e) => (
+                                <option key={e.factor} value={e.factor}>
+                                  Por {e.nombre.toLowerCase()} ({e.factor} u.)
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2">
                           <input id={`compra-cant-${i}`} inputMode="decimal" value={l.cantidad}
                             onChange={(e) => cambiar(i, { cantidad: e.target.value })}
                             aria-label={`Cantidad de ${l.nombre}`} className={CELDA} />
+                          {l.factor > 1 && calc[i].cantidad > 0 ? (
+                            <span className="mt-0.5 block text-right text-[11px] text-slate-400">
+                              = {formatCantidad(calc[i].unidades, l.unidad)} u.
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2">
                           <input inputMode="decimal" value={l.ingresa}
@@ -764,6 +813,11 @@ export default function NuevaCompraModal({
                         <td className="px-2 py-2">
                           <MontoInput value={l.costo} onChange={(n) => cambiar(i, { costo: String(n) })}
                             decimals={false} placeholder="0" aria-label={`Costo de ${l.nombre}`} className={CELDA} />
+                          {l.factor > 1 && calc[i].costo > 0 ? (
+                            <span className="mt-0.5 block text-right text-[11px] text-slate-400">
+                              {fmt(calc[i].costoUnidad)} c/u
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2">
                           <MontoInput value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
@@ -904,7 +958,13 @@ function nombreCamion(alias: string): string {
  * barras. Enter agrega el marcado (flechas para moverse); un código exacto
  * —lo que manda el lector— se agrega directo.
  */
-function BuscadorProducto({ productos, onElegir }: { productos: Producto[]; onElegir: (p: Producto) => void }) {
+function BuscadorProducto({
+  productos,
+  onElegir,
+}: {
+  productos: Producto[];
+  onElegir: (p: Producto, factor?: number) => void;
+}) {
   const [q, setQ] = useState("");
   const [marcado, setMarcado] = useState(0);
   const [abierto, setAbierto] = useState(false);
@@ -920,8 +980,8 @@ function BuscadorProducto({ productos, onElegir }: { productos: Producto[]; onEl
       .slice(0, 8);
   }, [productos, q]);
 
-  function elegir(p: Producto) {
-    onElegir(p);
+  function elegir(p: Producto, factor = 1) {
+    onElegir(p, factor);
     setQ("");
     setMarcado(0);
     setAbierto(false);
@@ -944,6 +1004,16 @@ function BuscadorProducto({ productos, onElegir }: { productos: Producto[]; onEl
             e.preventDefault();
             const t = q.trim();
             const exacto = productos.find((p) => (p.codigo_barras ?? "").trim() === t || p.sku.trim().toLowerCase() === t.toLowerCase());
+            // El código de una caja agrega el producto ya puesto «por caja».
+            const caja = exacto
+              ? null
+              : productos
+                  .flatMap((p) => (p.empaques ?? []).map((e) => ({ p, e })))
+                  .find(({ e }) => (e.codigo_barras ?? "").trim() === t);
+            if (caja) {
+              elegir(caja.p, caja.e.factor);
+              return;
+            }
             const p = exacto ?? filtrados[marcado];
             if (p) elegir(p);
           } else if (e.key === "Escape") {

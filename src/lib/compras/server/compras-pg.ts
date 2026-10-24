@@ -298,7 +298,10 @@ function fechaCompraTs(fecha: string | null | undefined): string | null {
 const IVA_FACTOR_INCL: Record<IvaTipo, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
 
 function calcLinea(cantidad: number, costoUnitario: number, iva: IvaTipo) {
-  const bruto = (Number(cantidad) || 0) * (Number(costoUnitario) || 0);
+  const exacto = (Number(cantidad) || 0) * (Number(costoUnitario) || 0);
+  // Comprado por caja, el costo por unidad tiene decimales (85.000 / 12) y el
+  // producto vuelve con restos de coma flotante: 169.999,9996 es 170.000.
+  const bruto = Math.abs(exacto - Math.round(exacto)) < 0.01 ? Math.round(exacto) : exacto;
   const monto_iva = Math.round(bruto * IVA_FACTOR_INCL[iva]);
   return { subtotal: bruto - monto_iva, monto_iva, total_linea: bruto };
 }

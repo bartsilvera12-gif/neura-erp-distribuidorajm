@@ -21,6 +21,26 @@ export interface Producto {
   proveedor_principal_id?: string | null;
   /** IVA con el que se vende: "5%" (pollo), "10%", "EXENTA". `null` = sin definir. */
   tipo_iva?: string | null;
+  /** Cajas o paquetes con los que también se vende y se compra (SQL 57). */
+  empaques?: Empaque[];
+  /**
+   * Solo en el catálogo de la caja: esta fila es la caja de otro producto.
+   * `id` es `emp:<id de la caja>`; la venta descuenta `factor` unidades de
+   * `producto_id`.
+   */
+  empaque?: { id: string; producto_id: string; factor: number; nombre: string } | null;
+}
+
+/** Una caja o paquete de un producto: «Caja x12» trae 12 unidades. */
+export interface Empaque {
+  id: string;
+  producto_id: string;
+  nombre: string;
+  /** Unidades que trae. */
+  factor: number;
+  /** Precio de la caja. `null`: unidades × precio de la unidad. */
+  precio_venta: number | null;
+  codigo_barras: string | null;
 }
 
 export interface MovimientoInventario {

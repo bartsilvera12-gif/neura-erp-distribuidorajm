@@ -114,8 +114,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       sku: string;
       cantidad: string;
     }>(
-      `SELECT producto_id, producto_nombre, sku, cantidad::text AS cantidad
-         FROM ${tVI} WHERE venta_id = $1::uuid`,
+      // Una línea vendida por caja (SQL 57) devuelve las unidades que descontó.
+      (await tieneColumna(client, schema, "ventas_items", "unidades"))
+        ? `SELECT producto_id, producto_nombre, sku, COALESCE(unidades, cantidad)::text AS cantidad
+             FROM ${tVI} WHERE venta_id = $1::uuid`
+        : `SELECT producto_id, producto_nombre, sku, cantidad::text AS cantidad
+             FROM ${tVI} WHERE venta_id = $1::uuid`,
       [id]
     );
 
