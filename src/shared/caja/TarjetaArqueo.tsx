@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Coins, Lock, Unlock } from "lucide-react";
+import { Check, Coins, FileText, Lock, Unlock } from "lucide-react";
 import { guardarSencillo } from "@/lib/cajas/storage";
 import { formatGs } from "@/shared/caja/useCajaVenta";
 import { fechaLarga, horaCorta, iconoMedio } from "@/shared/caja/arqueo-ui";
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 import ConteoEfectivoTabla from "./ConteoEfectivo";
+import PlanillaArqueo from "./PlanillaArqueo";
 
 /**
  * Arqueo de una caja: con cuánto abrió, qué entró y por qué medio, qué salió, y
@@ -26,6 +27,7 @@ export default function TarjetaArqueo({
 }) {
   const abierta = caja.estado === "abierta";
   const dif = caja.efectivo.diferencia;
+  const [planilla, setPlanilla] = useState(false);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -46,14 +48,25 @@ export default function TarjetaArqueo({
             </p>
           </div>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-            abierta ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {abierta ? "Abierta" : "Cerrada"}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPlanilla(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Planilla de arqueo
+          </button>
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              abierta ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+            }`}
+          >
+            {abierta ? "Abierta" : "Cerrada"}
+          </span>
+        </div>
       </header>
+      {planilla ? <PlanillaArqueo cajaId={caja.id} onCerrar={() => setPlanilla(false)} /> : null}
 
       <div className="p-4">
         <Fila label="Monto de apertura" valor={formatGs(caja.monto_apertura)} />

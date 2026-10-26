@@ -204,7 +204,13 @@ export async function POST(request: NextRequest) {
     // mano era un paso que en la calle nadie daba: el vendedor quiere cobrar.
     // Si no hay ninguna abierta se abre una en 0, que es el saldo real —el
     // camión sale sin plata en el cajón—, y se cierra con el cierre de reparto.
+    //
+    // La venta a crédito también queda en la caja de quien vende (no mueve
+    // plata): así sale en su planilla de arqueo. Si no se pudo, sigue sin caja.
     let cajaFinal = cajaId;
+    if (tipoVenta === "CREDITO" && cajaFinal === null) {
+      cajaFinal = await asegurarCajaAbierta(schema, auth.empresa_id, auth.usuarioCatalogId).catch(() => null);
+    }
     if (tipoVenta === "CONTADO" && cajaFinal === null) {
       cajaFinal = await asegurarCajaAbierta(schema, auth.empresa_id, auth.usuarioCatalogId);
       if (cajaFinal === null) {

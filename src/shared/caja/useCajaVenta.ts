@@ -522,7 +522,9 @@ export function useCajaVenta() {
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
       // A crédito no se cobra ahora: el medio se registra recién al cobrar.
       metodo_pago: metodoFinal,
-      caja_id: aCredito ? null : (caja?.id ?? null),
+      // A crédito también: no entra plata, pero la venta queda en la planilla
+      // de arqueo de quien vendió («Detalle de factura crédito»).
+      caja_id: caja?.id ?? null,
       reparto_id: repartoId,
       cliente_id: cliente?.id ?? null,
       lista_precio: lista,

@@ -161,6 +161,7 @@ const MENU_STRUCTURE: MenuItem[] = [
       { label: "Créditos por cobrar", href: "/cobranzas", exactMatch: true },
       { label: "Recibos de dinero", href: "/cobranzas/recibos" },
       { label: "Rendiciones", href: "/cobranzas/rendiciones" },
+      { label: "Planillas de arqueo", href: "/cobranzas/planillas" },
     ],
   },
   /**
