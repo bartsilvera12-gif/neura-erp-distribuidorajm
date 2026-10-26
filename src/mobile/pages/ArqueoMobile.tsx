@@ -5,9 +5,8 @@ import { useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
-import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
+import PlanillaArqueo from "@/shared/caja/PlanillaArqueo";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
-import TablaArqueo from "@/shared/caja/TablaArqueo";
 import { useRepartos } from "@/shared/hooks/useRepartos";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
@@ -88,9 +87,10 @@ export default function ArqueoMobile() {
               <p className="text-sm text-slate-600">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
             </div>
             {/* Lo cobrado por forma de pago, que es como lo leían en papel. */}
-            <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
-            {/* Cada caja con lo vendido por categoría y sus movimientos. */}
-            {(arqueo?.cajas ?? []).map((c) => <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />)}
+            {/* Cada caja es su planilla de arqueo: se completa acá y se envía. */}
+            {(arqueo?.cajas ?? []).map((c) => (
+              <PlanillaArqueo key={c.id} cajaId={c.id} inline onGuardada={() => mutate()} />
+            ))}
           </div>
         )}
 

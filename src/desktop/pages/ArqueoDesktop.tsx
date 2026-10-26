@@ -5,8 +5,7 @@ import { useState } from "react";
 import { Printer, RefreshCw } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
-import TarjetaArqueo from "@/shared/caja/TarjetaArqueo";
-import TablaArqueo from "@/shared/caja/TablaArqueo";
+import PlanillaArqueo from "@/shared/caja/PlanillaArqueo";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
@@ -22,7 +21,7 @@ export default function ArqueoDesktop() {
   const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-6xl p-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Arqueo de caja</h1>
@@ -105,19 +104,12 @@ export default function ArqueoDesktop() {
                 : "Todavía no tenés una caja abierta. Se abre sola al cobrar la primera venta."}
         </p>
       ) : (
-        // Lo que va al papel con "Imprimir": el cierre del día completo.
-        <div className="factura-imprimible space-y-4 bg-white">
-          <style>{`@media print { @page { size: A4; margin: 12mm; } }`}</style>
-          <div className="hidden print:block">
-            <p className="text-lg font-bold text-slate-900">Cierre de caja</p>
-            <p className="text-sm text-slate-600">{arqueo?.fecha ? fechaLarga(arqueo.fecha) : ""}</p>
-          </div>
-          <TablaArqueo cajas={arqueo?.cajas ?? []} credito={arqueo?.credito} />
-          <div className="grid gap-4 lg:grid-cols-2 print:grid-cols-1">
-            {(arqueo?.cajas ?? []).map((c) => (
-              <TarjetaArqueo key={c.id} caja={c} onCambio={() => mutate()} />
-            ))}
-          </div>
+        // Cada caja es su planilla de arqueo, como la hoja de papel de los
+        // camioneros: se completa acá y se envía al administrador.
+        <div className="space-y-6">
+          {(arqueo?.cajas ?? []).map((c) => (
+            <PlanillaArqueo key={c.id} cajaId={c.id} inline onGuardada={() => mutate()} />
+          ))}
         </div>
       )}
     </div>

@@ -50,10 +50,14 @@ export default function PlanillaArqueo({
   cajaId,
   onCerrar,
   onGuardada,
+  inline = false,
 }: {
   cajaId: string;
-  onCerrar: () => void;
+  /** Sin `onCerrar` no hay botón de cerrar (la planilla está en la página). */
+  onCerrar?: () => void;
   onGuardada?: () => void;
+  /** En la página de Arqueo, sin ventana encima. */
+  inline?: boolean;
 }) {
   const url = `/api/cajas/${cajaId}/planilla`;
   const { data, error, mutate } = useSWR<Respuesta>(url, async () => {
@@ -64,39 +68,48 @@ export default function PlanillaArqueo({
   });
 
   useEffect(() => {
+    if (inline) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, []);
+  }, [inline]);
 
+  const contenido = error ? (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6">
+      <p className="text-sm text-red-700">{(error as Error).message}</p>
+      {onCerrar ? (
+        <button type="button" onClick={onCerrar} className="mt-4 rounded-lg border px-4 py-2 text-sm">
+          Cerrar
+        </button>
+      ) : null}
+    </div>
+  ) : !data ? (
+    <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Abriendo la planilla…</p>
+  ) : (
+    <Formulario
+      // Sin guardar todavía, sigue a lo que el sistema va sumando (ventas,
+      // cobranzas, gastos); ya guardada, manda lo que se cargó.
+      key={
+        data.guardada?.updated_at ??
+        `s-${data.sistema.contado}-${data.sistema.credito.length}-${data.sistema.cobranzas.length}-${data.sistema.gastos.length}-${data.sistema.transferencias.length}`
+      }
+      r={data}
+      url={url}
+      onCerrar={onCerrar}
+      onGuardada={() => {
+        void mutate();
+        onGuardada?.();
+      }}
+    />
+  );
+
+  if (inline) return contenido;
   if (typeof document === "undefined") return null;
   return createPortal(
     <div role="dialog" aria-modal="true" className="modal-comprobante fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-3 sm:p-6">
-      <div className="mx-auto w-full max-w-6xl">
-        {error ? (
-          <div className="rounded-2xl bg-white p-6">
-            <p className="text-sm text-red-700">{(error as Error).message}</p>
-            <button type="button" onClick={onCerrar} className="mt-4 rounded-lg border px-4 py-2 text-sm">
-              Cerrar
-            </button>
-          </div>
-        ) : !data ? (
-          <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500">Abriendo la planilla…</p>
-        ) : (
-          <Formulario
-            key={data.guardada?.updated_at ?? "nueva"}
-            r={data}
-            url={url}
-            onCerrar={onCerrar}
-            onGuardada={() => {
-              void mutate();
-              onGuardada?.();
-            }}
-          />
-        )}
-      </div>
+      <div className="mx-auto w-full max-w-6xl">{contenido}</div>
     </div>,
     document.body
   );
@@ -110,7 +123,7 @@ function Formulario({
 }: {
   r: Respuesta;
   url: string;
-  onCerrar: () => void;
+  onCerrar?: () => void;
   onGuardada: () => void;
 }) {
   const { emisor } = useEmisor();
@@ -174,7 +187,7 @@ function Formulario({
   }
 
   return (
-    <div className="factura-imprimible rounded-2xl bg-white shadow-xl print:rounded-none print:shadow-none">
+    <div className="factura-imprimible rounded-2xl border border-slate-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div>
@@ -200,10 +213,12 @@ function Formulario({
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
             <Printer className="h-3.5 w-3.5" /> Imprimir
           </button>
-          <button type="button" onClick={onCerrar} aria-label="Cerrar"
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
-            <X className="h-4 w-4" />
-          </button>
+          {onCerrar ? (
+            <button type="button" onClick={onCerrar} aria-label="Cerrar"
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -315,9 +330,11 @@ function Formulario({
         {aviso ? (
           <p className={`mr-auto text-sm ${aviso.ok ? "text-emerald-700" : "text-red-700"}`}>{aviso.texto}</p>
         ) : null}
-        <button type="button" onClick={onCerrar} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
-          Cerrar
-        </button>
+        {onCerrar ? (
+          <button type="button" onClick={onCerrar} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            Cerrar
+          </button>
+        ) : null}
         {soloLectura || !r.disponible ? null : (
           <>
             <button type="button" onClick={() => void guardar(false)} disabled={guardando}
