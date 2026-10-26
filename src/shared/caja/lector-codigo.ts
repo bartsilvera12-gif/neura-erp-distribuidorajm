@@ -19,14 +19,52 @@ export function coincideBusqueda(p: Producto, q: string): boolean {
   );
 }
 
+/** El SKU o el código de barras es EXACTAMENTE lo buscado. */
+export function coincidenciaExacta(p: Producto, q: string): boolean {
+  const t = q.trim().toLowerCase();
+  if (!t) return false;
+  return (
+    String(p.sku ?? "").trim().toLowerCase() === t ||
+    String(p.codigo_barras ?? "").trim().toLowerCase() === t
+  );
+}
+
+/**
+ * Busca productos para la caja con prioridad al código exacto.
+ *
+ * Si lo escrito es exactamente el SKU o el código de barras de algún producto,
+ * muestra SOLO ese — así un "3281" (SKU de la milanesa) no trae además un yogur
+ * cuyo código de barras largo contiene 3281. Si no hay código exacto, busca
+ * normal por nombre/SKU/código.
+ *
+ * `todos` es el catálogo completo: sirve para reconocer el código exacto aunque
+ * ese producto esté sin stock en el salón (y así no ofrecer el que no era).
+ */
+export function buscarProductosCaja(
+  conStock: Producto[],
+  todos: Producto[],
+  q: string
+): Producto[] {
+  const t = q.trim();
+  if (!t) return conStock;
+  const hayExacto = todos.some((p) => coincidenciaExacta(p, t));
+  if (hayExacto) return conStock.filter((p) => coincidenciaExacta(p, t));
+  return conStock.filter((p) => coincideBusqueda(p, t));
+}
+
 /**
  * Cuando la búsqueda no encuentra nada con stock: si el producto existe pero
  * está en cero, decirlo. "Ningún producto coincide" hacía creer que la caja
- * no buscaba por código.
+ * no buscaba por código. Si lo escrito es un código exacto, nombra ese producto
+ * (el que el usuario realmente buscó), no otro que apenas lo contiene.
  */
 export function textoSinResultado(productos: Producto[], q: string): string {
   const t = q.trim();
-  const sinStock = productos.filter((p) => p.stock_actual <= 0 && coincideBusqueda(p, t));
+  const exactosSinStock = productos.filter((p) => p.stock_actual <= 0 && coincidenciaExacta(p, t));
+  const sinStock =
+    exactosSinStock.length > 0
+      ? exactosSinStock
+      : productos.filter((p) => p.stock_actual <= 0 && coincideBusqueda(p, t));
   if (sinStock.length === 0) return `Ningún producto coincide con “${t}”.`;
   const nombres = sinStock.slice(0, 3).map((p) => p.nombre).join(", ");
   return `${nombres}${sinStock.length > 3 ? ` y ${sinStock.length - 3} más` : ""}: sin stock para vender acá (stock 0).`;

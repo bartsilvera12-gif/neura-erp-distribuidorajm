@@ -17,7 +17,7 @@ import {
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
-import { coincideBusqueda, leerEtiquetaBalanza, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
+import { buscarProductosCaja, leerEtiquetaBalanza, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import AvisoDeposito, { useDepositoDesdeUrl } from "@/shared/caja/AvisoDeposito";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
@@ -192,11 +192,10 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
   // "3*arroz" o "3*" + escaneo: la cantidad va adelante del asterisco.
   const { cantidad: multiplicador, texto } = separarCantidad(query);
 
-  const filtrados = useMemo(() => {
-    const q = texto.trim().toLowerCase();
-    if (!q) return conStock;
-    return conStock.filter((p) => coincideBusqueda(p, q));
-  }, [conStock, texto]);
+  const filtrados = useMemo(
+    () => buscarProductosCaja(conStock, productos, texto),
+    [conStock, productos, texto]
+  );
 
   // Buscador vacío: solo los 9 más vendidos (los del ranking primero, después
   // el resto por nombre para completar los 9). Con búsqueda, se muestran todas

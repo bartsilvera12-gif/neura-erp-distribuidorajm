@@ -33,7 +33,7 @@ import TicketVenta from "@/shared/caja/TicketVenta";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import AvisoDeposito, { useDepositoDesdeUrl } from "@/shared/caja/AvisoDeposito";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
-import { coincideBusqueda, textoSinResultado } from "@/shared/caja/lector-codigo";
+import { buscarProductosCaja, textoSinResultado } from "@/shared/caja/lector-codigo";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import FacturaVenta from "@/shared/caja/FacturaVenta";
 import {
@@ -391,11 +391,10 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
   );
   const ocultosSinStock = productos.length - conStock.length;
 
-  const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return conStock;
-    return conStock.filter((p) => coincideBusqueda(p, q));
-  }, [conStock, query]);
+  const filtrados = useMemo(
+    () => buscarProductosCaja(conStock, productos, query),
+    [conStock, productos, query]
+  );
 
 
   // Con más de un camión en la calle hay que elegir ACÁ, no en el paso de
