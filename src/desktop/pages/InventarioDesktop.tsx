@@ -10,6 +10,7 @@ import { compararPorCodigo, formatCantidad, stockEnCajas } from "@/lib/inventari
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import ImportExcelButton from "@/components/ui/ImportExcelButton";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
+import { useMisPermisos } from "@/shared/hooks/useMisPermisos";
 
 const inputFilterClass =
   "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] focus:outline-none";
@@ -34,6 +35,11 @@ interface CatalogoMin { id: string; nombre: string }
 
 export default function InventarioPage() {
   const { isAdmin } = useIsAdmin();
+  // Editar/crear inventario: quien no tenga el permiso ve el stock pero no lo
+  // modifica. Mientras no se sabe (null) se muestran, para no esconderlos un
+  // instante; solo se ocultan cuando el permiso dice que no (false).
+  const { puede } = useMisPermisos();
+  const puedeEditar = puede("inventario.editar") !== false;
   const [todos, setTodos] = useState<Producto[]>([]);
   /**
    * Mientras no llegó la lista, la tabla no puede decir "0 de 0 productos": eso
@@ -219,12 +225,14 @@ export default function InventarioPage() {
               Productos
             </h2>
           </div>
-          <Link
-            href="/inventario/nuevo"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
-          >
-            + Nuevo producto
-          </Link>
+          {puedeEditar ? (
+            <Link
+              href="/inventario/nuevo"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
+            >
+              + Nuevo producto
+            </Link>
+          ) : null}
           <div className="relative min-w-[16rem] flex-1">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -401,14 +409,16 @@ export default function InventarioPage() {
                     </td>
                     <td className="py-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/inventario/${p.id}/editar`}
-                          title={`Editar ${p.nombre}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Editar
-                        </Link>
+                        {puedeEditar ? (
+                          <Link
+                            href={`/inventario/${p.id}/editar`}
+                            title={`Editar ${p.nombre}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </Link>
+                        ) : null}
                         {isAdmin ? (
                           <button
                             type="button"

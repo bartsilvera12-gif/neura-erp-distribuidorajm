@@ -10,6 +10,7 @@ import {
   normalizarTipoIva,
   DuplicadoError,
 } from "@/lib/inventario/server/productos-pg";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 
 /**
  * GET /api/productos/[id] — lee un producto via PG directo.
@@ -74,6 +75,13 @@ export async function PATCH(
     }
     const empresaId = ctx.auth.empresa_id;
     const schema = await fetchDataSchemaForEmpresaId(empresaId);
+
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user?.email }, "inventario.editar"))) {
+      return NextResponse.json(
+        errorResponse("No tenés permiso para editar inventario."),
+        { status: 403 }
+      );
+    }
 
     let body: Record<string, unknown>;
     try {

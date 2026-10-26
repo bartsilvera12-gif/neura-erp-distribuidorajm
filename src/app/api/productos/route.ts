@@ -22,6 +22,7 @@ import { conMotivo, motivoDelError } from "@/lib/api/motivo-error";
 import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
 import { listaDelCamion, listaDelSalon } from "@/lib/camiones/server/camion-del-usuario";
+import { puede } from "@/lib/usuarios/server/permisos-pg";
 import type { OrigenCatalogo } from "@/lib/inventario/storage";
 
 /**
@@ -477,6 +478,13 @@ export async function POST(request: NextRequest) {
     }
     const empresaId = ctx.auth.empresa_id;
     const schema = await fetchDataSchemaForEmpresaId(empresaId);
+
+    if (!(await puede({ schema, empresaId, email: ctx.auth.user?.email }, "inventario.editar"))) {
+      return NextResponse.json(
+        errorResponse("No tenés permiso para editar inventario."),
+        { status: 403 }
+      );
+    }
 
     let body: Record<string, unknown>;
     try {

@@ -26,6 +26,7 @@ export const ACCIONES = [
   "caja.abrir",
   "caja.cerrar",
   "caja.movimiento",
+  "inventario.editar",
 ] as const;
 
 export type Accion = (typeof ACCIONES)[number];
@@ -104,6 +105,16 @@ export const CATALOGO_PERMISOS: GrupoPermisos[] = [
       },
     ],
   },
+  {
+    grupo: "Inventario",
+    acciones: [
+      {
+        accion: "inventario.editar",
+        label: "Editar inventario",
+        ayuda: "Crear, editar e importar productos. Sin esto, solo puede ver el stock.",
+      },
+    ],
+  },
 ];
 
 /**
@@ -121,6 +132,7 @@ const POR_ROL: Record<string, Accion[]> = {
     "reparto.cargar",
     "reparto.transferir",
     "caja.movimiento",
+    "inventario.editar",
   ],
   supervisor: [
     "venta.credito",
@@ -132,10 +144,11 @@ const POR_ROL: Record<string, Accion[]> = {
     "caja.abrir",
     "caja.cerrar",
     "caja.movimiento",
+    "inventario.editar",
   ],
-  usuario: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento"],
+  usuario: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento", "inventario.editar"],
   // Solo caja: abre, cobra (también a crédito) y cierra la suya.
-  cajero: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento"],
+  cajero: ["venta.credito", "caja.abrir", "caja.cerrar", "caja.movimiento", "inventario.editar"],
 };
 
 function esAdmin(rol: string): boolean {
