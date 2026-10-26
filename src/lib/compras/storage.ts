@@ -263,3 +263,15 @@ export async function anularCompraApi(compraId: string): Promise<{ ok: true } | 
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
 }
+
+/** Borra una compra (solo administradores): devuelve el stock y la saca de la lista. */
+export async function borrarCompraApi(compraId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(`/api/compras/${compraId}`, { method: "DELETE", credentials: "include" });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) return { ok: false, error: j.error ?? "No se pudo borrar la compra." };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}

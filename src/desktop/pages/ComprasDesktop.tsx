@@ -7,11 +7,13 @@ import {
   getCompraComprobante,
   getCompraDetalle,
   anularCompraApi,
+  borrarCompraApi,
   registrarIngresoApi,
   type CompraDetalle,
 } from "@/lib/compras/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import NuevaCompraModal from "@/app/compras/NuevaCompraModal";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import type { Compra, TipoPago } from "@/lib/compras/types";
 
 const inputFilterClass =
@@ -64,6 +66,25 @@ export default function ComprasPage() {
   const [modalNueva, setModalNueva] = useState(false);
   const [editando, setEditando] = useState<Compra | null>(null);
   const [anulando, setAnulando] = useState<string | null>(null);
+  const { isAdmin } = useIsAdmin();
+
+  async function borrar(c: Compra) {
+    const ok = window.confirm(
+      `¿BORRAR la compra ${c.numero_control} de ${c.proveedor_nombre}?\n\n` +
+        (c.estado === "anulada"
+          ? "Ya está anulada: se borra del todo y deja de aparecer en la lista."
+          : "Se devuelve el stock que entró (del salón o del camión) y la compra deja de existir. No se puede deshacer.")
+    );
+    if (!ok) return;
+    setAnulando(c.id);
+    const res = await borrarCompraApi(c.id);
+    setAnulando(null);
+    if (!res.ok) {
+      window.alert(res.error);
+      return;
+    }
+    recargar();
+  }
 
   async function anular(c: Compra) {
     const ok = window.confirm(
@@ -265,7 +286,15 @@ export default function ComprasPage() {
                     </td>
                     <td className="py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       {c.estado === "anulada" ? (
-                        <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">Anulada</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">Anulada</span>
+                          {isAdmin ? (
+                            <button type="button" onClick={() => void borrar(c)} disabled={anulando === c.id}
+                              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-40">
+                              {anulando === c.id ? "…" : "Borrar"}
+                            </button>
+                          ) : null}
+                        </span>
                       ) : (
                         <span className="inline-flex gap-1.5">
                           {c.pendiente_ingreso ? (
@@ -282,6 +311,12 @@ export default function ComprasPage() {
                             className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40">
                             {anulando === c.id ? "…" : "Anular"}
                           </button>
+                          {isAdmin ? (
+                            <button type="button" onClick={() => void borrar(c)} disabled={anulando === c.id}
+                              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-40">
+                              Borrar
+                            </button>
+                          ) : null}
                         </span>
                       )}
                     </td>

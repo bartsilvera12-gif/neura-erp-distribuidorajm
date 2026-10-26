@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { getTenantSupabaseFromAuth, getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
+import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
+import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { getCompraDetalle, updateCompraCuentaContable } from "@/lib/compras/server/compras-pg";
+import { borrarCompra, getCompraDetalle, updateCompraCuentaContable } from "@/lib/compras/server/compras-pg";
 
 export const runtime = "nodejs";
 
@@ -60,5 +62,28 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   } catch (err) {
     console.error("[/api/compras/[id] PATCH]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo actualizar la compra."), { status: 500 });
+  }
+}
+
+/** DELETE /api/compras/[id] — borra la compra (solo administradores). */
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  try {
+    const ctx = await getTenantSupabaseFromAuthWithRol(request);
+    if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+    if (!esRolAdminEmpresa(ctx.auth.rol)) {
+      return NextResponse.json(errorResponse("Solo un administrador puede borrar compras."), { status: 403 });
+    }
+    const { id } = await context.params;
+    if (!UUID_RE.test(id)) return NextResponse.json(errorResponse("Compra inválida."), { status: 400 });
+    const schema = await fetchDataSchemaForEmpresaId(ctx.auth.empresa_id);
+    const r = await borrarCompra(schema, ctx.auth.empresa_id, id, {
+      usuario: ctx.auth.user?.email ?? null,
+      createdBy: ctx.auth.usuarioCatalogId ?? null,
+    });
+    return NextResponse.json(successResponse({ borrada: true, numero: r.numero }));
+  } catch (e) {
+    if (e instanceof ContabilidadError) return NextResponse.json(errorResponse(e.message), { status: e.status });
+    console.error("[/api/compras/[id] DELETE]", e instanceof Error ? e.message : e);
+    return NextResponse.json(errorResponse("No se pudo borrar la compra."), { status: 500 });
   }
 }

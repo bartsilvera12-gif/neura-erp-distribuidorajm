@@ -1099,3 +1099,60 @@ export async function anularCompra(
     client.release();
   }
 }
+
+/**
+ * Borra una compra (solo administradores): si no estaba anulada, primero se
+ * anula —devuelve el stock que entró—, y después se borran sus renglones, sus
+ * movimientos de stock (la entrada y la devolución, que se cancelan) y la
+ * compra. No desaparece de la lista como «Anulada»: deja de existir.
+ * Una compra con asiento contable o con algo que la referencie no se borra:
+ * se anula.
+ */
+export async function borrarCompra(
+  schemaRaw: string,
+  empresaId: string,
+  compraId: string,
+  o: { usuario: string | null; createdBy: string | null }
+): Promise<{ numero: string }> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tC = quoteSchemaTable(schema, "compras");
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<{ estado: string | null; numero_control: string; asiento_contable_id: string | null }>(
+      `SELECT estado, numero_control, asiento_contable_id FROM ${tC}
+        WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+      [compraId, empresaId]
+    );
+    const c = rows[0];
+    if (!c) throw new ContabilidadError("La compra no existe.", 404);
+    if (c.asiento_contable_id) {
+      throw new ContabilidadError("Esta compra tiene asiento contable: anulala en vez de borrarla.", 409);
+    }
+    if (c.estado !== "anulada") await anularCompraEnTx(client, schema, empresaId, compraId, o);
+
+    await client.query(
+      `DELETE FROM ${quoteSchemaTable(schema, "movimientos_inventario")}
+        WHERE empresa_id = $1::uuid AND documento_tipo = 'compra' AND documento_id = $2::uuid`,
+      [empresaId, compraId]
+    );
+    await client.query(
+      `DELETE FROM ${quoteSchemaTable(schema, "compra_items")} WHERE compra_id = $1::uuid AND empresa_id = $2::uuid`,
+      [compraId, empresaId]
+    );
+    await client.query(`DELETE FROM ${tC} WHERE id = $1::uuid AND empresa_id = $2::uuid`, [compraId, empresaId]);
+    await client.query("COMMIT");
+    return { numero: c.numero_control };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    if ((e as { code?: string }).code === "23503") {
+      throw new ContabilidadError("Esta compra tiene registros vinculados (pagos u otros): anulala en vez de borrarla.", 409);
+    }
+    if (e instanceof ContabilidadError && e.message.startsWith("No se puede anular")) {
+      throw new ContabilidadError(e.message.replace("No se puede anular", "No se puede borrar"), e.status);
+    }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
