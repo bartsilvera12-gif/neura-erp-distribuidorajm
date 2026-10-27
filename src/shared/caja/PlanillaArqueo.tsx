@@ -242,6 +242,35 @@ function Formulario({
           </div>
         </div>
 
+        {/* Vendido por categoría: la venta del día por rubro (congelados,
+            cárnicos, lácteos…). Es informativo; lo que rinde sale de la cuenta. */}
+        {s.por_categoria.length > 0 ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between bg-slate-50 px-3 py-2">
+              <p className="text-sm font-semibold text-slate-800">Vendido por categoría</p>
+              <p className="text-sm font-bold tabular-nums text-slate-900">
+                {gs(s.por_categoria.reduce((a, f) => a + f.total, 0))}
+              </p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {s.por_categoria.map((f) => {
+                const tot = s.por_categoria.reduce((a, x) => a + x.total, 0);
+                return (
+                  <div key={f.categoria} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                    <span className="min-w-0 truncate text-sm text-slate-600">{f.categoria}</span>
+                    <span className="flex shrink-0 items-baseline gap-2">
+                      <span className="text-xs tabular-nums text-slate-400">
+                        {tot > 0 ? `${Math.round((f.total / tot) * 100)}%` : ""}
+                      </span>
+                      <span className="text-sm font-medium tabular-nums text-slate-900">{gs(f.total)}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid gap-5 lg:grid-cols-2">
           {/* Composición de caja */}
           <div>

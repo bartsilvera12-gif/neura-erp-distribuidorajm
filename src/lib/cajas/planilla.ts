@@ -39,6 +39,8 @@ export interface PlanillaArqueo {
   cheques: number;
   /** Tarjeta u otros medios que no son efectivo, transferencia ni cheque. */
   otros_medios: number;
+  /** Lo vendido en esta caja por categoría de producto (mayor primero). */
+  por_categoria: { categoria: string; total: number }[];
   cuentas: { banco: string; cuenta: string | null; alias: string | null; titular: string | null; documento: string | null }[];
 }
 

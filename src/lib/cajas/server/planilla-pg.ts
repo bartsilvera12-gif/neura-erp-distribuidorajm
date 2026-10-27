@@ -141,6 +141,36 @@ export async function planillaArqueo(
     credito = cr.rows.map((r) => ({ nombre: r.cliente ?? "Sin nombre", factura: facturaCorta(r.factura), monto: Number(r.total) }));
   }
 
+  // Lo vendido en esta caja por categoría (mayor primero), como en la vista
+  // anterior del arqueo: congelados, cárnicos, lácteos… Es informativo.
+  const porCategoria: { categoria: string; total: number }[] = [];
+  if (
+    colsV.has("caja_id") &&
+    (await existe(pool, schema, "ventas_items")) &&
+    (await existe(pool, schema, "categorias_productos")) &&
+    (await columnas(pool, schema, "productos")).has("categoria_principal_id")
+  ) {
+    try {
+      const cat = await pool.query<{ categoria: string; total: string }>(
+        `SELECT COALESCE(NULLIF(btrim(cp.nombre), ''), 'Sin categoría') AS categoria,
+                COALESCE(sum(vi.total_linea), 0)::text AS total
+           FROM ${quoteSchemaTable(schema, "ventas_items")} vi
+           JOIN ${tV} v ON v.id = vi.venta_id
+           LEFT JOIN ${quoteSchemaTable(schema, "productos")} p ON p.id = vi.producto_id
+           LEFT JOIN ${quoteSchemaTable(schema, "categorias_productos")} cp ON cp.id = p.categoria_principal_id
+          WHERE v.empresa_id = $1::uuid AND v.caja_id = $2::uuid
+            AND COALESCE(v.estado, '') <> 'anulada'
+          GROUP BY 1
+          ORDER BY sum(vi.total_linea) DESC NULLS LAST`,
+        [empresaId, cajaId]
+      );
+      for (const r of cat.rows) porCategoria.push({ categoria: r.categoria, total: Number(r.total) });
+    } catch (e) {
+      // Sin este detalle la planilla sale igual.
+      console.error("[planillaArqueo] ventas por categoría:", e instanceof Error ? e.message : e);
+    }
+  }
+
   // Quién la abrió y, si maneja un camión, cuál.
   let responsable: string | null = null;
   let camion: string | null = null;
@@ -213,6 +243,7 @@ export async function planillaArqueo(
     transferencias,
     cheques,
     otros_medios: otrosMedios,
+    por_categoria: porCategoria,
     cuentas,
   };
 }
