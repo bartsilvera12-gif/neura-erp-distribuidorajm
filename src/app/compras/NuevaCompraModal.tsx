@@ -191,8 +191,6 @@ export default function NuevaCompraModal({
   /** Vencimiento de la factura: se propone con fecha + plazo hasta que se lo toca. */
   const [vencimiento, setVencimiento] = useState("");
   const [vencimientoTocado, setVencimientoTocado] = useState(false);
-  /** Camión que trajo la mercadería cuando entra al salón ("" = ninguno). */
-  const [transporte, setTransporte] = useState("");
   useEffect(() => {
     if (vencimientoTocado) return;
     setVencimiento(tipoPago === "credito" ? sumarDias(fechaCompra, plazoDias) : "");
@@ -220,7 +218,6 @@ export default function NuevaCompraModal({
         setVencimiento(d.fecha_vencimiento);
         setVencimientoTocado(true);
       }
-      if (d?.camion_transporte_id && !d.destino_camion_id) setTransporte(d.camion_transporte_id);
       if (d?.destino_camion_id) {
         setTipoDestino("camion");
         elegirDestino(d.destino_camion_id);
@@ -386,25 +383,20 @@ export default function NuevaCompraModal({
 
   const calc = lineas.map((l) => {
     const cantidad = num(l.cantidad);
-    const ingresa = Math.min(cantidad, Math.max(0, num(l.ingresa)));
     const costo = parseFloat(l.costo) || 0;
     const total = cantidad * costo;
     const iva = Math.round(total * IVA_FACTOR[l.iva]);
     return {
       cantidad,
-      ingresa,
-      pendiente: cantidad - ingresa,
       costo,
       total,
       iva,
       precio: parseFloat(l.precio) || 0,
-      // Lo que se guarda, siempre en unidades: el stock se lleva así.
+      // La compra entra completa: lo comprado es lo que ingresa al stock.
       unidades: cantidad * l.factor,
-      unidadesIngresa: ingresa * l.factor,
       costoUnidad: costo / l.factor,
     };
   });
-  const hayPendiente = calc.some((c) => c.pendiente > 1e-9);
   const total = calc.reduce((s, c) => s + c.total, 0);
   const montoIva = calc.reduce((s, c) => s + c.iva, 0);
 
@@ -418,9 +410,6 @@ export default function NuevaCompraModal({
     for (const [i, c] of calc.entries()) {
       if (c.cantidad <= 0) return setErrorSubmit(`${lineas[i].nombre}: la cantidad tiene que ser mayor a 0.`);
       if (c.costo <= 0) return setErrorSubmit(`${lineas[i].nombre}: poné el costo.`);
-      if (num(lineas[i].ingresa) > c.cantidad + 1e-9) {
-        return setErrorSubmit(`${lineas[i].nombre}: no puede ingresar más de lo comprado.`);
-      }
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaCompra)) return setErrorSubmit("Poné la fecha de compra.");
 
@@ -448,14 +437,14 @@ export default function NuevaCompraModal({
           tipo_comprobante: tipoComprobante,
           fecha: fechaCompra,
           fecha_vencimiento: vencimiento || null,
-          camion_transporte_id: !destino && transporte ? transporte : null,
+          camion_transporte_id: null,
           // En pantalla lo último va arriba; se guarda en el orden en que se
           // cargó (el de la factura), que es como se ve en el detalle.
           items: lineas.map((l, i) => ({
             producto_id: l.producto_id,
             producto_nombre: l.nombre,
             cantidad: calc[i].unidades,
-            cantidad_ingresada: calc[i].unidadesIngresa,
+            cantidad_ingresada: calc[i].unidades,
             costo_unitario: calc[i].costoUnidad,
             iva_tipo: l.iva,
             precio_venta: calc[i].precio > 0 ? calc[i].precio : null,
@@ -671,18 +660,6 @@ export default function NuevaCompraModal({
                 <label className={LABEL}>Fecha de compra <span className="text-red-500">*</span></label>
                 <FechaSelect value={fechaCompra} onChange={(e) => setFechaCompra(e.target.value)} className={INPUT} />
               </div>
-              <div>
-                <label className={LABEL}>Camión que la trajo</label>
-                {tipoDestino === "camion" ? (
-                  <p className="flex h-[38px] items-center rounded-lg border border-slate-100 bg-slate-50 px-3 text-sm text-slate-500">
-                    {destino ? nombreCamion(camiones.find((c) => c.id === destino)?.alias ?? "") : "El camión de destino"}
-                  </p>
-                ) : (
-                  <SmartCombobox options={camionOpts} value={transporte || null}
-                    onChange={(id) => setTransporte(id ?? "")}
-                    placeholder={camiones.length === 0 ? "No hay camiones" : "Ninguno / proveedor"} />
-                )}
-              </div>
             </div>
           </section>
 
@@ -735,15 +712,11 @@ export default function NuevaCompraModal({
               </p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[1040px] text-sm">
+                <table className="w-full min-w-[820px] text-sm">
                   <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="min-w-[200px] px-3 py-2 text-left">Producto</th>
-                      <th className="w-24 px-2 py-2 text-right">Comprada</th>
-                      <th className="w-24 px-2 py-2 text-right" title={`Lo que entra ya ${destinoTexto}`}>
-                        {tipoDestino === "camion" ? "Ingresa" : "Ingresa al salón"}
-                      </th>
-                      <th className="w-20 px-2 py-2 text-right">Pendiente</th>
+                      <th className="w-24 px-2 py-2 text-right">Cantidad</th>
                       <th className="w-32 px-2 py-2 text-right">Costo</th>
                       <th className="w-32 px-2 py-2 text-right">
                         {lista === "mayorista" ? "Precio venta (base)" : "Precio venta"}
@@ -793,15 +766,6 @@ export default function NuevaCompraModal({
                           ) : null}
                         </td>
                         <td className="px-2 py-2">
-                          <input inputMode="decimal" value={l.ingresa}
-                            onChange={(e) => cambiar(i, { ingresa: e.target.value, ingresaTocado: true })}
-                            aria-label={`Cantidad que ingresa de ${l.nombre}`}
-                            className={`${CELDA} ${num(l.ingresa) > calc[i].cantidad + 1e-9 ? "border-red-300 bg-red-50" : ""}`} />
-                        </td>
-                        <td className={`px-2 py-2 text-right tabular-nums ${calc[i].pendiente > 1e-9 ? "font-semibold text-amber-600" : "text-slate-300"}`}>
-                          {calc[i].pendiente > 1e-9 ? formatCantidad(calc[i].pendiente, l.unidad) : "—"}
-                        </td>
-                        <td className="px-2 py-2">
                           <MontoInput value={l.costo} onChange={(n) => cambiar(i, { costo: String(n) })}
                             decimals={false} placeholder="0" aria-label={`Costo de ${l.nombre}`} className={CELDA} />
                           {l.factor > 1 && calc[i].costo > 0 ? (
@@ -849,13 +813,7 @@ export default function NuevaCompraModal({
             )}
             <p className="text-[11px] text-slate-400">
               El costo es con IVA incluido (el IVA es el del producto). El precio de venta y la categoría, si los ponés, quedan en el producto (Inventario).
-              {" "}Si no llegó todo, bajá «Ingresa»: lo que falta queda pendiente y se ingresa después desde el detalle de la compra.
             </p>
-            {hayPendiente ? (
-              <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
-                Queda mercadería pendiente de ingresar: solo entra al stock lo que pusiste en «Ingresa».
-              </p>
-            ) : null}
           </section>
 
           {/* Pago y factura */}
