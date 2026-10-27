@@ -666,19 +666,10 @@ export default function NuevaCompraModal({
           {/* Datos de la factura */}
           <section className="space-y-3">
             <Titulo>Datos de la factura</Titulo>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className={LABEL}>Fecha de compra <span className="text-red-500">*</span></label>
                 <FechaSelect value={fechaCompra} onChange={(e) => setFechaCompra(e.target.value)} className={INPUT} />
-              </div>
-              <div>
-                <label className={LABEL}>Vencimiento de la factura</label>
-                <FechaSelect value={vencimiento}
-                  onChange={(e) => { setVencimiento(e.target.value); setVencimientoTocado(true); }}
-                  className={INPUT} />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  {tipoPago === "credito" ? "Se calcula con el plazo; podés cambiarla." : "Opcional en compras al contado."}
-                </p>
               </div>
               <div>
                 <label className={LABEL}>Camión que la trajo</label>
@@ -877,11 +868,20 @@ export default function NuevaCompraModal({
                   options={[{ value: "contado", label: "Contado" }, { value: "credito", label: "Crédito" }]}
                   onChange={setTipoPago} />
                 {tipoPago === "credito" && (
-                  <div className="mt-2">
-                    <label className={SUBLABEL}>Plazo en días</label>
-                    <input inputMode="numeric" value={plazoDias}
-                      onChange={(e) => setPlazoDias(e.target.value.replace(/\D/g, ""))}
-                      placeholder="Ej: 30" className={INPUT} />
+                  <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className={SUBLABEL}>Plazo en días</label>
+                      <input inputMode="numeric" value={plazoDias}
+                        onChange={(e) => setPlazoDias(e.target.value.replace(/\D/g, ""))}
+                        placeholder="Ej: 30" className={INPUT} />
+                    </div>
+                    <div>
+                      <label className={SUBLABEL}>Vencimiento de la factura</label>
+                      <FechaSelect value={vencimiento}
+                        onChange={(e) => { setVencimiento(e.target.value); setVencimientoTocado(true); }}
+                        className={INPUT} />
+                      <p className="mt-1 text-[11px] text-slate-400">Se calcula con el plazo; podés cambiarla.</p>
+                    </div>
                   </div>
                 )}
               </div>
