@@ -134,6 +134,9 @@ function Formulario({
   const soloLectura = estado === "revisada" && !r.es_admin;
   const s = r.sistema;
 
+  // Puede faltar si el navegador trae una respuesta vieja en cache (SWR
+  // persistido): sin esto, `.length` rompe la pantalla hasta que revalida.
+  const porCategoria = s.por_categoria ?? [];
   const efectivo = totalConteo(d.conteo);
   const t = totalesPlanilla(d, efectivo);
   const cambiar = (patch: Partial<DatosPlanilla>) => setD((x) => ({ ...x, ...patch }));
@@ -244,17 +247,17 @@ function Formulario({
 
         {/* Vendido por categoría: la venta del día por rubro (congelados,
             cárnicos, lácteos…). Es informativo; lo que rinde sale de la cuenta. */}
-        {s.por_categoria.length > 0 ? (
+        {porCategoria.length > 0 ? (
           <div className="overflow-hidden rounded-xl border border-slate-200">
             <div className="flex items-center justify-between bg-slate-50 px-3 py-2">
               <p className="text-sm font-semibold text-slate-800">Vendido por categoría</p>
               <p className="text-sm font-bold tabular-nums text-slate-900">
-                {gs(s.por_categoria.reduce((a, f) => a + f.total, 0))}
+                {gs(porCategoria.reduce((a, f) => a + f.total, 0))}
               </p>
             </div>
             <div className="divide-y divide-slate-100">
-              {s.por_categoria.map((f) => {
-                const tot = s.por_categoria.reduce((a, x) => a + x.total, 0);
+              {porCategoria.map((f) => {
+                const tot = porCategoria.reduce((a, x) => a + x.total, 0);
                 return (
                   <div key={f.categoria} className="flex items-center justify-between gap-3 px-3 py-1.5">
                     <span className="min-w-0 truncate text-sm text-slate-600">{f.categoria}</span>
