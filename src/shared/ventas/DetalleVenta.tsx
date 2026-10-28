@@ -31,9 +31,24 @@ function fechaHora(iso: string): string {
   });
 }
 
-function formaDePago(v: Venta): string {
+export function formaDePago(v: Venta): string {
   if (v.tipo_venta === "CREDITO") return v.plazo_dias ? `Crédito a ${v.plazo_dias} días` : "Crédito";
   return METODOS_PAGO.find((m) => m.value === v.metodo_pago)?.label ?? "Contado";
+}
+
+/** Lo que necesita el comprobante (ticket o factura) de una venta ya hecha. */
+export function datosDeVenta(venta: Venta, emisor: DatosComprobante["emisor"]): DatosComprobante {
+  return {
+    venta,
+    emisor,
+    cliente: venta.cliente_nombre ?? "Sin nombre",
+    clienteRuc: venta.cliente_ruc ?? null,
+    clienteDireccion: venta.cliente_direccion ?? null,
+    formaPago: formaDePago(venta),
+    unidades: Object.fromEntries(
+      venta.items.filter((i) => i.unidad_medida).map((i) => [i.producto_id, i.unidad_medida as string])
+    ),
+  };
 }
 
 function Dato({ label, valor }: { label: string; valor: React.ReactNode }) {
@@ -76,17 +91,7 @@ export default function DetalleVenta({
   const iva10 = venta.items.filter((i) => i.tipo_iva === "10%").reduce((s, i) => s + i.monto_iva, 0);
   const exentas = venta.items.filter((i) => i.tipo_iva === "EXENTA").reduce((s, i) => s + i.subtotal, 0);
 
-  const datos: DatosComprobante = {
-    venta,
-    emisor,
-    cliente: venta.cliente_nombre ?? "Sin nombre",
-    clienteRuc: venta.cliente_ruc ?? null,
-    clienteDireccion: venta.cliente_direccion ?? null,
-    formaPago: formaDePago(venta),
-    unidades: Object.fromEntries(
-      venta.items.filter((i) => i.unidad_medida).map((i) => [i.producto_id, i.unidad_medida as string])
-    ),
-  };
+  const datos = datosDeVenta(venta, emisor);
 
   if (verKude && venta.factura_id) {
     return (

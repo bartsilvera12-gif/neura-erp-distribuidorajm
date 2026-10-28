@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { Printer } from "lucide-react";
 import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import ModalAnularVenta from "@/shared/ventas/ModalAnularVenta";
+import ReimprimirTicket from "@/shared/ventas/ReimprimirTicket";
 import ComprobanteVenta from "@/shared/ventas/ComprobanteVenta";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useEffect, useState } from "react";
@@ -76,6 +78,7 @@ export default function VentasPage() {
   const [filtroIva,  setFiltroIva]  = useState<TipoIvaVenta | "">("");
   const [viendo,     setViendo]     = useState<Venta | null>(null);
   const [anulando,   setAnulando]   = useState<Venta | null>(null);
+  const [ticket,     setTicket]     = useState<Venta | null>(null);
   const [recarga,    setRecarga]    = useState(0);
 
   useEffect(() => {
@@ -299,6 +302,15 @@ export default function VentasPage() {
                           >
                             Ver
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setTicket(v)}
+                            title="Ver y reimprimir el ticket"
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            Ticket
+                          </button>
                           {anulada ? null : (
                             <button
                               type="button"
@@ -327,6 +339,7 @@ export default function VentasPage() {
           onAnular={() => { setAnulando(viendo); setViendo(null); }}
         />
       ) : null}
+      {ticket ? <ReimprimirTicket venta={ticket} onCerrar={() => setTicket(null)} /> : null}
       {anulando ? (
         <ModalAnularVenta
           venta={anulando}

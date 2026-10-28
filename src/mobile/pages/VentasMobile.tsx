@@ -5,7 +5,8 @@ import ModalAnularVenta from "@/shared/ventas/ModalAnularVenta";
 import { estadoFactura } from "@/shared/ventas/ComprobanteVenta";
 import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import { useMemo, useState } from "react";
-import { Ban, Plus, Search, ShoppingCart, TrendingUp } from "lucide-react";
+import { Ban, Plus, Printer, Search, ShoppingCart, TrendingUp } from "lucide-react";
+import ReimprimirTicket from "@/shared/ventas/ReimprimirTicket";
 import { hoyEnAsuncion } from "@/shared/caja/arqueo-ui";
 import { useVentas } from "@/shared/hooks/useVentas";
 import type { Venta, TipoVenta } from "@/lib/ventas/types";
@@ -27,6 +28,7 @@ export default function VentasMobile() {
   const { ventas, isLoading, error, mutate } = useVentas();
   const [anulando, setAnulando] = useState<Venta | null>(null);
   const [viendo, setViendo] = useState<Venta | null>(null);
+  const [ticket, setTicket] = useState<Venta | null>(null);
   // El día de hoy y nada más: la jornada es lo que se mira, y una lista con las
   // ventas de todo el mes obliga a buscar la de recién entre cientos.
   const [fecha, setFecha] = useState(hoyEnAsuncion());
@@ -172,7 +174,13 @@ export default function VentasMobile() {
       ) : (
         <ul className="space-y-2">
           {ventasFiltradas.map((v) => (
-            <VentaCard key={v.id} venta={v} onVer={() => setViendo(v)} onAnular={() => setAnulando(v)} />
+            <VentaCard
+              key={v.id}
+              venta={v}
+              onVer={() => setViendo(v)}
+              onTicket={() => setTicket(v)}
+              onAnular={() => setAnulando(v)}
+            />
           ))}
         </ul>
       )}
@@ -187,6 +195,8 @@ export default function VentasMobile() {
           }}
         />
       ) : null}
+
+      {ticket ? <ReimprimirTicket venta={ticket} onCerrar={() => setTicket(null)} /> : null}
 
       {anulando ? (
         <ModalAnularVenta
@@ -208,10 +218,12 @@ export default function VentasMobile() {
 function VentaCard({
   venta,
   onVer,
+  onTicket,
   onAnular,
 }: {
   venta: Venta;
   onVer: () => void;
+  onTicket: () => void;
   onAnular: () => void;
 }) {
   const anulada = (venta.estado ?? "") === "anulada";
@@ -283,19 +295,32 @@ function VentaCard({
           </div>
         </div>
 
-        {anulada ? null : (
+        <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onAnular();
+              onTicket();
             }}
-            className="inline-flex items-center justify-center gap-1.5 self-end rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 active:bg-red-50 active:text-red-600"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 active:bg-slate-50"
           >
-            <Ban className="h-3.5 w-3.5" />
-            Anular
+            <Printer className="h-3.5 w-3.5" />
+            Ticket
           </button>
-        )}
+          {anulada ? null : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAnular();
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 active:bg-red-50 active:text-red-600"
+            >
+              <Ban className="h-3.5 w-3.5" />
+              Anular
+            </button>
+          )}
+        </div>
       </div>
     </li>
   );
