@@ -4,8 +4,11 @@
  * (cambio del cajero) y las monedas sueltas por monto. Total = lo contado.
  */
 
-/** Billetes y monedas de guaraníes, de mayor a menor. */
-export const DENOMINACIONES = [100_000, 50_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 100, 50] as const;
+/**
+ * Billetes y monedas de guaraníes, de mayor a menor. Sin el billete de 100.000
+ * ni la moneda de 50: no se usan en esta caja, así que no se cuentan.
+ */
+export const DENOMINACIONES = [50_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 100] as const;
 
 export type ConteoEfectivo = {
   /** Cantidad por denominación: { "50000": 12, … }. */

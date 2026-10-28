@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import {
   DENOMINACIONES,
   subtotalBilletes,
@@ -28,6 +29,22 @@ export default function ConteoEfectivoTabla({
   const caja = subtotalBilletes(conteo);
   const total = totalConteo(conteo);
   const cambiar = (patch: Partial<ConteoEfectivo>) => onChange?.({ ...conteo, ...patch });
+
+  // El cajero cuenta de arriba hacia abajo: con Enter el cursor baja al
+  // siguiente campo (billetes → sencillo → monedas), sin usar el mouse.
+  const contRef = useRef<HTMLDivElement>(null);
+  const enterBaja = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const inputs = contRef.current
+      ? Array.from(contRef.current.querySelectorAll<HTMLInputElement>("input"))
+      : [];
+    const next = inputs[inputs.indexOf(e.currentTarget) + 1];
+    if (next) {
+      next.focus();
+      next.select();
+    }
+  };
   const filas = soloLectura
     ? DENOMINACIONES.filter((d) => (conteo.billetes[String(d)] ?? 0) > 0)
     : DENOMINACIONES;
@@ -36,7 +53,7 @@ export default function ConteoEfectivoTabla({
     "h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-300">
+    <div ref={contRef} className="overflow-hidden rounded-xl border border-slate-300">
       <div className="bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-slate-800">Arqueo de caja</div>
       <table className="w-full text-sm">
         <thead className="bg-emerald-50/60 text-left text-xs font-semibold text-slate-600">
@@ -63,6 +80,7 @@ export default function ConteoEfectivoTabla({
                         const n = Number(soloDigitos(e.target.value) || "0");
                         cambiar({ billetes: { ...conteo.billetes, [String(d)]: n } });
                       }}
+                      onKeyDown={enterBaja}
                       placeholder="0"
                       aria-label={`Cantidad de ${gs(d)}`}
                       className={celdaInput}
@@ -91,6 +109,7 @@ export default function ConteoEfectivoTabla({
                       inputMode="numeric"
                       value={conMiles(conteo[k] ? String(conteo[k]) : "")}
                       onChange={(e) => cambiar({ [k]: Number(soloDigitos(e.target.value) || "0") })}
+                      onKeyDown={enterBaja}
                       placeholder="0"
                       aria-label={k === "sencillo" ? "Sencillo" : "Monedas"}
                       className={celdaInput}
