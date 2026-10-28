@@ -23,7 +23,10 @@ export default function ArqueoMobile() {
   // un mostrador, y saber de qué camión se está hablando es media lectura.
   const { repartos } = useRepartos({ abiertos: true });
   const camion = repartos[0]?.camion ?? null;
-  const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
+  // El administrador, al mirar un día pasado, ve todas las cajas de ese día.
+  const esHoy = fecha === hoyEnAsuncion();
+  const verTodas = todas || (isAdmin && !esHoy);
+  const { arqueo, isLoading, mutate } = useArqueo(fecha, verTodas);
 
   return (
     <div className="min-h-full bg-[#F8FAFC] pb-8">
@@ -73,7 +76,7 @@ export default function ArqueoMobile() {
           <AvisoSinCajas />
         ) : arqueo && arqueo.cajas.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-            {todas
+            {verTodas
               ? "No hubo cajas abiertas este día."
               : (arqueo?.otras_cajas ?? 0) > 0
                 ? `No tenés ninguna caja tuya este día, pero hay ${arqueo?.otras_cajas} caja(s) de otras personas. Si cobraste y no ves la plata acá, mirá «Ver todas las cajas del día»: puede haber quedado imputada a la caja de otro.`
@@ -95,13 +98,17 @@ export default function ArqueoMobile() {
         )}
 
         {isAdmin ? (
-          <button
-            type="button"
-            onClick={() => setTodas((v) => !v)}
-            className="block w-full rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600"
-          >
-            {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
-          </button>
+          esHoy ? (
+            <button
+              type="button"
+              onClick={() => setTodas((v) => !v)}
+              className="block w-full rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600"
+            >
+              {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
+            </button>
+          ) : (
+            <p className="text-center text-xs text-slate-500">Mostrando todas las cajas de este día.</p>
+          )
         ) : null}
 
         {arqueo && arqueo.cajas.length > 0 ? (

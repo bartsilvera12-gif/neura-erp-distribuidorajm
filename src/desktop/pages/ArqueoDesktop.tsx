@@ -18,7 +18,11 @@ export default function ArqueoDesktop() {
   // revisar el negocio, no para vender, así que se pide a mano.
   const [todas, setTodas] = useState(false);
   const { isAdmin } = useIsAdmin();
-  const { arqueo, isLoading, mutate } = useArqueo(fecha, todas);
+  // El administrador, al mirar un día pasado, ve todas las cajas de ese día
+  // (es revisión del negocio, no venta). Hoy sigue arrancando en su caja.
+  const esHoy = fecha === hoyEnAsuncion();
+  const verTodas = todas || (isAdmin && !esHoy);
+  const { arqueo, isLoading, mutate } = useArqueo(fecha, verTodas);
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -82,13 +86,17 @@ export default function ArqueoDesktop() {
 
 
       {isAdmin ? (
-        <button
-          type="button"
-          onClick={() => setTodas((v) => !v)}
-          className="mb-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-        >
-          {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
-        </button>
+        esHoy ? (
+          <button
+            type="button"
+            onClick={() => setTodas((v) => !v)}
+            className="mb-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
+          </button>
+        ) : (
+          <p className="mb-4 text-sm text-slate-500">Mostrando todas las cajas de este día.</p>
+        )
       ) : null}
 
       {isLoading && !arqueo ? (
@@ -97,7 +105,7 @@ export default function ArqueoDesktop() {
         <AvisoSinCajas />
       ) : arqueo && arqueo.cajas.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-slate-200 py-16 text-center text-sm text-slate-500">
-          {todas
+          {verTodas
               ? "No hubo cajas abiertas este día."
               : (arqueo?.otras_cajas ?? 0) > 0
                 ? `No tenés ninguna caja tuya este día, pero hay ${arqueo?.otras_cajas} caja(s) de otras personas. Si cobraste y no ves la plata acá, mirá «Ver todas las cajas del día»: puede haber quedado imputada a la caja de otro.`
