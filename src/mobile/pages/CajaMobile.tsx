@@ -17,6 +17,7 @@ import {
   Receipt,
   Search,
   Share2,
+  Trash2,
   User,
   UserPlus,
   Wallet,
@@ -308,6 +309,8 @@ function PasoCliente({
 
   return (
     <div className="pt-4">
+      {caja.ventasEnEspera.length > 0 ? <ListaEspera caja={caja} /> : null}
+
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
         Tipo de cliente
       </p>
@@ -766,6 +769,18 @@ function BarraAccion({ caja }: { caja: CajaVenta }) {
         </p>
       ) : null}
 
+      {/* El cliente sigue eligiendo: se suspende su venta, se le cobra a otro y
+          después se retoma la suya desde la lista de espera (paso Cliente). */}
+      {caja.carrito.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => caja.suspenderVenta()}
+          className="mb-2 w-full rounded-xl border border-amber-300 bg-amber-50 py-2.5 text-sm font-semibold text-amber-800 active:bg-amber-100"
+        >
+          Suspender venta
+        </button>
+      ) : null}
+
       <button
         type="button"
         onClick={enPago ? caja.confirmar : caja.siguiente}
@@ -775,6 +790,53 @@ function BarraAccion({ caja }: { caja: CajaVenta }) {
       >
         {caja.guardando ? "Guardando…" : etiqueta}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Las ventas suspendidas, en el paso Cliente: cada una con su cliente y su
+ * total. «Reanudar» la vuelve a cargar tal cual (si había otra en curso, se
+ * guarda sola antes).
+ */
+function ListaEspera({ caja }: { caja: CajaVenta }) {
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-amber-200 bg-white">
+      <div className="bg-amber-50 px-4 py-2.5">
+        <p className="text-sm font-semibold text-amber-900">
+          Lista de espera ({caja.ventasEnEspera.length})
+        </p>
+      </div>
+      <ul className="divide-y divide-slate-100">
+        {caja.ventasEnEspera.map((v) => (
+          <li key={v.id} className="flex items-center gap-2 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-800">{v.etiqueta}</p>
+              <p className="text-xs text-slate-500">{formatGs(v.total)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => caja.reanudarVenta(v.id)}
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-white"
+              style={{ backgroundColor: TEAL }}
+            >
+              Reanudar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`¿Descartar la venta en espera de ${v.etiqueta}?`)) {
+                  caja.cancelarEnEspera(v.id);
+                }
+              }}
+              aria-label={`Descartar venta en espera de ${v.etiqueta}`}
+              className="shrink-0 rounded-lg p-2 text-slate-300 active:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

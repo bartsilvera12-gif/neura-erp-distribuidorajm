@@ -11,6 +11,7 @@ import type { Producto } from "@/lib/inventario/types";
 import { esPesable, normalizarCantidad } from "@/lib/inventario/unidades";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
+import { useVentasEnEspera } from "@/shared/caja/useVentasEnEspera";
 import { METODOS_COBRO, METODOS_PAGO } from "@/lib/ventas/types";
 import type {
   LineaVenta,
@@ -602,6 +603,103 @@ export function useCajaVenta() {
 
   const nombreCliente = cliente ? clienteNombre(cliente) : "Sin nombre";
 
+  // ── Ventas en espera ─────────────────────────────────────────────────────
+  // El cliente sigue agarrando productos: se suspende su venta, se le cobra al
+  // siguiente y después se retoma la suya tal cual estaba. Vive en este equipo.
+  const {
+    ventas: ventasEnEspera,
+    suspender: guardarEnEspera,
+    quitar: cancelarEnEspera,
+  } = useVentasEnEspera<VentaEnEsperaSnapshot>();
+
+  /** Foto de la venta en curso, para guardarla y volver a cargarla igual. */
+  const tomarFoto = useCallback(
+    (): VentaEnEsperaSnapshot => ({
+      cliente,
+      sinNombre,
+      carrito,
+      moneda,
+      lista,
+      tipoCambio,
+      metodoPago,
+      pagaCon,
+      aCredito,
+      plazoDias,
+      documento: documentoElegido,
+      deposito,
+    }),
+    [
+      cliente,
+      sinNombre,
+      carrito,
+      moneda,
+      lista,
+      tipoCambio,
+      metodoPago,
+      pagaCon,
+      aCredito,
+      plazoDias,
+      documentoElegido,
+      deposito,
+    ]
+  );
+
+  const aplicarFoto = useCallback((s: VentaEnEsperaSnapshot) => {
+    setCliente(s.cliente);
+    setSinNombre(s.sinNombre);
+    setCarrito(s.carrito);
+    setMoneda(s.moneda);
+    setLista(s.lista);
+    setTipoCambio(s.tipoCambio);
+    setMetodoPago(s.metodoPago);
+    setPagaCon(s.pagaCon);
+    setACredito(s.aCredito);
+    setPlazoDias(s.plazoDias);
+    setDocumento(s.documento);
+    setDeposito(s.deposito);
+    setError(null);
+  }, []);
+
+  /** Guarda la venta en curso en la lista de espera y deja la caja lista para la siguiente. */
+  const suspenderVenta = useCallback((): boolean => {
+    if (carrito.length === 0) {
+      setError("No hay nada que suspender: agregá al menos un producto.");
+      return false;
+    }
+    guardarEnEspera({ etiqueta: nombreCliente, total: totales.total, snapshot: tomarFoto() });
+    limpiarVenta();
+    setPaso("cliente");
+    return true;
+  }, [carrito.length, guardarEnEspera, nombreCliente, totales.total, tomarFoto, limpiarVenta]);
+
+  /**
+   * Vuelve a cargar una venta en espera donde había quedado. Si en la caja hay
+   * otra venta con productos, se guarda sola en espera antes de traer esta, así
+   * no se pierde nada.
+   */
+  const reanudarVenta = useCallback(
+    (id: string): void => {
+      const enEspera = ventasEnEspera.find((v) => v.id === id);
+      if (!enEspera) return;
+      if (carrito.length > 0) {
+        guardarEnEspera({ etiqueta: nombreCliente, total: totales.total, snapshot: tomarFoto() });
+      }
+      aplicarFoto(enEspera.snapshot);
+      cancelarEnEspera(id);
+      setPaso("productos");
+    },
+    [
+      ventasEnEspera,
+      carrito.length,
+      guardarEnEspera,
+      nombreCliente,
+      totales.total,
+      tomarFoto,
+      aplicarFoto,
+      cancelarEnEspera,
+    ]
+  );
+
   return {
     // estado
     paso,
@@ -638,6 +736,11 @@ export function useCajaVenta() {
     repartosDisponibles,
     repartoId,
     faltaElegirReparto,
+    // ventas en espera
+    ventasEnEspera,
+    suspenderVenta,
+    reanudarVenta,
+    cancelarEnEspera,
     // reglas
     puedeAvanzar,
     puedeConfirmar,
@@ -672,6 +775,22 @@ export function useCajaVenta() {
 }
 
 export type CajaVenta = ReturnType<typeof useCajaVenta>;
+
+/** Foto de una venta en curso, para suspenderla y retomarla tal cual. */
+export interface VentaEnEsperaSnapshot {
+  cliente: Cliente | null;
+  sinNombre: boolean;
+  carrito: ItemCarrito[];
+  moneda: MonedaVenta;
+  lista: ListaPrecio;
+  tipoCambio: string;
+  metodoPago: MetodoPagoVenta | null;
+  pagaCon: string;
+  aCredito: boolean;
+  plazoDias: string;
+  documento: DocumentoVenta | null;
+  deposito: DepositoCaja | null;
+}
 
 /** Depósito del cliente con que se paga la venta en curso. */
 export interface DepositoCaja {

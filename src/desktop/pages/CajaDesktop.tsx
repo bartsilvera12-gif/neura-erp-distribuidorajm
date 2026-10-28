@@ -635,6 +635,16 @@ function PanelCobro({
             type="button"
             disabled={caja.carrito.length === 0}
             onClick={() => {
+              if (caja.suspenderVenta()) enfocarBuscador();
+            }}
+            className="w-full rounded-xl border border-amber-300 bg-amber-50 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+          >
+            Suspender venta
+          </button>
+          <button
+            type="button"
+            disabled={caja.carrito.length === 0}
+            onClick={() => {
               if (!window.confirm("¿Cancelar esta venta? Se sacan todos los productos.")) return;
               for (const i of [...caja.carrito]) caja.quitarItem(i.producto.id);
               enfocarBuscador();
@@ -645,6 +655,8 @@ function PanelCobro({
           </button>
         </div>
       </div>
+
+      {caja.ventasEnEspera.length > 0 ? <ListaEspera caja={caja} /> : null}
 
       {cobrando ? (
         <FinalizarVenta
@@ -669,6 +681,69 @@ function PanelCobro({
         />
       ) : null}
     </aside>
+  );
+}
+
+/** Hora corta (HH:MM) de una venta en espera, para ubicarla en el tiempo. */
+function horaCorta(ms: number): string {
+  try {
+    return new Date(ms).toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Las ventas suspendidas: cada una con su cliente, su total y la hora. «Reanudar»
+ * la vuelve a cargar tal cual (si había otra en curso, se guarda sola antes).
+ */
+function ListaEspera({ caja }: { caja: CajaVenta }) {
+  return (
+    <div className="mt-3 overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+      <div className="bg-amber-50 px-4 py-2.5">
+        <p className="text-sm font-semibold text-amber-900">
+          Lista de espera
+          <span className="ml-1.5 rounded-full bg-amber-200 px-1.5 text-xs font-bold text-amber-900">
+            {caja.ventasEnEspera.length}
+          </span>
+        </p>
+      </div>
+      <ul className="divide-y divide-slate-100">
+        {caja.ventasEnEspera.map((v) => (
+          <li key={v.id} className="flex items-center gap-2 px-4 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-800">{v.etiqueta}</p>
+              <p className="text-xs text-slate-500">
+                {formatGs(v.total)} · {horaCorta(v.hora)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                caja.reanudarVenta(v.id);
+                enfocarBuscador();
+              }}
+              className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+              style={{ backgroundColor: TEAL }}
+            >
+              Reanudar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`¿Descartar la venta en espera de ${v.etiqueta}?`)) {
+                  caja.cancelarEnEspera(v.id);
+                }
+              }}
+              aria-label={`Descartar venta en espera de ${v.etiqueta}`}
+              className="shrink-0 rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
