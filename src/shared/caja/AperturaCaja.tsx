@@ -16,6 +16,10 @@ const gs = (n: number) => `Gs. ${n.toLocaleString("es-PY")}`;
  * mañana. El monto de apertura es el efectivo con el que arranca el cajón, y es
  * contra eso que cuadra el arqueo.
  *
+ * `sugerido` es el efectivo contado en el último cierre: la apertura arranca
+ * pre-cargada con eso (lo que cerró ayer arranca hoy) y el cajero lo confirma
+ * o lo ajusta.
+ *
  * Al cerrar se pide contar el efectivo y se muestra la diferencia contra lo que
  * el sistema esperaba. La diferencia no bloquea el cierre: esconderla no la
  * haría desaparecer, y el cajón hay que cerrarlo igual.
@@ -23,11 +27,23 @@ const gs = (n: number) => `Gs. ${n.toLocaleString("es-PY")}`;
 export default function AperturaCaja({
   caja,
   onCambio,
+  sugerido = 0,
 }: {
   caja: CajaAbierta | null;
   onCambio: () => void;
+  sugerido?: number;
 }) {
-  const [monto, setMonto] = useState("");
+  // La apertura sugerida (el cierre anterior) llega del servidor: arranca ahí si
+  // ya está, y se pre-carga cuando llega, mientras el cajero no haya tocado el
+  // campo. Es un ajuste de estado al cambiar una prop (patrón de React), no un
+  // efecto, así que no dispara un render en cascada.
+  const [tocado, setTocado] = useState(false);
+  const [monto, setMonto] = useState(() => (caja === null && sugerido > 0 ? String(sugerido) : ""));
+  const [sugeridoVisto, setSugeridoVisto] = useState(sugerido);
+  if (sugerido !== sugeridoVisto) {
+    setSugeridoVisto(sugerido);
+    if (caja === null && sugerido > 0 && !tocado) setMonto(String(sugerido));
+  }
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{
@@ -150,6 +166,12 @@ export default function AperturaCaja({
                 No hace falta abrirla a mano: se abre sola con el primer cobro. Abrila acá solo si
                 salís con cambio en el cajón, para que el arqueo lo cuente desde el arranque.
               </p>
+              {sugerido > 0 ? (
+                <p className="mt-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs leading-relaxed text-emerald-800">
+                  Viene del cierre anterior: <span className="font-semibold">{gs(sugerido)}</span>. Lo
+                  cargamos solo en “Efectivo inicial”; podés dejarlo así o ajustarlo.
+                </p>
+              ) : null}
             </>
           )}
 
@@ -164,6 +186,7 @@ export default function AperturaCaja({
                 value={monto}
                 onChange={(e) => {
                   setError(null);
+                  setTocado(true);
                   setMonto(e.target.value);
                 }}
                 aria-label={abierta ? "Efectivo contado al cerrar" : "Efectivo inicial del cajón"}

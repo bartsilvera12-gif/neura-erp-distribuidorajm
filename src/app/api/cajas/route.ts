@@ -8,6 +8,7 @@ import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
+import { saldoCierreAnterior } from "@/lib/cajas/server/saldo-cierre-anterior";
 
 /** GET /api/cajas?estado=abierta — la caja abierta de la empresa, si hay. */
 export async function GET(request: NextRequest) {
@@ -68,6 +69,12 @@ export async function GET(request: NextRequest) {
     );
 
     const row = q.rows[0];
+
+    // Sin caja abierta, qué poner de apertura: el efectivo contado en el último
+    // cierre (lo que cerró ayer arranca hoy). El cajero lo ve pre-cargado en el
+    // formulario y lo puede ajustar. Con caja abierta no hace falta calcularlo.
+    const aperturaSugerida = row ? 0 : await saldoCierreAnterior(pool, schema, empresaId, yo);
+
     return NextResponse.json(
       successResponse({
         disponible: true,
@@ -80,6 +87,7 @@ export async function GET(request: NextRequest) {
               monto_apertura: Number(row.monto_apertura),
             }
           : null,
+        apertura_sugerida: aperturaSugerida,
       })
     );
   } catch (err) {

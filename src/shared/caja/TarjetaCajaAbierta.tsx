@@ -543,7 +543,7 @@ function ModalCierre({
  * lo cuenta el arqueo; repetirlo acá arriba solo tapaba esto.
  */
 export default function TarjetaCajaAbierta({ onCambio }: { onCambio?: () => void } = {}) {
-  const { caja, disponible, mutate: recargarCaja } = useCajaAbierta();
+  const { caja, disponible, aperturaSugerida, mutate: recargarCaja } = useCajaAbierta();
   const { arqueo, mutate: recargarArqueo } = useArqueo();
   const [modal, setModal] = useState<"ninguno" | "movimiento" | "cierre">("ninguno");
 
@@ -556,8 +556,9 @@ export default function TarjetaCajaAbierta({ onCambio }: { onCambio?: () => void
 
   if (!disponible) return null;
 
-  // Sin caja abierta lo único que hace falta es abrirla.
-  if (!caja) return <AperturaCaja caja={null} onCambio={refrescar} />;
+  // Sin caja abierta lo único que hace falta es abrirla. La apertura arranca
+  // pre-cargada con el efectivo del cierre anterior (lo que cerró ayer).
+  if (!caja) return <AperturaCaja caja={null} onCambio={refrescar} sugerido={aperturaSugerida} />;
 
   const detalle = arqueo?.cajas.find((c) => c.id === caja.id) ?? null;
   const apertura = detalle?.monto_apertura ?? caja.monto_apertura;

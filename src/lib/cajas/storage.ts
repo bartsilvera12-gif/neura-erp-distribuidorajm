@@ -8,22 +8,31 @@ import type { CajaAbierta } from "./types";
  * `disponible: false` significa que el schema no tiene tabla `cajas`; distinto
  * de `caja: null`, que es "hay tabla pero ninguna caja abierta".
  */
-export async function getCajaAbierta(): Promise<{ disponible: boolean; caja: CajaAbierta | null }> {
+export async function getCajaAbierta(): Promise<{
+  disponible: boolean;
+  caja: CajaAbierta | null;
+  /** Qué poner de apertura: el efectivo del último cierre (0 si no hay). */
+  aperturaSugerida: number;
+}> {
   try {
     const res = await fetchWithSupabaseSession("/api/cajas?estado=abierta", { cache: "no-store" });
     const json = (await res.json()) as {
       success?: boolean;
-      data?: { disponible?: boolean; caja?: CajaAbierta | null };
+      data?: { disponible?: boolean; caja?: CajaAbierta | null; apertura_sugerida?: number };
       error?: string;
     };
     if (!res.ok || !json.success || !json.data) {
       console.error("[cajas] getCajaAbierta:", json.error ?? res.statusText);
-      return { disponible: false, caja: null };
+      return { disponible: false, caja: null, aperturaSugerida: 0 };
     }
-    return { disponible: json.data.disponible === true, caja: json.data.caja ?? null };
+    return {
+      disponible: json.data.disponible === true,
+      caja: json.data.caja ?? null,
+      aperturaSugerida: Number(json.data.apertura_sugerida) || 0,
+    };
   } catch (e) {
     console.error("[cajas] getCajaAbierta:", e);
-    return { disponible: false, caja: null };
+    return { disponible: false, caja: null, aperturaSugerida: 0 };
   }
 }
 
