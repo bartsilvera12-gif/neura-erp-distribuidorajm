@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { METODOS_COBRO } from "@/lib/ventas/types";
+import { METODOS_COBRO, MEDIOS_MIXTO, type MedioMixto, type PagoMixto } from "@/lib/ventas/types";
 import { esListaPrecio, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
@@ -144,9 +144,32 @@ export async function POST(request: NextRequest) {
     // siguen siendo valores válidos en la base (hay ventas viejas con ellos),
     // pero una venta NUEVA de contado no puede entrar con esos: una pantalla
     // vieja en caché los podría seguir ofreciendo.
+    //
+    // Mixto sí, pero con el reparto: cuánto en efectivo, cuánto por
+    // transferencia y cuánto en cheque. Cada parte entra a la caja con su medio.
+    let pagosMixto: PagoMixto[] | null = null;
+    if (tipoVenta === "CONTADO" && metodoPago === "mixto") {
+      const crudos = Array.isArray(o.pagos) ? (o.pagos as unknown[]) : [];
+      const medios = MEDIOS_MIXTO.map((m) => m.value) as string[];
+      const porMedio = new Map<MedioMixto, number>();
+      for (const x of crudos) {
+        const r = (x ?? {}) as Record<string, unknown>;
+        const medio = String(r.medio ?? "");
+        const monto = Math.round(Number(r.monto));
+        if (!medios.includes(medio) || !Number.isFinite(monto) || monto < 0) {
+          return NextResponse.json(errorResponse("Pago mixto inválido. Recargá la caja."), { status: 400 });
+        }
+        if (monto > 0) porMedio.set(medio as MedioMixto, (porMedio.get(medio as MedioMixto) ?? 0) + monto);
+      }
+      if (porMedio.size === 0) {
+        return NextResponse.json(errorResponse("En el pago mixto, poné cuánto va en cada medio."), { status: 400 });
+      }
+      pagosMixto = [...porMedio.entries()].map(([medio, monto]) => ({ medio, monto }));
+    }
     if (
       tipoVenta === "CONTADO" &&
       metodoPago !== null &&
+      metodoPago !== "mixto" &&
       !(METODOS_COBRO.map((m) => m.value) as string[]).includes(metodoPago)
     ) {
       return NextResponse.json(
@@ -259,6 +282,7 @@ export async function POST(request: NextRequest) {
       tipoCambio,
       tipoVenta,
       metodoPago,
+      pagosMixto,
       cajaId: cajaFinal,
       repartoId,
       ubicacionId: ubicacionCamion,

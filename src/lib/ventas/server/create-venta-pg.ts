@@ -29,6 +29,8 @@ export interface CreateVentaPgParams {
   plazoDias: number | null;
   /** Medio de cobro (`ventas.metodo_pago`). `null` en ventas a crédito. */
   metodoPago: "efectivo" | "tarjeta" | "transferencia" | "cheque" | "mixto" | null;
+  /** Pago mixto: cuánto entró por cada medio. Tiene que sumar lo que se cobra. */
+  pagosMixto?: { medio: "efectivo" | "transferencia" | "cheque"; monto: number }[] | null;
   /** Caja en la que se cobra. Obligatoria salvo venta a crédito. */
   cajaId: string | null;
   /** Reparto del que sale la mercadería. */
@@ -431,6 +433,17 @@ export async function createVentaTransaccionalPg(
         : 0;
     const aCaja = calc.total - depositoAplicado;
 
+    // Pago mixto: las partes tienen que sumar lo que se cobra, ni más ni menos.
+    const mixto = params.metodoPago === "mixto" && params.tipoVenta === "CONTADO" ? (params.pagosMixto ?? []) : null;
+    if (mixto) {
+      const suma = mixto.reduce((s, p) => s + p.monto, 0);
+      if (Math.abs(suma - aCaja) > TOL) {
+        throw new Error(
+          `El pago mixto suma Gs. ${Math.round(suma).toLocaleString("es-PY")} y hay que cobrar Gs. ${Math.round(aCaja).toLocaleString("es-PY")}.`
+        );
+      }
+    }
+
     // Movimiento de caja del cobro. Solo para ventas de contado: una venta a
     // crédito no mete plata en la caja hoy, y registrarla descuadraría el arqueo.
     if (
@@ -441,21 +454,29 @@ export async function createVentaTransaccionalPg(
       (await tablaExiste(client, params.schema, "caja_movimientos"))
     ) {
       const movT = quoteSchemaTable(params.schema, "caja_movimientos");
-      await client.query(
-        `
-        INSERT INTO ${movT} (empresa_id, caja_id, tipo, concepto, monto, medio_pago, venta_id)
-        VALUES ($1::uuid, $2::uuid, 'ingreso', $3, $4, $5, $6::uuid)
-        `,
-        [
-          params.empresaId,
-          params.cajaId,
-          depositoAplicado > 0 ? `Venta ${numeroControl} (resto del depósito)` : `Venta ${numeroControl}`,
-          aCaja,
-          // `caja_movimientos.medio_pago` no tiene `mixto`: su equivalente es `otro`.
-          params.metodoPago === "mixto" ? "otro" : params.metodoPago,
-          ventaId,
-        ]
-      );
+      const concepto = depositoAplicado > 0 ? `Venta ${numeroControl} (resto del depósito)` : `Venta ${numeroControl}`;
+      // Mixto: un movimiento por medio, así el arqueo sabe cuánto efectivo
+      // hay en el cajón y cuánto entró por transferencia o en cheque.
+      const partes =
+        mixto && mixto.length > 0
+          ? mixto.filter((p) => p.monto > 0).map((p) => ({ medio: p.medio as string, monto: p.monto, concepto: `${concepto} (mixto)` }))
+          : [
+              {
+                // `caja_movimientos.medio_pago` no tiene `mixto`: su equivalente es `otro`.
+                medio: params.metodoPago === "mixto" ? "otro" : params.metodoPago,
+                monto: aCaja,
+                concepto,
+              },
+            ];
+      for (const parte of partes) {
+        await client.query(
+          `
+          INSERT INTO ${movT} (empresa_id, caja_id, tipo, concepto, monto, medio_pago, venta_id)
+          VALUES ($1::uuid, $2::uuid, 'ingreso', $3, $4, $5, $6::uuid)
+          `,
+          [params.empresaId, params.cajaId, parte.concepto, parte.monto, parte.medio, ventaId]
+        );
+      }
     }
 
     // Columnas de cajas en las líneas (SQL 57): se escriben si están.

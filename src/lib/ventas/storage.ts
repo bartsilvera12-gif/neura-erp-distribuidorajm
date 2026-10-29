@@ -31,7 +31,11 @@ export async function getVentas(): Promise<Venta[]> {
  * Crea una venta en base de datos (transacción servidor: ítems, stock, movimientos).
  */
 export async function saveVenta(
-  datos: Omit<Venta, "id" | "numero_control" | "fecha"> & { deposito_id?: string | null }
+  datos: Omit<Venta, "id" | "numero_control" | "fecha"> & {
+    deposito_id?: string | null;
+    /** Pago mixto: cuánto entra por cada medio. */
+    pagos?: { medio: string; monto: number }[] | null;
+  }
 ): Promise<ResultadoGuardarVenta> {
   if (!datos.items || datos.items.length === 0) {
     return { success: false, error: "La venta debe tener al menos un producto." };
@@ -56,6 +60,7 @@ export async function saveVenta(
         lista_precio: datos.lista_precio ?? "minorista",
         cliente_id: datos.cliente_id ?? null,
         deposito_id: datos.deposito_id ?? null,
+        pagos: datos.pagos ?? null,
         observaciones: null,
       }),
     });

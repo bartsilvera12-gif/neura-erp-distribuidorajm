@@ -29,6 +29,16 @@ export const METODOS_COBRO: { value: MetodoPagoVenta; label: string }[] = METODO
   (m) => m.value === "efectivo" || m.value === "transferencia" || m.value === "cheque"
 );
 
+/** Medios con que se puede repartir un pago mixto. */
+export type MedioMixto = "efectivo" | "transferencia" | "cheque";
+export const MEDIOS_MIXTO: { value: MedioMixto; label: string }[] = [
+  { value: "efectivo", label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "cheque", label: "Cheque" },
+];
+/** Una parte de un pago mixto: cuánto entró por cada medio. */
+export type PagoMixto = { medio: MedioMixto; monto: number };
+
 /**
  * `caja_movimientos.medio_pago` usa otro vocabulario que `ventas.metodo_pago`:
  * no tiene `mixto`, tiene `otro`. Esta es la traducción entre los dos.

@@ -12,7 +12,7 @@ import { esPesable, normalizarCantidad } from "@/lib/inventario/unidades";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import { useVentasEnEspera } from "@/shared/caja/useVentasEnEspera";
-import { METODOS_COBRO, METODOS_PAGO } from "@/lib/ventas/types";
+import { MEDIOS_MIXTO, METODOS_COBRO, METODOS_PAGO, type MedioMixto, type PagoMixto } from "@/lib/ventas/types";
 import type {
   LineaVenta,
   MetodoPagoVenta,
@@ -117,6 +117,11 @@ export function useCajaVenta() {
   const [metodoPago, setMetodoPago] = useState<MetodoPagoVenta | null>(null);
   /** Lo que entrega el cliente en efectivo, para calcular el vuelto. Solo informativo: no se guarda en la venta. */
   const [pagaCon, setPagaCon] = useState("");
+  /** Pago mixto: cuánto entrega en cada medio. Tiene que sumar lo que se cobra. */
+  const [mixto, setMixtoEstado] = useState<Record<MedioMixto, number>>({ efectivo: 0, transferencia: 0, cheque: 0 });
+  const setMixto = useCallback((medio: MedioMixto, monto: number) => {
+    setMixtoEstado((m) => ({ ...m, [medio]: Math.max(0, Math.round(monto) || 0) }));
+  }, []);
   // El crédito es una condición de la venta (`tipo_venta`), no un medio de
   // cobro: a crédito no entra plata hoy y no hay con qué cobrarla.
   const [aCredito, setACredito] = useState(false);
@@ -271,6 +276,12 @@ export function useCajaVenta() {
   /** El depósito cubre toda la venta: no hay nada que cobrar ni medio que elegir. */
   const cubiertaPorDeposito = depositoAplicado > 0 && aCobrar === 0;
 
+  // Pago mixto: lo cargado en cada medio y cuánto falta para llegar a lo que se cobra.
+  const esMixto = metodoPago === "mixto" && !aCredito && !cubiertaPorDeposito;
+  const sumaMixto = mixto.efectivo + mixto.transferencia + mixto.cheque;
+  const faltaMixto = Math.round(aCobrar - sumaMixto);
+  const mixtoCuadra = !esMixto || Math.abs(faltaMixto) <= 1;
+
   // ── Reglas de avance ───────────────────────────────────────────────────────
 
   const clienteElegido = cliente !== null || sinNombre;
@@ -295,11 +306,13 @@ export function useCajaVenta() {
       } else if (metodoPago === null && !cubiertaPorDeposito) {
         return false;
       }
+      if (!mixtoCuadra) return false;
       if (faltaElegirReparto) return false;
       return true;
     }
     return false;
   }, [
+    mixtoCuadra,
     cubiertaPorDeposito,
     paso,
     clienteElegido,
@@ -334,9 +347,17 @@ export function useCajaVenta() {
       return "Este cliente no puede comprar a crédito. Elegí otra forma de cobro.";
     }
     if (!aCredito && metodoPago === null && !cubiertaPorDeposito) return "Elegí con qué se cobra.";
+    if (!mixtoCuadra) {
+      return faltaMixto > 0
+        ? `En el pago mixto faltan ${formatGs(faltaMixto)} para llegar a ${formatGs(aCobrar)}.`
+        : `El pago mixto se pasa por ${formatGs(-faltaMixto)}: tiene que sumar ${formatGs(aCobrar)}.`;
+    }
     if (faltaElegirReparto) return "Elegí de qué camión sale la mercadería.";
     return null;
   }, [
+    mixtoCuadra,
+    faltaMixto,
+    aCobrar,
     cubiertaPorDeposito,
     clienteElegido,
     carrito.length,
@@ -357,9 +378,11 @@ export function useCajaVenta() {
     } else if (metodoPago === null && !cubiertaPorDeposito) {
       return false;
     }
+    if (!mixtoCuadra) return false;
     if (faltaElegirReparto) return false;
     return true;
   }, [
+    mixtoCuadra,
     cubiertaPorDeposito,
     clienteElegido,
     carrito.length,
@@ -471,6 +494,7 @@ export function useCajaVenta() {
     setTipoCambio("");
     setMetodoPago(null);
     setPagaCon("");
+    setMixtoEstado({ efectivo: 0, transferencia: 0, cheque: 0 });
     setACredito(false);
     setPlazoDias("");
     setDocumento(null);
@@ -496,6 +520,10 @@ export function useCajaVenta() {
       setError("Ingresá el tipo de cambio.");
       return false;
     }
+    if (!mixtoCuadra) {
+      setError(`El pago mixto tiene que sumar ${formatGs(aCobrar)}.`);
+      return false;
+    }
     if (faltaElegirReparto) {
       setError("Elegí de qué camión sale la mercadería.");
       return false;
@@ -510,7 +538,12 @@ export function useCajaVenta() {
     const medioDeposito = (METODOS_COBRO.map((m) => m.value) as string[]).includes(deposito?.medio_pago ?? "")
       ? (deposito?.medio_pago as MetodoPagoVenta)
       : "efectivo";
-    const metodoFinal: MetodoPagoVenta | null = aCredito ? null : (metodoPago ?? (cubiertaPorDeposito ? medioDeposito : null));
+    // Si el depósito paga todo, la venta queda con el medio del depósito
+    // (aunque antes se hubiera elegido otro, incluso mixto).
+    const metodoFinal: MetodoPagoVenta | null = aCredito ? null : cubiertaPorDeposito ? medioDeposito : metodoPago;
+    const pagosMixto: PagoMixto[] | null = esMixto
+      ? MEDIOS_MIXTO.map((m) => ({ medio: m.value, monto: mixto[m.value] })).filter((p) => p.monto > 0)
+      : null;
 
     const res = await saveVenta({
       items: lineas,
@@ -530,6 +563,7 @@ export function useCajaVenta() {
       cliente_id: cliente?.id ?? null,
       lista_precio: lista,
       deposito_id: !aCredito && deposito ? deposito.id : null,
+      pagos: pagosMixto,
     });
 
     setGuardando(false);
@@ -553,6 +587,7 @@ export function useCajaVenta() {
         !aCredito && metodoPago === "efectivo" && depositoAplicado === 0 && pagaConNum >= totales.total
           ? pagaConNum
           : null,
+      pagosMixto,
       deposito:
         res.depositoAplicado > 0 && deposito
           ? {
@@ -570,6 +605,10 @@ export function useCajaVenta() {
     setPaso("listo");
     return true;
   }, [
+    esMixto,
+    mixto,
+    mixtoCuadra,
+    aCobrar,
     deposito,
     cubiertaPorDeposito,
     depositoAplicado,
@@ -723,6 +762,9 @@ export function useCajaVenta() {
     metodoPago,
     pagaCon,
     pagaConNum,
+    mixto,
+    sumaMixto,
+    faltaMixto,
     aCredito,
     plazoDias,
     caja,
@@ -762,6 +804,7 @@ export function useCajaVenta() {
     setTipoCambio,
     setMetodoPago,
     setPagaCon,
+    setMixto,
     setACredito,
     setPlazoDias,
     setRepartoId,
@@ -804,7 +847,12 @@ export interface DepositoCaja {
 /** «Forma de pago» del comprobante: el medio, o el depósito (y el medio de la diferencia). */
 export function etiquetaCobro(comp: ComprobanteCaja): string {
   if (comp.aCredito) return "A crédito";
-  const medio = METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—";
+  const medio =
+    comp.pagosMixto && comp.pagosMixto.length > 0
+      ? comp.pagosMixto
+          .map((p) => `${MEDIOS_MIXTO.find((m) => m.value === p.medio)?.label ?? p.medio} ${formatGs(p.monto)}`)
+          .join(" + ")
+      : (METODOS_PAGO.find((m) => m.value === comp.metodoPago)?.label ?? "—");
   if (!comp.deposito) return medio;
   return comp.deposito.cubreTodo
     ? `Depósito ${comp.deposito.recibo_numero}`
@@ -827,6 +875,8 @@ export interface ComprobanteCaja {
   metodoPago: MetodoPagoVenta | null;
   /** Efectivo entregado por el cliente (si se cargó): con él se imprime el vuelto. */
   pagaCon: number | null;
+  /** Pago mixto: cuánto entró por cada medio. */
+  pagosMixto?: PagoMixto[] | null;
   /** Parte de la venta pagada con un depósito del cliente. */
   deposito?: { recibo_numero: string; aplicado: number; cubreTodo: boolean } | null;
   /** Unidad de cada producto: no viaja en la venta y sin ella 1,5 KG se lee 1,5 a secas. */

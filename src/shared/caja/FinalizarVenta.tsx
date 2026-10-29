@@ -9,10 +9,12 @@ import {
   Receipt,
   Search,
   UserPlus,
+  Wallet,
 } from "lucide-react";
 import ModalCaja from "@/shared/caja/ModalCaja";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import AvisoDeposito from "@/shared/caja/AvisoDeposito";
+import PagoMixtoCampos from "@/shared/caja/PagoMixtoCampos";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
@@ -37,6 +39,7 @@ const ICONOS: Partial<Record<Pago, typeof Banknote>> = {
   efectivo: Banknote,
   transferencia: Landmark,
   cheque: Receipt,
+  mixto: Wallet,
   credito: CalendarClock,
 };
 
@@ -135,12 +138,14 @@ export default function FinalizarVenta({
   /** Enter en la forma de pago: al monto, al plazo, o se registra. */
   function despuesDePago() {
     if (pago === "efectivo") enfocar(() => document.getElementById("cobro-paga-con"));
+    else if (pago === "mixto") enfocar(() => document.getElementById("cobro-mixto-0"));
     else if (pago === "credito") enfocar(() => document.getElementById("cobro-plazo"));
     else void confirmar();
   }
 
   const opcionesPago = [
     ...METODOS_COBRO.map((m) => ({ valor: m.value as Pago, texto: m.label })),
+    { valor: "mixto" as Pago, texto: "Mixto" },
     {
       valor: "credito" as Pago,
       texto: "Crédito",
@@ -224,10 +229,23 @@ export default function FinalizarVenta({
           valor={pago ?? "efectivo"}
           onCambiar={elegirPago}
           onEnter={despuesDePago}
-          columnas={4}
+          columnas={5}
           opciones={opcionesPago.map((o) => ({ ...o, Icono: ICONOS[o.valor] ?? Banknote }))}
         />
         )}
+
+        {pago === "mixto" && !caja.cubiertaPorDeposito ? (
+          <div
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && !e.ctrlKey) {
+                e.preventDefault();
+                void confirmar();
+              }
+            }}
+          >
+            <PagoMixtoCampos caja={caja} grande />
+          </div>
+        ) : null}
 
         {pago === "efectivo" && !caja.cubiertaPorDeposito ? (
           <div
@@ -341,7 +359,7 @@ function FilaOpciones<T extends string>({
   onCambiar: (v: T) => void;
   onEnter: () => void;
   grupoRef: React.RefObject<HTMLDivElement | null>;
-  columnas?: 2 | 4;
+  columnas?: 2 | 4 | 5;
 }) {
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
@@ -367,7 +385,7 @@ function FilaOpciones<T extends string>({
       role="radiogroup"
       aria-label={etiqueta}
       onKeyDown={onKeyDown}
-      className={`grid gap-2 ${columnas === 4 ? "grid-cols-4" : "grid-cols-2"}`}
+      className={`grid gap-2 ${columnas === 5 ? "grid-cols-5" : columnas === 4 ? "grid-cols-4" : "grid-cols-2"}`}
     >
       {opciones.map(({ valor: v, texto, detalle, ayuda, Icono, deshabilitado }) => {
         const elegido = v === valor;
@@ -383,7 +401,7 @@ function FilaOpciones<T extends string>({
             onClick={() => onCambiar(v)}
             title={ayuda}
             className={`flex min-w-0 flex-col items-center justify-center rounded-xl border-2 px-1.5 font-semibold outline-none ${
-              columnas === 4 ? "h-16 gap-1 text-[13px]" : "gap-0.5 py-2.5 text-sm"
+              columnas !== 2 ? "h-16 gap-1 text-[13px]" : "gap-0.5 py-2.5 text-sm"
             } transition-colors focus-visible:ring-2 focus-visible:ring-[#4FAEB2] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${
               elegido
                 ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
@@ -391,7 +409,7 @@ function FilaOpciones<T extends string>({
             }`}
           >
             {/* En la fila de 4 el ícono va arriba: "Transferencia" no entra al lado. */}
-            <span className={`flex items-center ${columnas === 4 ? "flex-col gap-1" : "gap-1.5"}`}>
+            <span className={`flex items-center ${columnas !== 2 ? "flex-col gap-1" : "gap-1.5"}`}>
               <Icono className="h-4 w-4 shrink-0" />
               <span className="max-w-full truncate">{texto}</span>
             </span>

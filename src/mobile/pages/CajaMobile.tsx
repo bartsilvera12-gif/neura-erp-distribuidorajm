@@ -33,6 +33,7 @@ import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import AvisoDeposito, { useDepositoDesdeUrl } from "@/shared/caja/AvisoDeposito";
+import PagoMixtoCampos from "@/shared/caja/PagoMixtoCampos";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
 import { buscarProductosCaja, textoSinResultado } from "@/shared/caja/lector-codigo";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
@@ -665,7 +666,7 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
       </p>
 
       <ul className={`space-y-2 ${caja.aCredito || caja.cubiertaPorDeposito ? "hidden" : ""}`}>
-        {METODOS_COBRO.map((o) => {
+        {[...METODOS_COBRO, { value: "mixto" as MetodoPagoVenta, label: "Mixto (varios medios)" }].map((o) => {
           const Icono = ICONOS_PAGO[o.value];
           const deshabilitado = false;
           const elegido = caja.metodoPago === o.value;
@@ -695,6 +696,8 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
           );
         })}
       </ul>
+
+      {!caja.aCredito && !caja.cubiertaPorDeposito && caja.metodoPago === "mixto" ? <PagoMixtoCampos caja={caja} grande /> : null}
 
       {!caja.aCredito && !caja.cubiertaPorDeposito && caja.metodoPago === "efectivo" ? (
         <CalculadoraVuelto caja={caja} grande />
