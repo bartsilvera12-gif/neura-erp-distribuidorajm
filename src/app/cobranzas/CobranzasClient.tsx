@@ -384,25 +384,6 @@ export default function CobranzasClient() {
     [detalleId, openDetalle, load, showToast]
   );
 
-  // Cobro en efectivo → se aplica al instante (la plata ya está en mano, no hay
-  // banco que conciliar): baja el saldo ahora mismo, sin pasar por aprobación.
-  const registrarEfectivoCobranza = useCallback(
-    async (input: { factura_id: string; monto: number; fecha_pago: string }) => {
-      const res = await fetchWithSupabaseSession("/api/cobranzas/efectivo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fecha: input.fecha_pago, items: [{ factura_id: input.factura_id, monto: input.monto }] }),
-      });
-      const json = (await res.json()) as { success?: boolean; error?: string };
-      if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
-      setPagoFactura(null);
-      showToast("Cobro en efectivo registrado. El saldo ya quedó actualizado.");
-      if (detalleId) await openDetalle(detalleId);
-      await load();
-    },
-    [detalleId, openDetalle, load, showToast]
-  );
-
   /** Tipos de SERVICIO presentes (para el selector). */
   const tiposDisponibles = useMemo(() => {
     const set = new Set<string>();
@@ -874,23 +855,7 @@ export default function CobranzasClient() {
           onConfirm={async (input) => {
             setPagoBusy(true);
             try {
-              if (input.medio === "efectivo") {
-                await registrarEfectivoCobranza({
-                  factura_id: pagoFactura.id,
-                  monto: input.monto,
-                  fecha_pago: input.fecha_pago,
-                });
-              } else {
-                await registrarPagoCobranza({
-                  factura_id: pagoFactura.id,
-                  monto: input.monto,
-                  fecha_pago: input.fecha_pago,
-                  banco_origen: input.banco_origen,
-                  titular: input.titular,
-                  numero_operacion: input.numero_operacion,
-                  file: input.file,
-                });
-              }
+              await registrarPagoCobranza({ factura_id: pagoFactura.id, ...input });
             } catch (e) {
               showToast(e instanceof Error ? e.message : "No se pudo registrar el pago");
             } finally {
@@ -1021,7 +986,6 @@ function RegistrarPagoModal({
   busy: boolean;
   onCancel: () => void;
   onConfirm: (input: {
-    medio: "transferencia" | "efectivo";
     monto: number;
     fecha_pago: string;
     banco_origen: string;
@@ -1031,9 +995,6 @@ function RegistrarPagoModal({
   }) => void;
 }) {
   const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  // Forma de pago: transferencia (queda pendiente de aprobación) o efectivo
-  // (se aplica al instante, sin banco ni comprobante). Arranca en transferencia.
-  const [medio, setMedio] = useState<"transferencia" | "efectivo">("transferencia");
   const [monto, setMonto] = useState(String(factura.saldo));
   const [fecha, setFecha] = useState(hoyLocal);
   const [bancoOrigen, setBancoOrigen] = useState("");
@@ -1044,11 +1005,15 @@ function RegistrarPagoModal({
   const { bancos } = useBancosActivos(true);
 
   const montoNum = Number(monto);
-  const invalidoMonto = !Number.isFinite(montoNum) || montoNum <= 0 || montoNum > factura.saldo || !fecha;
   const invalido =
-    medio === "efectivo"
-      ? invalidoMonto
-      : invalidoMonto || !bancoOrigen.trim() || !titular.trim() || !numeroOperacion.trim() || !file;
+    !Number.isFinite(montoNum) ||
+    montoNum <= 0 ||
+    montoNum > factura.saldo ||
+    !fecha ||
+    !bancoOrigen.trim() ||
+    !titular.trim() ||
+    !numeroOperacion.trim() ||
+    !file;
   const fieldCls =
     "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
   const labelCls = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
@@ -1058,36 +1023,11 @@ function RegistrarPagoModal({
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-base font-semibold text-slate-900">Registrar cobro</h3>
         <p className="mt-0.5 text-[11px] text-slate-500">
-          {medio === "efectivo" ? (
-            <>Cobro en efectivo. Se aplica <b>al instante</b> y baja el saldo.</>
-          ) : (
-            <>Cobro por transferencia. Queda <b>pendiente de aprobación</b> en Conciliación bancaria.</>
-          )}
+          Cobro por transferencia. Queda <b>pendiente de aprobación</b> en Conciliación bancaria.
         </p>
         <p className="mt-1 text-xs text-slate-500">
           {factura.numero_factura ?? "—"} · vence {fmtDate(factura.fecha_vencimiento)}
         </p>
-
-        <div className="mt-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="tablist" aria-label="Forma de pago">
-          {(["transferencia", "efectivo"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={medio === m}
-              onClick={() => {
-                setMedio(m);
-                setErr(null);
-              }}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                medio === m ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {m === "transferencia" ? "Transferencia" : "Efectivo"}
-            </button>
-          ))}
-        </div>
-
         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
           Saldo pendiente: <b className="text-slate-900">{fmtMoney(factura.saldo)}</b>
         </div>
@@ -1105,45 +1045,41 @@ function RegistrarPagoModal({
             {montoNum > factura.saldo ? <span className="mt-1 block text-[11px] text-rose-600">No puede superar el saldo.</span> : null}
           </label>
           <label className="block">
-            <span className={labelCls}>{medio === "efectivo" ? "Fecha del cobro" : "Fecha de la transferencia"}</span>
+            <span className={labelCls}>Fecha de la transferencia</span>
             <FechaSelect value={fecha} onChange={(e) => setFecha(e.target.value)} className={fieldCls} />
           </label>
-          {medio === "transferencia" ? (
-            <>
-              <label className="block">
-                <span className={labelCls}>Banco de origen</span>
-                <select value={bancoOrigen} onChange={(e) => setBancoOrigen(e.target.value)} className={fieldCls}>
-                  <option value="">— Seleccioná el banco —</option>
-                  {bancos.map((b) => (
-                    <option key={b.id} value={b.nombre}>{b.nombre}</option>
-                  ))}
-                </select>
-                {bancos.length === 0 && (
-                  <p className="mt-1 text-[11px] text-amber-700">
-                    No hay bancos cargados. Cargalos en{" "}
-                    <a href="/configuracion/bancos" className="underline">Configuración → Bancos</a>.
-                  </p>
-                )}
-              </label>
-              <label className="block">
-                <span className={labelCls}>Titular (quién envía)</span>
-                <input type="text" value={titular} onChange={(e) => setTitular(e.target.value.toUpperCase())} placeholder="Titular de la cuenta que envía" className={`${fieldCls} uppercase placeholder:normal-case`} />
-              </label>
-              <label className="block">
-                <span className={labelCls}>N° de comprobante / operación</span>
-                <input type="text" value={numeroOperacion} onChange={(e) => setNumeroOperacion(e.target.value)} placeholder="Nº de operación de la transferencia" className={fieldCls} />
-              </label>
-              <label className="block">
-                <span className={labelCls}>Comprobante <span className="normal-case text-slate-400">(obligatorio — JPG, PNG, WebP o PDF)</span></span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="mt-1 w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
-                />
-              </label>
-            </>
-          ) : null}
+          <label className="block">
+            <span className={labelCls}>Banco de origen</span>
+            <select value={bancoOrigen} onChange={(e) => setBancoOrigen(e.target.value)} className={fieldCls}>
+              <option value="">— Seleccioná el banco —</option>
+              {bancos.map((b) => (
+                <option key={b.id} value={b.nombre}>{b.nombre}</option>
+              ))}
+            </select>
+            {bancos.length === 0 && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                No hay bancos cargados. Cargalos en{" "}
+                <a href="/configuracion/bancos" className="underline">Configuración → Bancos</a>.
+              </p>
+            )}
+          </label>
+          <label className="block">
+            <span className={labelCls}>Titular (quién envía)</span>
+            <input type="text" value={titular} onChange={(e) => setTitular(e.target.value.toUpperCase())} placeholder="Titular de la cuenta que envía" className={`${fieldCls} uppercase placeholder:normal-case`} />
+          </label>
+          <label className="block">
+            <span className={labelCls}>N° de comprobante / operación</span>
+            <input type="text" value={numeroOperacion} onChange={(e) => setNumeroOperacion(e.target.value)} placeholder="Nº de operación de la transferencia" className={fieldCls} />
+          </label>
+          <label className="block">
+            <span className={labelCls}>Comprobante <span className="normal-case text-slate-400">(obligatorio — JPG, PNG, WebP o PDF)</span></span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="mt-1 w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+            />
+          </label>
         </div>
         {err ? <p className="mt-3 text-xs text-rose-600">{err}</p> : null}
         <div className="mt-4 flex justify-end gap-2">
@@ -1157,7 +1093,6 @@ function RegistrarPagoModal({
               setErr(null);
               try {
                 onConfirm({
-                  medio,
                   monto: montoNum,
                   fecha_pago: fecha,
                   banco_origen: bancoOrigen.trim(),
@@ -1171,7 +1106,7 @@ function RegistrarPagoModal({
             }}
             className="rounded-xl bg-[#3F8E91] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#357a7d] disabled:opacity-50"
           >
-            {busy ? (medio === "efectivo" ? "Registrando…" : "Enviando…") : medio === "efectivo" ? "Registrar cobro" : "Enviar a aprobación"}
+            {busy ? "Enviando…" : "Enviar a aprobación"}
           </button>
         </div>
       </div>
