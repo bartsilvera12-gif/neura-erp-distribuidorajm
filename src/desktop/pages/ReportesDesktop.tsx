@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -67,6 +67,14 @@ const REPORTES: ReporteCard[] = [
       "Reporte visual de ventas por período, cliente, producto, método de pago, tipo de precio y evolución mensual.",
     icon: ShoppingCart,
     href: "/reportes/ventas",
+  },
+  {
+    title: "Cierres de caja",
+    subtitle: "Caja",
+    description:
+      "El arqueo de todas las cajas del período: cobrado en efectivo, transferencia y cheque, crédito, cobranzas, egresos, efectivo esperado contra contado y la diferencia. Exportable a Excel.",
+    icon: Lock,
+    href: "/reportes/cierres-caja",
   },
   {
     title: "Conciliación bancaria",

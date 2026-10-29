@@ -356,10 +356,16 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
                         }}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       >
-                        <span className="w-16 shrink-0 font-mono text-xs text-slate-400">{p.sku}</span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{p.nombre}</span>
-                        <span className="w-24 shrink-0 text-right text-xs text-slate-400">
-                          {formatCantidad(p.stock_actual, p.unidad_medida)} {p.unidad_medida}
+                        {/* El nombre manda; el código (que puede ser un código de barras
+                            de 13 dígitos) y el stock van abajo, chicos, sin pisarlo. */}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900">{p.nombre}</span>
+                          <span className="block truncate text-[11px] text-slate-400">
+                            {p.sku ? <span className="font-mono">Cód. {p.sku}</span> : null}
+                            {p.sku ? " · " : ""}
+                            Stock {formatCantidad(p.stock_actual, p.unidad_medida)}{" "}
+                            {p.unidad_medida.toUpperCase() === "UNIDAD" ? "u." : p.unidad_medida.toLowerCase()}
+                          </span>
                         </span>
                         <span className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">
                           {formatGs(precioSegunLista(p.precio_venta, caja.lista))}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, BarChart3, FileText, TrendingUp, Wallet } from "lucide-react";
+import { ArrowUpRight, BarChart3, FileText, Lock, TrendingUp, Wallet } from "lucide-react";
 
 /**
  * Vista mobile de Reportes — menú de accesos rápidos. El detalle de cada reporte
@@ -29,6 +29,13 @@ export default function ReportesMobile() {
           tone="bg-violet-100 text-violet-700"
           title="Gerencia"
           subtitle="KPIs comerciales, top clientes y categorías"
+        />
+        <ReporteItem
+          href="/reportes/cierres-caja"
+          icon={Lock}
+          tone="bg-amber-100 text-amber-700"
+          title="Cierres de caja"
+          subtitle="Arqueo de todas las cajas y diferencias"
         />
         <ReporteItem
           href="/comisiones"
