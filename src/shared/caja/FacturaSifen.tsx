@@ -9,10 +9,11 @@ import KudeTicket from "@/shared/caja/KudeTicket";
 /**
  * Factura electrónica (SIFEN) de una venta de la caja.
  *
- * Al abrirse le pide al servidor que emita la factura de la venta (crearla,
- * firmarla y mandarla a la SET) y después pregunta cada pocos segundos hasta
- * que la SET la apruebe. Recién aprobada existe el KuDE oficial —con CDC y
- * QR—, y es lo que se imprime.
+ * Al abrirse le pide al servidor que genere y firme la factura de la venta:
+ * con eso ya existe el KuDE —con CDC y QR— y se imprime enseguida. Después,
+ * por detrás, la manda a la SET y pregunta cada pocos segundos hasta que
+ * responda. Si la caja se cierra antes, el vigilante del servidor termina el
+ * envío y, si la SET la rechaza, avisa en la campanita.
  *
  * Si SIFEN no está activo en la empresa, `estado` queda en "inactivo" y la
  * caja sigue con su comprobante de siempre.
@@ -41,12 +42,16 @@ type Respuesta = {
 };
 
 const CADA_MS = 4000;
+/** Estados con XML firmado: el KuDE se puede imprimir. */
+const ESTADOS_CON_KUDE = new Set(["firmado", "enviado", "en_proceso", "aprobado", "error_envio"]);
 const INTENTOS = 30; // ≈ 2 minutos
 
 export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
   const [estado, setEstado] = useState<EstadoEmision>(habilitado ? "cargando" : "inactivo");
   const [facturaId, setFacturaId] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
+  /** Firmada: el KuDE ya se puede imprimir (la SET contesta después). */
+  const [kudeListo, setKudeListo] = useState(false);
   const intentos = useRef(0);
   const vivo = useRef(true);
 
@@ -58,6 +63,7 @@ export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
       return "fin" as const;
     }
     const e = d.estado_sifen ?? null;
+    if (e && ESTADOS_CON_KUDE.has(e)) setKudeListo(true);
     if (e === "aprobado") {
       setEstado("aprobado");
       setMensaje(null);
@@ -101,6 +107,13 @@ export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
     setMensaje(null);
     intentos.current = 0;
     try {
+      // 1) Generar y firmar: lo justo para imprimir el KuDE ya.
+      const r1 = await fetchWithSupabaseSession(`/api/ventas/${ventaId}/sifen/emitir?hasta=firmado`, { method: "POST" });
+      const j1 = (await r1.json().catch(() => ({}))) as Respuesta;
+      if (!vivo.current) return;
+      if (aplicar(j1, r1.ok) === "fin") return;
+      // 2) Mandarlo a la SET, por detrás: el pedido sigue aunque se cierre
+      //    esta ventana (y si no, lo termina el vigilante del servidor).
       const res = await fetchWithSupabaseSession(`/api/ventas/${ventaId}/sifen/emitir`, { method: "POST" });
       const j = (await res.json().catch(() => ({}))) as Respuesta;
       if (!vivo.current) return;
@@ -129,7 +142,7 @@ export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ventaId, habilitado]);
 
-  return { estado, facturaId, mensaje, emitir, reintentarConsulta };
+  return { estado, facturaId, mensaje, kudeListo, emitir, reintentarConsulta };
 }
 
 export type EmisionSifen = ReturnType<typeof useEmisionSifen>;
@@ -142,18 +155,57 @@ export function EstadoFacturaSifen({
   emision: EmisionSifen;
   onVerKude: () => void;
 }) {
-  const { estado, mensaje, facturaId } = emision;
+  const { estado, mensaje, facturaId, kudeListo } = emision;
   if (estado === "inactivo" || estado === "cargando") return null;
+
+  // Ya firmada: se imprime y la SET sigue por detrás. Se puede pasar a la
+  // venta siguiente sin esperar.
+  if (kudeListo && (estado === "enviando" || estado === "esperando" || estado === "demorado")) {
+    return (
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left">
+        <p className="flex items-center gap-2 text-sm font-semibold text-sky-900">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-sky-600" />
+          Factura lista · se manda a la SET por detrás
+        </p>
+        <p className="mt-0.5 text-xs text-sky-800">
+          Podés seguir con la próxima venta. Si la SET la rechaza, te avisamos en la campanita.
+        </p>
+        <button
+          type="button"
+          onClick={onVerKude}
+          className="mt-3 w-full rounded-xl bg-sky-600 py-3 text-sm font-semibold text-white hover:bg-sky-700"
+        >
+          Ver e imprimir factura (KuDE)
+        </button>
+      </div>
+    );
+  }
+
+  // Firmada pero el envío falló (corte de red, SET caída): se reintenta solo.
+  if (kudeListo && estado === "error") {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+        <p className="text-sm font-semibold text-amber-900">Factura lista · el envío a la SET se reintenta solo</p>
+        {mensaje ? <p className="mt-0.5 break-words text-xs text-amber-800">{mensaje}</p> : null}
+        <p className="mt-0.5 text-xs text-amber-800">Si sigue fallando, te avisamos en la campanita.</p>
+        <button
+          type="button"
+          onClick={onVerKude}
+          className="mt-3 w-full rounded-xl bg-amber-600 py-3 text-sm font-semibold text-white hover:bg-amber-700"
+        >
+          Ver e imprimir factura (KuDE)
+        </button>
+      </div>
+    );
+  }
 
   if (estado === "enviando" || estado === "esperando") {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left">
         <Loader2 className="h-5 w-5 shrink-0 animate-spin text-sky-600" />
         <div>
-          <p className="text-sm font-semibold text-sky-900">
-            {estado === "enviando" ? "Enviando la factura a la SET…" : "Esperando la aprobación de la SET…"}
-          </p>
-          <p className="text-xs text-sky-800">Suele tardar unos segundos. No cierres esta ventana.</p>
+          <p className="text-sm font-semibold text-sky-900">Preparando la factura…</p>
+          <p className="text-xs text-sky-800">Un segundo: se genera y se firma para imprimirla.</p>
         </div>
       </div>
     );

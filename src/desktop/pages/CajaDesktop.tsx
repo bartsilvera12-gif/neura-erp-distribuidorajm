@@ -821,7 +821,8 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
   const unidades = comp.unidades;
 
   const mostrarKude =
-    Boolean(emision.facturaId) && (verKude ?? (imprimir && emision.estado === "aprobado"));
+    // Se imprime apenas está firmada; la SET contesta después, por detrás.
+    Boolean(emision.facturaId) && (verKude ?? (imprimir && emision.kudeListo));
   const mostrarFactura =
     verFactura ?? (imprimir && comp.documento === "factura" && emision.estado === "inactivo");
   const objetivo =

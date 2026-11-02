@@ -43,7 +43,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (tomarFactura(fac.facturaId)) {
       try {
         const antes = await estadoSifen(supabase, auth.empresa_id, fac.facturaId);
+        // `?hasta=firmado`: la caja primero pide solo generar y firmar (lo
+        // justo para imprimir el KuDE) y el envío a la SET lo pide después,
+        // por detrás, sin hacer esperar a nadie.
+        const soloFirmar = request.nextUrl.searchParams.get("hasta") === "firmado";
         for (const paso of pasosPendientes(antes.estado_sifen)) {
+          if (soloFirmar && paso === "enviar") break;
           const r = await correrPaso(request, fac.facturaId, paso);
           if (!r.ok) {
             const ahora = await estadoSifen(supabase, auth.empresa_id, fac.facturaId);
