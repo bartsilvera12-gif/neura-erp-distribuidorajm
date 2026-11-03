@@ -88,6 +88,13 @@ export interface Venta {
   /** Medio de cobro (`ventas.metodo_pago`). */
   metodo_pago?: MetodoPagoVenta | null;
 
+  /**
+   * Pago mixto: cuánto entró por cada medio. Se arma leyendo
+   * `caja_movimientos` por `venta_id` para las ventas con `metodo_pago = 'mixto'`.
+   * Vacío/undefined para ventas con un solo medio o a crédito.
+   */
+  pagos_detalle?: PagoMixto[] | null;
+
   /** Caja en la que se cobró. */
   caja_id?: string | null;
 

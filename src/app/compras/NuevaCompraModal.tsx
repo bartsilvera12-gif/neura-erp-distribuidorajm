@@ -527,7 +527,25 @@ export default function NuevaCompraModal({
     <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-8" onClick={onClose}>
       <form onSubmit={handleSubmit}
         className="flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border"
-        onClick={(e) => e.stopPropagation()}>
+        onClick={(e) => e.stopPropagation()}
+        // Enter en cualquier input dentro de la factura NO guarda: se guarda
+        // solo con click en el botón (o Ctrl+Enter para quien lo prefiera). El
+        // buscador y los pop-ups manejan Enter con su propio handler, así que
+        // acá solo frenamos el submit implícito del form que se comía la
+        // cantidad / costo / precio recién tipeados.
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+          const t = e.target as HTMLElement;
+          const tag = t.tagName;
+          const tipo = (t as HTMLInputElement).type?.toLowerCase?.() ?? "";
+          // Se permite Enter en textareas (saltos de línea) y en los botones
+          // reales de la factura (incluido Guardar y los de las filas).
+          if (tag === "TEXTAREA") return;
+          if (tag === "BUTTON" && tipo === "submit") return;
+          if (tag === "BUTTON") return;
+          // Cualquier input/select: Enter no manda el form.
+          e.preventDefault();
+        }}>
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">

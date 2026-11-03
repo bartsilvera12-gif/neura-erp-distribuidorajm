@@ -151,9 +151,18 @@ export type EmisionSifen = ReturnType<typeof useEmisionSifen>;
 export function EstadoFacturaSifen({
   emision,
   onVerKude,
+  onImprimirInterno,
 }: {
   emision: EmisionSifen;
   onVerKude: () => void;
+  /**
+   * Mientras SIFEN se demora en firmar la factura (unos segundos),
+   * la clienta pedía poder imprimir YA algo para el cliente. Si se pasa
+   * esta función, se ofrece un botón "Imprimir ticket provisorio" en el
+   * cartel de "Preparando la factura…". La factura electrónica (KuDE)
+   * sigue emitiéndose y queda disponible cuando esté lista.
+   */
+  onImprimirInterno?: () => void;
 }) {
   const { estado, mensaje, facturaId, kudeListo } = emision;
   if (estado === "inactivo" || estado === "cargando") return null;
@@ -201,12 +210,23 @@ export function EstadoFacturaSifen({
 
   if (estado === "enviando" || estado === "esperando") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left">
-        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-sky-600" />
-        <div>
-          <p className="text-sm font-semibold text-sky-900">Preparando la factura…</p>
-          <p className="text-xs text-sky-800">Un segundo: se genera y se firma para imprimirla.</p>
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-sky-600" />
+          <div>
+            <p className="text-sm font-semibold text-sky-900">Preparando la factura…</p>
+            <p className="text-xs text-sky-800">Un segundo: se genera y se firma para imprimirla.</p>
+          </div>
         </div>
+        {onImprimirInterno ? (
+          <button
+            type="button"
+            onClick={onImprimirInterno}
+            className="mt-3 w-full rounded-xl border border-sky-300 bg-white py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100"
+          >
+            Imprimir ticket provisorio mientras tanto
+          </button>
+        ) : null}
       </div>
     );
   }

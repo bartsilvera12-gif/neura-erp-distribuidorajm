@@ -38,7 +38,11 @@ export default function AvisoCatalogoCaja({
   if (!origen) return null;
   // `empresa` es el maestro de Inventario, que no pasa por acá.
   if (origen.tipo === "empresa") return null;
-  if (origen.tipo === "salon" && ocultos === 0) return null;
+  // El aviso de "estás vendiendo del salón" se muestra SIEMPRE que la caja
+  // esté en origen salon. Antes solo salía cuando había productos ocultos sin
+  // stock, y el cajero no entendía por qué el stock de Caja no coincidía con
+  // el de Inventario (Inventario = total empresa; Caja = salón = empresa −
+  // camiones). Pedido explícito de la clienta de Distribuidora JM.
 
   const sinStock =
     ocultos === 0
@@ -55,7 +59,12 @@ export default function AvisoCatalogoCaja({
             <span className="font-semibold text-slate-700">{origen.camion ?? "—"}</span>.
           </>
         ) : (
-          "Lo que hay en el salón: el stock de la empresa menos lo que está arriba de los camiones."
+          <>
+            Estás vendiendo desde el <span className="font-semibold text-slate-700">salón</span>:
+            la lista muestra el stock de la empresa menos lo que está arriba de los camiones.
+            Si un producto aparece en Inventario pero no acá (o con menos stock), es porque la
+            diferencia está arriba de algún camión.
+          </>
         )}
         {sinStock}
       </span>

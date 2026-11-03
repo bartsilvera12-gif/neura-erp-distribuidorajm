@@ -9,19 +9,27 @@ import PlanillaArqueo from "@/shared/caja/PlanillaArqueo";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
+import ResumenArqueoRango from "@/shared/caja/ResumenArqueoRango";
 
-/** Arqueo de caja desktop: las cajas del día en grilla. */
+/** Arqueo de caja desktop: las cajas del día en grilla, o resumen de un rango. */
 export default function ArqueoDesktop() {
   const soloCaja = useSoloCaja();
-  const [fecha, setFecha] = useState(hoyEnAsuncion());
+  // Rango desde/hasta. Si son iguales, la pantalla queda tal cual antes (una
+  // fecha). Si difieren, se muestra el resumen agregado del período. Pedido
+  // explícito de la clienta (soporte, punto 6c).
+  const hoy = hoyEnAsuncion();
+  const [desde, setDesde] = useState(hoy);
+  const [hasta, setHasta] = useState(hoy);
+  const fecha = desde; // compat: el flujo existente trabaja con una fecha.
+  const esRango = desde !== hasta;
   // Lo normal es mirar la propia caja. La lista de todas las del día es para
   // revisar el negocio, no para vender, así que se pide a mano.
   const [todas, setTodas] = useState(false);
   const { isAdmin } = useIsAdmin();
   // El administrador, al mirar un día pasado, ve todas las cajas de ese día
   // (es revisión del negocio, no venta). Hoy sigue arrancando en su caja.
-  const esHoy = fecha === hoyEnAsuncion();
-  const verTodas = todas || (isAdmin && !esHoy);
+  const esHoy = fecha === hoy;
+  const verTodas = todas || (isAdmin && !esHoy) || esRango;
   const { arqueo, isLoading, mutate } = useArqueo(fecha, verTodas);
 
   return (
@@ -35,14 +43,33 @@ export default function ArqueoDesktop() {
         </div>
 
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={fecha}
-            max={hoyEnAsuncion()}
-            onChange={(e) => setFecha(e.target.value)}
-            aria-label="Fecha del arqueo"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-          />
+          <label className="flex items-center gap-1 text-xs text-slate-500">
+            Desde
+            <input
+              type="date"
+              value={desde}
+              max={hasta || hoy}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDesde(v);
+                if (hasta && v > hasta) setHasta(v);
+              }}
+              aria-label="Fecha desde"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-xs text-slate-500">
+            Hasta
+            <input
+              type="date"
+              value={hasta}
+              min={desde || undefined}
+              max={hoy}
+              onChange={(e) => setHasta(e.target.value)}
+              aria-label="Fecha hasta"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+            />
+          </label>
           <button
             type="button"
             onClick={() => window.print()}
@@ -85,7 +112,7 @@ export default function ArqueoDesktop() {
       </div>
 
 
-      {isAdmin ? (
+      {isAdmin && !esRango ? (
         esHoy ? (
           <button
             type="button"
@@ -99,7 +126,12 @@ export default function ArqueoDesktop() {
         )
       ) : null}
 
-      {isLoading && !arqueo ? (
+      {esRango ? (
+        // Rango: se consultan los días en paralelo y se muestra el resumen
+        // agregado por método de pago. La vista por caja individual queda
+        // disponible al poner Desde=Hasta en una sola fecha.
+        <ResumenArqueoRango desde={desde} hasta={hasta} />
+      ) : isLoading && !arqueo ? (
         <p className="py-16 text-center text-sm text-slate-400">Cargando…</p>
       ) : arqueo && !arqueo.disponible ? (
         <AvisoSinCajas />

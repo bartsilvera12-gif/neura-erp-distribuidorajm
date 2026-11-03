@@ -953,7 +953,20 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
             queda a un clic, dentro de la factura. */}
         {conSifen ? (
           <div className="mt-6">
-            <EstadoFacturaSifen emision={emision} onVerKude={() => setVerKude(true)} />
+            <EstadoFacturaSifen
+              emision={emision}
+              onVerKude={() => setVerKude(true)}
+              onImprimirInterno={() => {
+                // Mientras SIFEN emite el KuDE la clienta no quiere esperar
+                // ~30s para darle algo al cliente. Abrimos la factura interna
+                // para imprimirla YA, y desactivamos la auto-impresión del
+                // KuDE cuando llegue para evitar que se imprima dos veces
+                // (al operario le queda el botón "Ver e imprimir factura"
+                // para hacerlo manualmente cuando aparezca el KuDE).
+                setVerFactura(true);
+                setVerKude(false);
+              }}
+            />
           </div>
         ) : null}
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   Check,
@@ -23,6 +24,33 @@ import { totalConteo, type ConteoEfectivo } from "@/lib/cajas/conteo";
 import { VentasPorCategoria } from "./TarjetaArqueo";
 
 const TEAL = "#4FAEB2";
+
+/**
+ * Días calendario entre la apertura y hoy, contados en hora de Asunción. Una
+ * caja abierta ayer a las 23:00 y mirada hoy a las 00:30 cuenta como 1 día,
+ * aunque pasaron apenas 90 minutos: lo que importa es el cambio de fecha.
+ */
+function diasAbiertaAsuncion(fechaIso: string | null | undefined): number {
+  if (!fechaIso) return 0;
+  try {
+    const diaCalendario = (d: Date) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Asuncion",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+    const apertura = diaCalendario(new Date(fechaIso));
+    const hoy = diaCalendario(new Date());
+    const [a1, m1, d1] = apertura.split("-").map(Number);
+    const [a2, m2, d2] = hoy.split("-").map(Number);
+    const t1 = Date.UTC(a1, m1 - 1, d1);
+    const t2 = Date.UTC(a2, m2 - 1, d2);
+    return Math.max(0, Math.round((t2 - t1) / 86_400_000));
+  } catch {
+    return 0;
+  }
+}
 
 const gs = (n: number) => `Gs. ${Math.round(n).toLocaleString("es-PY")}`;
 
@@ -596,6 +624,26 @@ export default function TarjetaCajaAbierta({ onCambio }: { onCambio?: () => void
                 <Clock className="h-3 w-3 shrink-0" />
                 Abierta el {fechaLarga(caja.fecha_apertura)}
               </p>
+              {/* La caja normalmente se abre y se cierra el mismo día. Si lleva
+                  dos o más días abierta, es probable que se haya olvidado el
+                  cierre: avisamos para evitar que las ventas de hoy se imputen
+                  a la apertura de hace una semana. Pedido explícito de la
+                  clienta de Distribuidora JM (soporte, punto 6a). */}
+              {(() => {
+                const dias = diasAbiertaAsuncion(caja.fecha_apertura);
+                if (dias < 2) return null;
+                return (
+                  <p className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-900">
+                    <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Esta caja lleva <span className="font-semibold">{dias} días</span> abierta.
+                      Si ya hiciste el cierre del día, puede ser que haya quedado olvidada:
+                      revisá y cerrala con el botón <span className="font-semibold">Cerrar</span>{" "}
+                      antes de seguir cobrando.
+                    </span>
+                  </p>
+                );
+              })()}
             </div>
           </div>
 

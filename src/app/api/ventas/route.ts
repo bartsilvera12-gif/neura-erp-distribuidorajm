@@ -6,7 +6,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import type { Venta, LineaVenta, TipoIvaVenta } from "@/lib/ventas/types";
+import type { Venta, LineaVenta, TipoIvaVenta, PagoMixto, MedioMixto } from "@/lib/ventas/types";
 
 interface VentaRow {
   id: string;
@@ -211,6 +211,52 @@ export async function GET(request: NextRequest) {
       [empresaId]
     );
 
+    // Detalle del pago mixto: cuando la venta se cobró con más de un medio,
+    // el servidor insertó una fila por medio en `caja_movimientos` con el
+    // `venta_id`. Las agrupamos acá para que la tabla de Ventas pueda
+    // mostrar "Efectivo Gs. X · Transferencia Gs. Y" en vez de solo "Mixto".
+    // La consulta solo se dispara si hay al menos una venta mixta en la lista
+    // (pedido explícito de la clienta de Distribuidora JM, soporte punto 4).
+    const idsMixto = ventasQ.rows
+      .filter((r) => (r.metodo_pago ?? "").toLowerCase() === "mixto")
+      .map((r) => r.id);
+    const pagosDe = new Map<string, PagoMixto[]>();
+    if (idsMixto.length > 0) {
+      try {
+        const existeQ = await queryWithRetry<{ existe: string | null }>(pool,
+          `SELECT to_regclass($1)::text AS existe`,
+          [`${schema}.caja_movimientos`]
+        );
+        if (existeQ.rows[0]?.existe !== null) {
+          const mq = await queryWithRetry<{ venta_id: string; medio_pago: string | null; monto: string }>(
+            pool,
+            `SELECT venta_id, medio_pago, SUM(monto)::text AS monto
+               FROM ${quoteSchemaTable(schema, "caja_movimientos")}
+              WHERE empresa_id = $1::uuid
+                AND venta_id = ANY($2::uuid[])
+                AND tipo = 'ingreso'
+              GROUP BY venta_id, medio_pago
+              ORDER BY medio_pago`,
+            [empresaId, idsMixto]
+          );
+          const mediosValidos: ReadonlyArray<string> = ["efectivo", "transferencia", "cheque"];
+          for (const r of mq.rows) {
+            const medio = (r.medio_pago ?? "").toLowerCase();
+            if (!mediosValidos.includes(medio)) continue;
+            const monto = Math.round(Number(r.monto) || 0);
+            if (monto <= 0) continue;
+            const lista = pagosDe.get(r.venta_id) ?? [];
+            lista.push({ medio: medio as MedioMixto, monto });
+            pagosDe.set(r.venta_id, lista);
+          }
+        }
+      } catch (e) {
+        // Un fallo acá no debe tumbar la lista: en el peor caso, la columna
+        // "Método de pago" sigue mostrando "Mixto" sin el detalle, como antes.
+        console.warn("[/api/ventas GET] pagos mixtos:", e instanceof Error ? e.message : e);
+      }
+    }
+
     const unidadProducto = new Map<string, string>();
     try {
       const q = await queryWithRetry<{ id: string; unidad_medida: string | null }>(pool,
@@ -248,6 +294,7 @@ export async function GET(request: NextRequest) {
         fecha: r.fecha,
         estado: r.estado ?? null,
         metodo_pago: (r.metodo_pago as Venta["metodo_pago"]) ?? null,
+        pagos_detalle: pagosDe.get(r.id) ?? null,
         cliente_id: r.cliente_id ?? null,
         cliente_nombre: r.cliente_id ? nombreCliente.get(r.cliente_id) ?? null : null,
         cliente_ruc: r.cliente_id ? datosCliente.get(r.cliente_id)?.ruc ?? null : null,

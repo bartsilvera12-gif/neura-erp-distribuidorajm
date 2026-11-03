@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { LISTAS_PRECIO, DESCUENTO_MAYORISTA } from "@/lib/ventas/listas-precio";
 import type { CajaVenta } from "@/shared/caja/useCajaVenta";
 
@@ -11,8 +12,20 @@ const TEAL = "#4FAEB2";
  * volverlos a poner.
  */
 export default function SelectorListaPrecio({ caja }: { caja: CajaVenta }) {
+  // Doble render para evitar un hydration mismatch:
+  // - En SSR y en el PRIMER render del cliente, `caja.listaFija` es false
+  //   porque SWR todavía no tiene los datos del catálogo. Renderizar el
+  //   <p> en ese primer render client cuando SWR ya cargó por cache daba
+  //   "Hydration failed because the server rendered HTML didn't match the
+  //   client". El error dejaba a /ventas/nueva con el árbol regenerado en
+  //   el cliente y `useCatalogoVenta` quedaba en isLoading=true, lo que
+  //   escondía todo el catálogo y el aviso de origen.
+  // - Después de montar, ya se puede usar el valor real de listaFija.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // La lista es la del camión o la del salón: se elige en la compra.
-  if (caja.listaFija) {
+  if (mounted && caja.listaFija) {
     return (
       <p className="text-sm text-slate-600">
         <span className="font-semibold" style={{ color: TEAL }}>

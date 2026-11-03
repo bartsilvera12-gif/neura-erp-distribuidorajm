@@ -959,7 +959,19 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
 
           {conSifen ? (
             <div className="mt-4">
-              <EstadoFacturaSifen emision={emision} onVerKude={() => setVerKude(true)} />
+              <EstadoFacturaSifen
+                emision={emision}
+                onVerKude={() => setVerKude(true)}
+                onImprimirInterno={() => {
+                  // Mismo recurso que en desktop: mientras SIFEN emite el
+                  // KuDE, se puede darle al cliente un ticket provisorio.
+                  // Se apaga la auto-apertura del KuDE para evitar doble
+                  // impresión; queda disponible con el botón "Ver e
+                  // imprimir factura" cuando aparezca.
+                  setVerFactura(true);
+                  setVerKude(false);
+                }}
+              />
             </div>
           ) : null}
 
