@@ -159,7 +159,6 @@ export async function GET(request: NextRequest) {
       tipificacionesQ,
       productosQ,
       ventasQ,
-      ventasItemsQ,
       comprasQ,
       gastosQ,
       suscripcionesDashQ,
@@ -176,11 +175,12 @@ export async function GET(request: NextRequest) {
       // PostgREST (supabase.from) tiene un LIMIT por default de 1000 filas.
       // La clienta de Distribuidora JM pasó ese tope y el Dashboard dejó de
       // ver las ventas del día (las últimas 1200+ no entraban en las primeras
-      // 1000, ordenadas por inserción). Pedimos explícitamente un rango alto
-      // ordenado por fecha DESC: así las del día siempre están, y para el mes
-      // y cálculos históricos cubre hasta 50k operaciones sin tocar DB.
-      supabase.from("ventas").select("*").eq("empresa_id", empresaId).order("fecha", { ascending: false }).range(0, 49_999),
-      supabase.from("ventas_items").select("*").eq("empresa_id", empresaId).range(0, 199_999),
+      // 1000, ordenadas por inserción). Ordenamos por fecha DESC para que las
+      // del día siempre entren en el tope. ventas_items va aparte más abajo:
+      // hay que traer SOLO los items de las ventas que vinieron, porque los
+      // 1000 primeros ventas_items (por inserción) son los más viejos y se
+      // desajustan con las ventas del tope.
+      supabase.from("ventas").select("*").eq("empresa_id", empresaId).order("fecha", { ascending: false }),
       supabase.from("compras").select("*").eq("empresa_id", empresaId),
       supabase.from("gastos").select("id, monto, fecha").eq("empresa_id", empresaId),
       supabase
@@ -224,10 +224,39 @@ export async function GET(request: NextRequest) {
       ventasRows = await fallbackVentasPg(dataSchema, empresaId);
       if (ventasRows.length > 0) delete queryErrors.ventas;
     }
-    let ventasItemsRows = pickRows("ventas_items", ventasItemsQ, queryErrors);
-    if ((ventasItemsRows.length === 0 && queryErrors.ventas_items) || (usarPg && ventasItemsRows.length === 0)) {
-      ventasItemsRows = await fallbackVentasItemsPg(dataSchema, empresaId);
-      if (ventasItemsRows.length > 0) delete queryErrors.ventas_items;
+    // Traemos ventas_items CORRELACIONADO a las ventas que vinieron. Antes se
+    // pedía "todas las ventas_items de la empresa" y PostgREST capaba a 1000
+    // por default, devolviendo las 1000 más viejas por inserción. Resultado:
+    // las ventas del día quedaban sin líneas y el Dashboard mostraba
+    // Unidades=0 y Ganancia=0 aunque las ventas estaban ahí. Pedido explícito
+    // de Distribuidora JM.
+    let ventasItemsRows: unknown[] = [];
+    if (ventasRows.length > 0) {
+      const ventasIds = (ventasRows as { id?: string }[]).map((v) => v.id).filter(Boolean) as string[];
+      // Lote de a 500 ids: PostgREST con `in.(...)` funciona en rangos grandes,
+      // pero el URL se puede volver larguísimo. 500 ids por tanda es seguro.
+      const BATCH = 500;
+      try {
+        for (let i = 0; i < ventasIds.length; i += BATCH) {
+          const chunk = ventasIds.slice(i, i + BATCH);
+          const { data, error } = await supabase
+            .from("ventas_items")
+            .select("*")
+            .eq("empresa_id", empresaId)
+            .in("venta_id", chunk);
+          if (error) throw new Error(error.message);
+          if (data) ventasItemsRows = ventasItemsRows.concat(data);
+        }
+      } catch (e) {
+        // Si PostgREST falla (schema no expuesto / otro error) caemos a PG directo.
+        queryErrors.ventas_items = e instanceof Error ? e.message : String(e);
+        ventasItemsRows = [];
+      }
+      // Fallback PG directo si PostgREST no pudo (tenant `erp_*` sin exponer).
+      if ((ventasItemsRows.length === 0 && queryErrors.ventas_items) || (usarPg && ventasItemsRows.length === 0)) {
+        ventasItemsRows = await fallbackVentasItemsPg(dataSchema, empresaId);
+        if (ventasItemsRows.length > 0) delete queryErrors.ventas_items;
+      }
     }
 
     const payload = {
