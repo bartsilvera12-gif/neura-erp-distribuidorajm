@@ -53,6 +53,11 @@ export default function MovimientosPage() {
   const [query, setQuery] = useState("");
   const [fechaDesde, setFechaDesde] = useState(""); // "YYYY-MM-DD"
   const [fechaHasta, setFechaHasta] = useState(""); // "YYYY-MM-DD"
+  // Filtros por tipo y origen del movimiento. Pedido Distribuidora JM, punto 10:
+  // la clienta queria ver solo entradas o solo salidas, y separar compras,
+  // ventas, ajustes manuales, etc.
+  const [filtroTipo, setFiltroTipo] = useState<TipoMovimiento | "">("");
+  const [filtroOrigen, setFiltroOrigen] = useState<OrigenMovimiento | "">("");
   const [pageSize, setPageSize] = useState<25 | 50 | 100 | "all">(25);
 
   useEffect(() => {
@@ -71,6 +76,9 @@ export default function MovimientosPage() {
       const fechaMov = m.fecha.slice(0, 10);
       if (fechaDesde !== "" && fechaMov < fechaDesde) return false;
       if (fechaHasta !== "" && fechaMov > fechaHasta) return false;
+      // Filtros por tipo y origen.
+      if (filtroTipo !== "" && m.tipo !== filtroTipo) return false;
+      if (filtroOrigen !== "" && m.origen !== filtroOrigen) return false;
 
       const q = query.trim().toLowerCase();
       if (q === "") return true;
@@ -93,7 +101,7 @@ export default function MovimientosPage() {
       const terms = q.split(/\s+/).filter(Boolean);
       return terms.every((t) => haystack.includes(t));
     });
-  }, [todos, query, fechaDesde, fechaHasta]);
+  }, [todos, query, fechaDesde, fechaHasta, filtroTipo, filtroOrigen]);
 
   const filtrados = pageSize === "all" ? filtradosTodos : filtradosTodos.slice(0, pageSize);
 
@@ -208,6 +216,33 @@ export default function MovimientosPage() {
               className={`${inputFilterClass} w-full pl-9`}
             />
           </div>
+
+          {/* Tipo de movimiento */}
+          <select
+            value={filtroTipo}
+            onChange={(e) => setFiltroTipo(e.target.value as TipoMovimiento | "")}
+            aria-label="Filtrar por tipo"
+            className={inputFilterClass}
+          >
+            <option value="">Todos los tipos</option>
+            <option value="ENTRADA">Entradas</option>
+            <option value="SALIDA">Salidas</option>
+            <option value="AJUSTE">Ajustes</option>
+          </select>
+
+          {/* Origen del movimiento */}
+          <select
+            value={filtroOrigen}
+            onChange={(e) => setFiltroOrigen(e.target.value as OrigenMovimiento | "")}
+            aria-label="Filtrar por origen"
+            className={inputFilterClass}
+          >
+            <option value="">Todos los orígenes</option>
+            <option value="compra">Compra</option>
+            <option value="venta">Venta</option>
+            <option value="ajuste_manual">Ajuste manual</option>
+            <option value="inventario_inicial">Inventario inicial</option>
+          </select>
 
           {/* Rango de fechas */}
           <div className="flex items-center gap-1.5">
