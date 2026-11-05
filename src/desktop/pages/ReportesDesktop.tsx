@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -75,6 +75,14 @@ const REPORTES: ReporteCard[] = [
       "Ranking de productos por cantidad vendida, con filtros por rango de fechas y por ubicación (salón, camiones). Ordena de mayor a menor con los importes totales.",
     icon: Trophy,
     href: "/reportes/productos-mas-vendidos",
+  },
+  {
+    title: "Clientes",
+    subtitle: "Comercial",
+    description:
+      "Mejores compradores por período, clientes con mora (filtrable por días) y clientes inactivos (sin comprar desde X días).",
+    icon: Users,
+    href: "/reportes/ranking-clientes",
   },
   {
     title: "Cierres de caja",
