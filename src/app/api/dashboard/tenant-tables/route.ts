@@ -173,8 +173,14 @@ export async function GET(request: NextRequest) {
       supabase.from("pagos").select("id, factura_id, monto, fecha_pago").eq("empresa_id", empresaId).neq("estado_contable", "revertido"),
       supabase.from("tipificaciones").select("*").eq("empresa_id", empresaId),
       supabase.from("productos").select("*").eq("empresa_id", empresaId),
-      supabase.from("ventas").select("*").eq("empresa_id", empresaId),
-      supabase.from("ventas_items").select("*").eq("empresa_id", empresaId),
+      // PostgREST (supabase.from) tiene un LIMIT por default de 1000 filas.
+      // La clienta de Distribuidora JM pasó ese tope y el Dashboard dejó de
+      // ver las ventas del día (las últimas 1200+ no entraban en las primeras
+      // 1000, ordenadas por inserción). Pedimos explícitamente un rango alto
+      // ordenado por fecha DESC: así las del día siempre están, y para el mes
+      // y cálculos históricos cubre hasta 50k operaciones sin tocar DB.
+      supabase.from("ventas").select("*").eq("empresa_id", empresaId).order("fecha", { ascending: false }).range(0, 49_999),
+      supabase.from("ventas_items").select("*").eq("empresa_id", empresaId).range(0, 199_999),
       supabase.from("compras").select("*").eq("empresa_id", empresaId),
       supabase.from("gastos").select("id, monto, fecha").eq("empresa_id", empresaId),
       supabase
