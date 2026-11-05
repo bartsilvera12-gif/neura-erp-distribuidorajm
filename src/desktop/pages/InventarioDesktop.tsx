@@ -216,6 +216,12 @@ export default function InventarioPage() {
           <p className="mt-1 text-sm text-slate-500">Gestión de productos y control de stock</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/inventario/historico"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Ver a una fecha
+          </Link>
           <ExportExcelButton url="/api/inventario/productos/export" />
           <ImportExcelButton
             entidad="Productos"
