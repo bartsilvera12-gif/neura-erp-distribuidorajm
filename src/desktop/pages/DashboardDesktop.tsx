@@ -2440,7 +2440,10 @@ export default function DashboardPage() {
         setPagos(data.pagos);
         setTipificaciones(data.tipificaciones);
         setProductos(data.productos);
-        setVentas(data.ventas);
+        // Excluir ventas anuladas de TODOS los KPIs y graficos del dashboard:
+        // antes se contaban y el "Ventas del dia / mes" se inflaba con ventas
+        // que la clienta habia anulado. Pedido explicito de Distribuidora JM.
+        setVentas(data.ventas.filter((v) => (v.estado ?? "").toLowerCase() !== "anulada"));
         setCompras(data.compras);
         setGastos(data.gastos);
       })

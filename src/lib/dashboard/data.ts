@@ -92,6 +92,13 @@ export interface VentaRaw {
   moneda: string;
   tipo_cambio?: number;
   fecha: string;
+  /**
+   * Estado contable de la venta ("anulada" cuando la clienta anuló una venta
+   * mal cargada). El Dashboard debe excluir las anuladas de todos los KPIs y
+   * gráficos; antes no se exponía y los totales se inflaban con ventas que
+   * ya no existían. Pedido explícito de la clienta de Distribuidora JM.
+   */
+  estado?: string | null;
 }
 
 export interface CompraRaw {
@@ -440,6 +447,8 @@ export async function getDashboardData(): Promise<DashboardData> {
         moneda: (r.moneda as string) ?? "GS",
         tipo_cambio: Number(r.tipo_cambio) ?? 1,
         fecha: toCalendarDateStr(r.fecha as string) || toIsoTimestampStr(r.fecha as string),
+        // `estado` puede faltar en bases viejas (NULL en esa columna es venta vigente).
+        estado: typeof r.estado === "string" ? r.estado : null,
       };
     });
 
