@@ -57,6 +57,9 @@ export default function InventarioPage() {
   // un UUID = stock de esa ubicación (salón o un camión concreto). Pedido
   // de la clienta de Distribuidora JM (soporte, punto 8).
   const [filtroUbicacion, setFiltroUbicacion] = useState("");
+  // Mostrar SOLO productos sin stock en la ubicación elegida (o en la empresa
+  // si no hay ubicación). Pedido explícito de Distribuidora JM (soporte, punto 7).
+  const [soloSinStock, setSoloSinStock] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Borrado: el producto elegido, el error del intento y el aviso de cómo
@@ -145,6 +148,10 @@ export default function InventarioPage() {
     // Filtros por proveedor y categoría (se pueden combinar).
     if (filtroCategoria && (p.categoria_principal_id ?? "") !== filtroCategoria) return false;
     if (filtroProveedor && (p.proveedor_principal_id ?? "") !== filtroProveedor) return false;
+    // "Solo sin stock": aplica sobre el stock_actual, que ya refleja la
+    // ubicación elegida (si hay) o el total empresa (si no hay). <=0 cubre
+    // el caso de ventas que dejaron un remanente negativo por desfase.
+    if (soloSinStock && (p.stock_actual ?? 0) > 0) return false;
     const q = query.trim().toLowerCase();
     if (q === "") return true;
     const u = p.ubicacion_principal_id ? ubicacionById.get(p.ubicacion_principal_id) : null;
@@ -296,10 +303,24 @@ export default function InventarioPage() {
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </select>
-          {(filtroProveedor || filtroCategoria || filtroUbicacion) && (
+          <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={soloSinStock}
+              onChange={(e) => setSoloSinStock(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[#4FAEB2]"
+            />
+            Solo sin stock
+          </label>
+          {(filtroProveedor || filtroCategoria || filtroUbicacion || soloSinStock) && (
             <button
               type="button"
-              onClick={() => { setFiltroProveedor(""); setFiltroCategoria(""); setFiltroUbicacion(""); }}
+              onClick={() => {
+                setFiltroProveedor("");
+                setFiltroCategoria("");
+                setFiltroUbicacion("");
+                setSoloSinStock(false);
+              }}
               className="text-[11px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
             >
               Limpiar filtros
