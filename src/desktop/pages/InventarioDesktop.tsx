@@ -53,6 +53,10 @@ export default function InventarioPage() {
   const [proveedores, setProveedores] = useState<CatalogoMin[]>([]);
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroProveedor, setFiltroProveedor] = useState("");
+  // Filtro por ubicación: "" = total empresa (comportamiento original);
+  // un UUID = stock de esa ubicación (salón o un camión concreto). Pedido
+  // de la clienta de Distribuidora JM (soporte, punto 8).
+  const [filtroUbicacion, setFiltroUbicacion] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Borrado: el producto elegido, el error del intento y el aviso de cómo
@@ -94,7 +98,9 @@ export default function InventarioPage() {
   useEffect(() => {
     let cancelled = false;
     setCargando(true);
-    getProductos()
+    // Si hay ubicación elegida, se piden los productos con el stock DE esa
+    // ubicación (salón o un camión). Si no, el total de la empresa (original).
+    getProductos(null, filtroUbicacion || null)
       .then((data) => {
         if (!cancelled) setTodos(data);
       })
@@ -129,7 +135,7 @@ export default function InventarioPage() {
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, filtroUbicacion]);
 
   const ubicacionById = new Map(ubicaciones.map((u) => [u.id, u]));
 
@@ -256,6 +262,19 @@ export default function InventarioPage() {
             />
           </div>
           <select
+            value={filtroUbicacion}
+            onChange={(e) => setFiltroUbicacion(e.target.value)}
+            className={inputFilterClass}
+            aria-label="Filtrar por ubicación (salón, camiones)"
+          >
+            <option value="">Stock total (todas las ubicaciones)</option>
+            {ubicaciones.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nombre}{u.tipo ? ` · ${u.tipo}` : ""}
+              </option>
+            ))}
+          </select>
+          <select
             value={filtroProveedor}
             onChange={(e) => setFiltroProveedor(e.target.value)}
             className={inputFilterClass}
@@ -277,10 +296,10 @@ export default function InventarioPage() {
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </select>
-          {(filtroProveedor || filtroCategoria) && (
+          {(filtroProveedor || filtroCategoria || filtroUbicacion) && (
             <button
               type="button"
-              onClick={() => { setFiltroProveedor(""); setFiltroCategoria(""); }}
+              onClick={() => { setFiltroProveedor(""); setFiltroCategoria(""); setFiltroUbicacion(""); }}
               className="text-[11px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
             >
               Limpiar filtros

@@ -186,6 +186,15 @@ export async function GET(request: NextRequest) {
     // alta no había guardado nada—.
     const paraVenta = request.nextUrl.searchParams.get("para") === "venta";
     const repartoId = request.nextUrl.searchParams.get("reparto_id")?.trim() ?? "";
+    // `ubicacion_id` directo: Inventario necesita ver el stock de una ubicación
+    // concreta (salón / Camión 1 / Camión 2) sin pasar por un reparto. Cuando
+    // está presente, salta la resolución por camión del usuario y filtra el
+    // stock de esa ubicación (vía `inventario_stock_ubicacion`). Pedido explícito
+    // de Distribuidora JM (soporte, punto 8).
+    const ubicacionIdDirecta = (() => {
+      const v = request.nextUrl.searchParams.get("ubicacion_id")?.trim() ?? "";
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) ? v : null;
+    })();
 
     let camion: CamionDelReparto = { ubicacion_id: null, camion: null, existe: false };
     let motivoSalon: OrigenCatalogo["motivo_salon"];
@@ -250,8 +259,10 @@ export async function GET(request: NextRequest) {
     // stock de la empresa dejaba al repartidor vendiendo lo que está en el
     // depósito, con el camión descargado, y eso no hay control de mercadería que
     // lo explique después.
-    const ubicacionId = camion.ubicacion_id;
-    const camionSinUbicacion = camion.existe && camion.ubicacion_id === null;
+    // Precedencia: si se pide ubicacion_id directo (Inventario), gana sobre el
+    // camión resuelto por reparto. Si no, se usa el camión del vendedor como antes.
+    const ubicacionId = ubicacionIdDirecta ?? camion.ubicacion_id;
+    const camionSinUbicacion = ubicacionIdDirecta === null && camion.existe && camion.ubicacion_id === null;
 
     // De dónde sale la lista. Viaja en la respuesta porque hasta ahora cada
     // pantalla lo suponía por su cuenta y podía decir "salón" mostrando el
@@ -338,17 +349,34 @@ export async function GET(request: NextRequest) {
              FROM ${t}
             WHERE empresa_id = $1::uuid AND activo = true
             ORDER BY nombre`
-        : `SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
-                  COALESCE(su.stock_actual, 0) AS stock_actual,
-                  p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
-                  p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
-                  p.imagen_path, p.imagen_url, p.categoria_principal_id,
-                  p.ubicacion_principal_id, p.proveedor_principal_id, ${ivaP}
-             FROM ${t} p
-             JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
-               ON su.producto_id = p.id AND su.ubicacion_id = $2::uuid
-            WHERE p.empresa_id = $1::uuid AND p.activo = true AND su.stock_actual > 0
-            ORDER BY p.nombre`;
+        : // Para Caja (paraVenta) se mantiene el filtro "solo con stock > 0"
+          // y un INNER JOIN: el vendedor no puede ofrecer lo que no está arriba.
+          // Para Inventario (no paraVenta) se usa LEFT JOIN y se muestran todos
+          // los productos con su cantidad en esa ubicación, incluidos los de 0
+          // (para que la clienta vea qué le falta reponer en ese camión / salón).
+          paraVenta
+            ? `SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
+                      COALESCE(su.stock_actual, 0) AS stock_actual,
+                      p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
+                      p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
+                      p.imagen_path, p.imagen_url, p.categoria_principal_id,
+                      p.ubicacion_principal_id, p.proveedor_principal_id, ${ivaP}
+                 FROM ${t} p
+                 JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
+                   ON su.producto_id = p.id AND su.ubicacion_id = $2::uuid
+                WHERE p.empresa_id = $1::uuid AND p.activo = true AND su.stock_actual > 0
+                ORDER BY p.nombre`
+            : `SELECT p.id, p.empresa_id, p.nombre, p.sku, p.costo_promedio, p.precio_venta,
+                      COALESCE(su.stock_actual, 0) AS stock_actual,
+                      p.stock_minimo, p.unidad_medida, p.metodo_valuacion, p.activo,
+                      p.created_at, p.updated_at, p.codigo_barras, p.codigo_barras_interno,
+                      p.imagen_path, p.imagen_url, p.categoria_principal_id,
+                      p.ubicacion_principal_id, p.proveedor_principal_id, ${ivaP}
+                 FROM ${t} p
+                 LEFT JOIN ${quoteSchemaTable(schema, "inventario_stock_ubicacion")} su
+                   ON su.producto_id = p.id AND su.ubicacion_id = $2::uuid
+                WHERE p.empresa_id = $1::uuid AND p.activo = true
+                ORDER BY p.nombre`;
 
     const { rows } = camionSinUbicacion
       ? { rows: [] as Record<string, unknown>[] }

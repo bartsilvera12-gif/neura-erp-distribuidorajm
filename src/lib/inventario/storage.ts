@@ -159,11 +159,18 @@ export async function getProductosConOrigen(
   }
 }
 
-export async function getProductos(repartoId?: string | null): Promise<Producto[]> {
+export async function getProductos(
+  repartoId?: string | null,
+  ubicacionId?: string | null,
+): Promise<Producto[]> {
   try {
     // Con reparto, el servidor devuelve el stock de ese camión en vez del
-    // global: lo que el vendedor tiene arriba es lo único que puede vender.
-    const qs = repartoId ? `?reparto_id=${encodeURIComponent(repartoId)}` : "";
+    // global. Con ubicacion_id directo (Inventario filtrando por salón o un
+    // camión puntual), el stock de esa ubicación y nada más.
+    const params = new URLSearchParams();
+    if (repartoId) params.set("reparto_id", repartoId);
+    if (ubicacionId) params.set("ubicacion_id", ubicacionId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
     const r = await fetch(`/api/productos${qs}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
