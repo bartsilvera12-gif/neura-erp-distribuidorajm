@@ -6,6 +6,7 @@ import { precioSegunLista } from "@/lib/ventas/listas-precio";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Producto } from "@/lib/inventario/types";
 import {
+  AlertTriangle,
   CheckCircle2,
   FileText,
   MessageCircle,
@@ -14,6 +15,7 @@ import {
   Share2,
   Trash2,
 } from "lucide-react";
+import type { CajaAbierta } from "@/lib/cajas/types";
 import { useCatalogoVenta } from "@/shared/hooks/useInventario";
 import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogoCaja";
 import ModalComprobante from "@/shared/caja/ModalComprobante";
@@ -137,6 +139,12 @@ export default function CajaDesktop() {
           )}
         </div>
       </header>
+
+      {/* Aviso en el header de Caja cuando la caja activa es vieja. Sirve de
+          backup: ya existe el aviso amarillo en TarjetaCajaAbierta, pero el
+          cajero que entra directo a cobrar aca no ve esa tarjeta. Si lleva mas
+          de 1 dia abierta, le recordamos cerrarla. Pedido Distribuidora JM. */}
+      <AvisoCajaViejaEnHeader caja={caja.caja} />
 
       {/* Como la caja de un súper: a la izquierda el buscador, la venta en
           forma de ticket y los más vendidos; a la derecha, fijo, el TOTAL
@@ -1087,4 +1095,50 @@ function useImprimirAlAbrir(objetivo: string | null) {
     }, 200);
     return () => window.clearInterval(t);
   }, [objetivo]);
+}
+
+/**
+ * Aviso en el header de Caja cuando la caja activa fue abierta hace ≥ 1 día.
+ *
+ * Es un recordatorio secundario del aviso amarillo que ya vive en
+ * TarjetaCajaAbierta; existe porque el cajero que entra directo a /ventas/nueva
+ * no ve esa tarjeta. Pedido explícito de la clienta de Distribuidora JM: tenía
+ * cajas de hace varios días acumulando ventas sin darse cuenta.
+ *
+ * El umbral es 1 día (no 2 como en TarjetaCajaAbierta) porque esta pantalla es
+ * la última oportunidad antes de registrar una venta en la caja equivocada.
+ */
+function AvisoCajaViejaEnHeader({ caja }: { caja: CajaAbierta | null }) {
+  if (!caja?.fecha_apertura) return null;
+  const dias = (() => {
+    try {
+      const dia = (d: Date) =>
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Asuncion",
+          year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(d);
+      const a = dia(new Date(caja.fecha_apertura));
+      const h = dia(new Date());
+      const [a1,m1,d1] = a.split("-").map(Number);
+      const [a2,m2,d2] = h.split("-").map(Number);
+      return Math.max(0, Math.round((Date.UTC(a2,m2-1,d2) - Date.UTC(a1,m1-1,d1)) / 86_400_000));
+    } catch { return 0; }
+  })();
+  if (dias < 1) return null;
+  return (
+    <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+      <div>
+        <p className="font-semibold">
+          La caja N° {caja.numero_caja} está abierta hace {dias}{" "}
+          {dias === 1 ? "día" : "días"}.
+        </p>
+        <p className="mt-0.5 text-xs text-amber-800">
+          Cerrala antes de seguir cobrando: Arqueo → botón «Cerrar». Al próximo cobro se
+          abre una caja nueva automáticamente, pero las ventas de hoy que se cobren ahora
+          mismo se van a sumar a esta caja vieja.
+        </p>
+      </div>
+    </div>
+  );
 }

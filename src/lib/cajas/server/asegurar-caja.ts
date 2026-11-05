@@ -64,9 +64,18 @@ export async function asegurarCajaAbierta(
      */
     const filtroDueno =
       colDueno && usuarioId ? ` AND (${colDueno} = $2::uuid OR ${colDueno} IS NULL)` : "";
+    // Solo reutilizar la caja si fue abierta en las últimas 24 horas. Antes se
+    // tomaba cualquier caja con estado 'abierta' aunque fuera de hace días o
+    // semanas: en Distribuidora JM eso dejaba 3 cajas abiertas (una del 22-oct,
+    // otra del 03-nov, otra del 04-nov) y las ventas del día se imputaban a la
+    // más antigua "a nombre del usuario", partiendo el saldo de caja en dos y
+    // generando "diferencias negativas en cierre" sin una causa visible. Ahora,
+    // una caja olvidada de días anteriores queda abierta (para que se cierre
+    // manualmente con su conteo), pero el próximo cobro abre una nueva.
     const abierta = await client.query<{ id: string }>(
       `SELECT id FROM ${tC}
         WHERE empresa_id = $1::uuid AND estado = 'abierta'${filtroDueno}
+          AND fecha_apertura > (now() - interval '24 hours')
         ORDER BY ${colDueno && usuarioId ? `(${colDueno} IS NULL), ` : ""}fecha_apertura DESC
         LIMIT 1
         FOR UPDATE`,
