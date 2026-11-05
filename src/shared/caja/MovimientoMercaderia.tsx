@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { ArrowDownToLine, ArrowUpFromLine, Plus, Search, Wand2, X } from "lucide-react";
 import { useProductos } from "@/shared/hooks/useInventario";
+import { getProductos } from "@/lib/inventario/storage";
 import {
   crearUbicacionDeposito,
   getObjetivos,
@@ -11,6 +12,7 @@ import {
   registrarMovimiento,
 } from "@/lib/repartos/storage";
 import type { ObjetivoCamion, Reparto, Ubicacion } from "@/lib/repartos/types";
+import type { Producto } from "@/lib/inventario/types";
 
 const TEAL = "#4FAEB2";
 
@@ -35,12 +37,18 @@ export default function MovimientoMercaderia({
   onHecho: () => void;
 }) {
   const { productos, isLoading } = useProductos();
+  // Para evitar mostrar productos "ajenos" al camion/salon seleccionado
+  // (pedido Distribuidora JM, punto 11), siempre pedimos las ubicaciones:
+  // - En carga (salon -> camion) necesitamos el id del salon para traer
+  //   solo los productos que tienen stock ahi.
+  // - En transferencia (camion -> salon) ya teniamos ubicaciones para el
+  //   selector de destino; se mantiene.
   const {
     data: ubicaciones,
     isLoading: cargandoUbicaciones,
     mutate: recargarUbicaciones,
   } = useSWR<Ubicacion[]>(
-    tipo === "transferencia" ? "repartos:ubicaciones" : null,
+    "repartos:ubicaciones",
     () => getUbicaciones(),
     { revalidateOnFocus: false, dedupingInterval: 2 * 60_000 }
   );
@@ -84,13 +92,37 @@ export default function MovimientoMercaderia({
     void recargarUbicaciones();
   }
 
-  // En una descarga solo se puede mover lo que hay arriba del camión, así que
-  // la lista son sus productos y no el catálogo entero.
+  // Ubicacion del "salon" (origen por default de una carga al camion). Si hay
+  // mas de un depósito/salón, elegimos el primero de tipo "salon".
+  const salonId = useMemo(() => {
+    return (ubicaciones ?? []).find((u) => /salon/i.test(u.tipo))?.id ?? null;
+  }, [ubicaciones]);
+
+  // Productos CON STOCK en la ubicacion origen de este movimiento, traidos del
+  // servidor (/api/productos?ubicacion_id=X) en vez del catalogo entero. Soluciona
+  // dos sintomas reportados por Distribuidora JM (soporte, punto 11):
+  //  - Descarga camion -> salon: antes se filtraba por `reparto.items.teorico`,
+  //    pero `reparto_stock` queda vacio si no se cargo explicitamente el
+  //    reparto, y la pantalla decia "no hay nada que descargar" aunque el
+  //    camion tuviera productos fisicos arriba. Ahora se usa el stock real
+  //    de la ubicacion del camion.
+  //  - Carga salon -> camion: antes mostraba el catalogo COMPLETO (incluso
+  //    productos que no estan en ningun lado del salon), lo que permitia
+  //    cargar cosas ajenas. Ahora se muestran solo los que el salon tiene
+  //    arriba.
+  const ubicOrigen = esCarga ? salonId : reparto.ubicacion_id;
+  const { data: productosOrigen, isLoading: cargandoOrigen } = useSWR<Producto[]>(
+    ubicOrigen ? `mov-mercaderia:prods:${ubicOrigen}` : null,
+    () => getProductos(null, ubicOrigen ?? undefined),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  );
+
   const disponibles = useMemo(() => {
-    if (esCarga) return productos;
-    const enCamion = new Map(reparto.items.map((i) => [i.producto_id, i.teorico]));
-    return productos.filter((p) => (enCamion.get(p.id) ?? 0) > 0);
-  }, [esCarga, productos, reparto.items]);
+    // Mientras carga, devolvemos [] en vez del catalogo completo para no
+    // mostrar momentaneamente productos ajenos.
+    if (!productosOrigen) return [];
+    return productosOrigen.filter((p) => Number(p.stock_actual) > 0);
+  }, [productosOrigen]);
 
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -276,7 +308,7 @@ export default function MovimientoMercaderia({
         />
       </div>
 
-      {isLoading ? (
+      {isLoading || cargandoOrigen ? (
         <p className="py-8 text-center text-sm text-slate-400">Cargando productos…</p>
       ) : filtrados.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-400">
