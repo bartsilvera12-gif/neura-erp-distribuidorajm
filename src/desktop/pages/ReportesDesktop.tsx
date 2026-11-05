@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -83,6 +83,14 @@ const REPORTES: ReporteCard[] = [
       "Mejores compradores por período, clientes con mora (filtrable por días) y clientes inactivos (sin comprar desde X días).",
     icon: Users,
     href: "/reportes/ranking-clientes",
+  },
+  {
+    title: "Metas comerciales",
+    subtitle: "Comercial",
+    description:
+      "Objetivos de cantidad vendida por producto y por mes, con el avance real y el porcentaje de cumplimiento (vendido ÷ meta).",
+    icon: Target,
+    href: "/reportes/metas-comerciales",
   },
   {
     title: "Cierres de caja",
