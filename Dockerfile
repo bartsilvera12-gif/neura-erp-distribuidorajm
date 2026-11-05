@@ -87,10 +87,20 @@ ENV HOSTNAME=0.0.0.0
 # (GET http://localhost:3000/... con curl/wget). node:22-slim no trae ninguno de los
 # dos, así que sin esto la imagen buildea y arranca, pero Coolify la marca "unhealthy"
 # y descarta el deploy aunque la app esté sirviendo bien.
+#
+# tzdata + ENV TZ=America/Asuncion: la clienta opera en Paraguay y el Dashboard
+# calcula "Ventas del día / del mes" con la fecha local del server. Por default el
+# contenedor corre en UTC, así que una venta de las 22:00 Asunción quedaba en el
+# día siguiente UTC y desaparecía del "hoy" del Dashboard (reporte Gs. 0 pese a
+# tener ventas). Pedido explícito de Distribuidora JM.
 # Limpiamos apt lists para no engordar la capa.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg curl \
+    && apt-get install -y --no-install-recommends ffmpeg curl tzdata \
+    && ln -snf /usr/share/zoneinfo/America/Asuncion /etc/localtime \
+    && echo "America/Asuncion" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=America/Asuncion
 
 # Usuario no-root (buena práctica; standalone no necesita root).
 RUN groupadd --system --gid 1001 nodejs \
