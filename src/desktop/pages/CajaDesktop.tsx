@@ -22,6 +22,7 @@ import ModalComprobante from "@/shared/caja/ModalComprobante";
 import { buscarProductosCaja, leerEtiquetaBalanza, productoPorCodigo, textoSinResultado, useLectorGlobal } from "@/shared/caja/lector-codigo";
 import FinalizarVenta from "@/shared/caja/FinalizarVenta";
 import AvisoDeposito, { useDepositoDesdeUrl } from "@/shared/caja/AvisoDeposito";
+import AperturaCaja from "@/shared/caja/AperturaCaja";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import TicketVenta from "@/shared/caja/TicketVenta";
 import { EstadoFacturaSifen, VisorKude, useEmisionSifen } from "@/shared/caja/FacturaSifen";
@@ -106,6 +107,35 @@ export default function CajaDesktop() {
   useEffect(() => {
     if (!listo) enfocarBuscador();
   }, [listo]);
+
+  // Caja física: no se vende con la caja cerrada. Si el ERP modela caja
+  // (`cajasDisponibles`) y este usuario no tiene ninguna abierta, se muestra la
+  // apertura como barrera en lugar del POS. El vendedor móvil/reparto no pasa
+  // por acá: su pantalla (CajaMobile) conserva la apertura automática al cobrar.
+  const sinCajaAbierta = caja.cajasDisponibles && !caja.caja && !caja.cajaCargando;
+  if (sinCajaAbierta && !listo) {
+    return (
+      <div className="mx-auto max-w-xl px-6 py-10">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Caja cerrada</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Para registrar ventas, primero abrí la caja del mostrador.
+        </p>
+        <div className="mt-5">
+          <AperturaCaja
+            caja={null}
+            exigida
+            sugerido={caja.aperturaSugerida}
+            onCambio={caja.recargarCaja}
+          />
+        </div>
+        <div className="mt-5">
+          <Link href="/ventas/arqueo" className="text-sm font-medium text-slate-600 underline">
+            Ver arqueo y movimientos
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-4">

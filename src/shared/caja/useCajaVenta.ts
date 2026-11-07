@@ -133,7 +133,13 @@ export function useCajaVenta() {
    */
   const [documentoElegido, setDocumento] = useState<DocumentoVenta | null>(null);
 
-  const { caja, disponible: cajasDisponibles, mutate: recargarCaja } = useCajaAbierta();
+  const {
+    caja,
+    disponible: cajasDisponibles,
+    aperturaSugerida,
+    isLoading: cajaCargando,
+    mutate: recargarCaja,
+  } = useCajaAbierta();
 
   // ── Camión ─────────────────────────────────────────────────────────────────
   // Ya no hay repartos que elegir: si quien vende tiene un camión asignado
@@ -769,6 +775,8 @@ export function useCajaVenta() {
     plazoDias,
     caja,
     cajasDisponibles,
+    aperturaSugerida,
+    cajaCargando,
     recargarCaja,
     guardando,
     error,

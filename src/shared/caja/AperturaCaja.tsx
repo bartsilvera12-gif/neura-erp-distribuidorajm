@@ -28,10 +28,18 @@ export default function AperturaCaja({
   caja,
   onCambio,
   sugerido = 0,
+  exigida = false,
 }: {
   caja: CajaAbierta | null;
   onCambio: () => void;
   sugerido?: number;
+  /**
+   * En la caja física (POS de mostrador) no se vende sin caja abierta, así que
+   * el texto de "no hace falta abrirla a mano" no aplica: se pide abrirla. El
+   * flujo del vendedor móvil/reparto deja esto en `false` y conserva la
+   * apertura automática al cobrar.
+   */
+  exigida?: boolean;
 }) {
   // La apertura sugerida (el cierre anterior) llega del servidor: arranca ahí si
   // ya está, y se pre-carga cuando llega, mientras el cajero no haya tocado el
@@ -163,8 +171,9 @@ export default function AperturaCaja({
             <>
               <p className="text-sm font-semibold text-amber-900">Todavía no hay caja abierta</p>
               <p className="mt-1 text-xs leading-relaxed text-amber-900">
-                No hace falta abrirla a mano: se abre sola con el primer cobro. Abrila acá solo si
-                salís con cambio en el cajón, para que el arqueo lo cuente desde el arranque.
+                {exigida
+                  ? "Abrí la caja para empezar a vender. El efectivo inicial es el cambio con el que arranca el cajón; el arqueo cuadra contra eso."
+                  : "No hace falta abrirla a mano: se abre sola con el primer cobro. Abrila acá solo si salís con cambio en el cajón, para que el arqueo lo cuente desde el arranque."}
               </p>
               {sugerido > 0 ? (
                 <p className="mt-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs leading-relaxed text-emerald-800">
