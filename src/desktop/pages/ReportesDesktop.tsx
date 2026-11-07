@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -83,6 +83,14 @@ const REPORTES: ReporteCard[] = [
       "Ranking de productos por cantidad vendida, con filtros por rango de fechas y por ubicación (salón, camiones). Ordena de mayor a menor con los importes totales.",
     icon: Trophy,
     href: "/reportes/productos-mas-vendidos",
+  },
+  {
+    title: "Por categoría",
+    subtitle: "Comercial",
+    description:
+      "Ventas y compras del período agrupadas por categoría de producto, con importes totales y participación. Filtros por día, quincena, mes o rango de fechas.",
+    icon: Tags,
+    href: "/reportes/categorias",
   },
   {
     title: "Clientes",
