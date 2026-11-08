@@ -6,15 +6,19 @@ import Link from "next/link";
 import { useMemo } from "react";
 import {
   ArrowLeftRight,
+  Boxes,
   ClipboardCheck,
   FileText,
   HandCoins,
   Package,
+  ShoppingCart,
   Truck,
   Users,
 } from "lucide-react";
 import { useRepartos } from "@/shared/hooks/useRepartos";
 import { useAccesoRuta } from "@/shared/hooks/useAccesoRuta";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
+import { isErpRolAdministrador } from "@/lib/usuarios/erp-rol-normalize";
 
 /**
  * Menú operativo del celular: el que usa el repartidor en la calle.
@@ -33,6 +37,8 @@ type Tile = {
   sub?: string;
   icon: React.ComponentType<{ className?: string }>;
   fondo: string;
+  /** Solo visible para el administrador (además del gate de módulo). */
+  soloAdmin?: boolean;
 };
 
 const TILES: Tile[] = [
@@ -49,6 +55,8 @@ const TILES: Tile[] = [
   { href: "/notas-credito", label: "Devoluciones", icon: ArrowLeftRight, fondo: "#B04B4B" },
   { href: "/ventas/arqueo", label: "Arqueo de caja", icon: ClipboardCheck, fondo: "#4FAEB2" },
   { href: "/camiones", label: "Camiones", icon: Truck, fondo: "#5B6B7A" },
+  { href: "/inventario", label: "Inventario", icon: Boxes, fondo: "#3F8E91", soloAdmin: true },
+  { href: "/compras", label: "Compras", icon: ShoppingCart, fondo: "#8A5A44", soloAdmin: true },
 ];
 
 const FECHA = new Intl.DateTimeFormat("es-PY", {
@@ -65,9 +73,16 @@ function capitalizar(s: string): string {
 
 export default function MenuOperativoMobile() {
   const { puedeVer, cargando } = useAccesoRuta();
+  const { usuario } = useUsuarioActual();
   const { repartos } = useRepartos({ abiertos: true });
+  const esAdmin = isErpRolAdministrador(usuario?.rol);
 
-  const visibles = useMemo(() => TILES.filter((t) => puedeVer(t.href) === true), [puedeVer]);
+  // Inventario y Compras en el celular son solo para el administrador y solo si
+  // la empresa tiene el módulo habilitado (`puedeVer` ya chequea el módulo).
+  const visibles = useMemo(
+    () => TILES.filter((t) => puedeVer(t.href) === true && (!t.soloAdmin || esAdmin)),
+    [puedeVer, esAdmin]
+  );
 
   const hoy = capitalizar(FECHA.format(new Date()));
   const enCalle = repartos[0] ?? null;
