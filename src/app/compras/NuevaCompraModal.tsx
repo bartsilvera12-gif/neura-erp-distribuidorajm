@@ -543,7 +543,28 @@ export default function NuevaCompraModal({
           if (tag === "TEXTAREA") return;
           if (tag === "BUTTON" && tipo === "submit") return;
           if (tag === "BUTTON") return;
-          // Cualquier input/select: Enter no manda el form.
+          // Carga por teclado sin mouse: Enter encadena el renglón
+          // cantidad → costo → precio y, desde el precio, vuelve al buscador
+          // para cargar el siguiente producto. Mismo espíritu que la caja de
+          // ventas (buscar → Enter → cargar → Enter), para no soltar el teclado.
+          const id = (t as HTMLInputElement).id || "";
+          const m = /^compra-(cant|costo|precio)-(\d+)$/.exec(id);
+          if (m) {
+            e.preventDefault();
+            const campo = m[1];
+            const idx = m[2];
+            const destino =
+              campo === "cant"
+                ? `compra-costo-${idx}`
+                : campo === "costo"
+                  ? `compra-precio-${idx}`
+                  : "compra-buscar";
+            const el = document.getElementById(destino) as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
+            return;
+          }
+          // Cualquier otro input/select: Enter no manda el form.
           e.preventDefault();
         }}>
 
@@ -784,7 +805,7 @@ export default function NuevaCompraModal({
                           ) : null}
                         </td>
                         <td className="px-2 py-2">
-                          <MontoInput value={l.costo} onChange={(n) => cambiar(i, { costo: String(n) })}
+                          <MontoInput id={`compra-costo-${i}`} value={l.costo} onChange={(n) => cambiar(i, { costo: String(n) })}
                             decimals={false} placeholder="0" aria-label={`Costo de ${l.nombre}`} className={CELDA} />
                           {l.factor > 1 && calc[i].costo > 0 ? (
                             <span className="mt-0.5 block text-right text-[11px] text-slate-400">
@@ -793,7 +814,7 @@ export default function NuevaCompraModal({
                           ) : null}
                         </td>
                         <td className="px-2 py-2">
-                          <MontoInput value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
+                          <MontoInput id={`compra-precio-${i}`} value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
                             decimals={false} placeholder="—" aria-label={`Precio de venta de ${l.nombre}`} className={CELDA} />
                           {/* Con mayorista la caja cobra el 10% menos que este precio: se muestra
                               acá para que se vea el precio real de venta. */}
@@ -967,6 +988,7 @@ function BuscadorProducto({
     <div className="relative">
       <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
       <input
+        id="compra-buscar"
         value={q}
         autoComplete="off"
         onChange={(e) => { setQ(e.target.value); setMarcado(0); setAbierto(true); }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags, ArrowLeftRight } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -19,6 +19,14 @@ const REPORTES: ReporteCard[] = [
       "Registro fiscal unificado de compras válidas y Gastos y Servicios confirmados: proveedor, comprobante, gravado 5%/10%, exento, IVA y totales. Exportable a Excel.",
     icon: BookText,
     href: "/reportes/libro-compras",
+  },
+  {
+    title: "Compras",
+    subtitle: "Compras",
+    description:
+      "Todas las compras del período (con o sin timbrado): fecha, proveedor, comprobante, condición, ítems y total, con filtro por proveedor, totales y corte por proveedor. Para el registro fiscal (IVA) está el Libro de Compras.",
+    icon: Package,
+    href: "/reportes/compras",
   },
   {
     title: "Libro de Ventas",
@@ -77,6 +85,14 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/productos-mas-vendidos",
   },
   {
+    title: "Por categoría",
+    subtitle: "Comercial",
+    description:
+      "Ventas y compras del período agrupadas por categoría de producto, con importes totales y participación. Filtros por día, quincena, mes o rango de fechas.",
+    icon: Tags,
+    href: "/reportes/categorias",
+  },
+  {
     title: "Clientes",
     subtitle: "Comercial",
     description:
@@ -99,6 +115,14 @@ const REPORTES: ReporteCard[] = [
       "El arqueo de todas las cajas del período: cobrado en efectivo, transferencia y cheque, crédito, cobranzas, egresos, efectivo esperado contra contado y la diferencia. Exportable a Excel.",
     icon: Lock,
     href: "/reportes/cierres-caja",
+  },
+  {
+    title: "Cobranzas por transferencia",
+    subtitle: "Cobranzas",
+    description:
+      "Cobranzas recibidas por transferencia bancaria en el período (incluye la porción transferencia de pagos mixtos), con detalle por operación, total general e impresión en ticket para conciliar contra el extracto del banco.",
+    icon: ArrowLeftRight,
+    href: "/reportes/cobranzas-transferencias",
   },
   {
     title: "Conciliación bancaria",

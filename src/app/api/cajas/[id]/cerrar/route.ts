@@ -78,13 +78,16 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       (
         await client.query<{ c: string }>(
           `SELECT column_name AS c FROM information_schema.columns
-            WHERE table_schema = $1 AND table_name = 'cajas' AND column_name IN ('sencillo', 'conteo_efectivo')`,
+            WHERE table_schema = $1 AND table_name = 'cajas'
+              AND column_name IN ('sencillo', 'conteo_efectivo', 'diferencia', 'cerrada_por')`,
           [schema]
         )
       ).rows.map((r) => r.c)
     );
     const hayColSencillo = colsCaja.has("sencillo");
     const guardarConteo = conteo !== null && colsCaja.has("conteo_efectivo");
+    const guardarDiferencia = colsCaja.has("diferencia");
+    const guardarCerradaPor = colsCaja.has("cerrada_por");
 
     const cajaQ = await client.query<{
       estado: string;
@@ -141,6 +144,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (guardarConteo) {
       params.push(JSON.stringify(conteo));
       extra += `, conteo_efectivo = $${params.length}::jsonb`;
+    }
+    // La diferencia ya se devuelve en la respuesta; además se persiste para que
+    // el panel administrativo y los reportes la lean del registro sin recalcular.
+    if (guardarDiferencia) {
+      params.push(contado - esperado);
+      extra += `, diferencia = $${params.length}`;
+    }
+    // Quién cerró la caja, para trazabilidad del cierre.
+    if (guardarCerradaPor) {
+      params.push(ctx.auth.usuarioCatalogId ?? null);
+      extra += `, cerrada_por = $${params.length}::uuid`;
     }
     await client.query(
       `UPDATE ${tC}

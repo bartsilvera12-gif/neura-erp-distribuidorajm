@@ -1,0 +1,220 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
+import { getProveedores } from "@/lib/proveedores/storage";
+import type { Proveedor } from "@/lib/proveedores/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
+
+interface Fila {
+  id: string;
+  fecha: string | null;
+  proveedor: string | null;
+  proveedor_id: string | null;
+  ruc: string | null;
+  numero: string | null;
+  condicion: string | null;
+  estado: string | null;
+  items: number;
+  total: number;
+}
+interface CorteProveedor {
+  proveedor: string;
+  proveedor_id: string | null;
+  compras: number;
+  total: number;
+}
+interface Reporte {
+  desde: string;
+  hasta: string;
+  disponible: boolean;
+  resumen: { compras: number; total: number; contado: number; credito: number };
+  por_proveedor: CorteProveedor[];
+  filas: Fila[];
+}
+
+const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-PY");
+
+function firstOfMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+function today(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export default function ReporteComprasPage() {
+  const [desde, setDesde] = useState(firstOfMonth());
+  const [hasta, setHasta] = useState(today());
+  const [proveedorId, setProveedorId] = useState("");
+  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+
+  const [data, setData] = useState<Reporte | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const qs = useMemo(() => {
+    const p = new URLSearchParams();
+    if (desde) p.set("desde", desde);
+    if (hasta) p.set("hasta", hasta);
+    if (proveedorId) p.set("proveedor_id", proveedorId);
+    return p.toString();
+  }, [desde, hasta, proveedorId]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await apiFetch(`/api/reportes/compras?${qs}`);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.success) {
+        setError(j?.error ?? `Error ${r.status}`);
+        setData(null);
+        return;
+      }
+      setData(j.data as Reporte);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error de red");
+    } finally {
+      setLoading(false);
+    }
+  }, [qs]);
+
+  useEffect(() => {
+    getProveedores().then(setProveedores).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const resumen = data?.resumen;
+  const filas = data?.filas ?? [];
+  const porProveedor = data?.por_proveedor ?? [];
+
+  return (
+    <div className="w-full min-w-0 space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <nav className="mb-1 text-xs text-slate-500">
+            <Link href="/reportes" className="hover:text-[#4FAEB2]">Reportes</Link> /{" "}
+            <span className="font-semibold text-slate-700">Compras</span>
+          </nav>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Reporte de Compras</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Todas las compras del período (con o sin timbrado), con filtro por proveedor, totales y
+            corte por proveedor. No incluye anuladas. Para el registro fiscal (IVA), usá el{" "}
+            <Link href="/reportes/libro-compras" className="text-[#3F8E91] underline">Libro de Compras</Link>.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-4">
+        <label className="text-xs font-semibold text-slate-500">Desde
+          <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-xs font-semibold text-slate-500">Hasta
+          <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-xs font-semibold text-slate-500">Proveedor
+          <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
+            <option value="">Todos</option>
+            {proveedores.map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}</option>)}
+          </select>
+        </label>
+        <div className="flex items-end">
+          <button onClick={load} className="w-full rounded-lg bg-[#4FAEB2] px-3 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">Aplicar</button>
+        </div>
+      </div>
+
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {resumen && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { k: "Compras", v: resumen.compras.toLocaleString("es-PY") },
+            { k: "Total", v: `Gs. ${fmt(resumen.total)}` },
+            { k: "Contado", v: `Gs. ${fmt(resumen.contado)}` },
+            { k: "Crédito", v: `Gs. ${fmt(resumen.credito)}` },
+          ].map((s) => (
+            <div key={s.k} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{s.k}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">{s.v}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {porProveedor.length > 0 && (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Por proveedor
+          </div>
+          <table className="w-full min-w-[420px] text-xs">
+            <thead className="border-b bg-slate-50 uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-2 py-2 text-left">Proveedor</th>
+                <th className="px-2 py-2 text-right">Compras</th>
+                <th className="px-2 py-2 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {porProveedor.map((p, i) => (
+                <tr key={p.proveedor_id ?? `n${i}`} className="border-b last:border-0 hover:bg-slate-50/60">
+                  <td className="px-2 py-1.5">{p.proveedor}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{p.compras}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(p.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full min-w-[820px] text-xs">
+          <thead className="border-b bg-slate-50 uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-2 py-2 text-left">Fecha</th>
+              <th className="px-2 py-2 text-left">Proveedor</th>
+              <th className="px-2 py-2 text-left">RUC</th>
+              <th className="px-2 py-2 text-left">Comprobante</th>
+              <th className="px-2 py-2 text-left">Cond.</th>
+              <th className="px-2 py-2 text-right">Ítems</th>
+              <th className="px-2 py-2 text-right">Total</th>
+              <th className="px-2 py-2 text-center">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-400">Cargando…</td></tr>
+            ) : filas.length === 0 ? (
+              <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-400">Sin compras en el período/filtros.</td></tr>
+            ) : filas.map((r) => (
+              <tr key={r.id} className="border-b last:border-0 hover:bg-slate-50/60">
+                <td className="px-2 py-1.5">{(r.fecha ?? "").slice(0, 10)}</td>
+                <td className="px-2 py-1.5">{r.proveedor ?? "—"}</td>
+                <td className="px-2 py-1.5">{r.ruc ?? "—"}</td>
+                <td className="px-2 py-1.5 font-mono">{r.numero ?? "—"}</td>
+                <td className="px-2 py-1.5">{r.condicion ?? "—"}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{r.items}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
+                <td className="px-2 py-1.5 text-center text-slate-500">{r.estado ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+          {resumen && filas.length > 0 && (
+            <tfoot className="border-t bg-slate-50 font-semibold text-slate-800">
+              <tr>
+                <td className="px-2 py-2" colSpan={6}>TOTAL ({resumen.compras} compras)</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmt(resumen.total)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+}
