@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags, ArrowLeftRight } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -115,6 +115,14 @@ const REPORTES: ReporteCard[] = [
       "El arqueo de todas las cajas del período: cobrado en efectivo, transferencia y cheque, crédito, cobranzas, egresos, efectivo esperado contra contado y la diferencia. Exportable a Excel.",
     icon: Lock,
     href: "/reportes/cierres-caja",
+  },
+  {
+    title: "Cobranzas por transferencia",
+    subtitle: "Cobranzas",
+    description:
+      "Cobranzas recibidas por transferencia bancaria en el período (incluye la porción transferencia de pagos mixtos), con detalle por operación, total general e impresión en ticket para conciliar contra el extracto del banco.",
+    icon: ArrowLeftRight,
+    href: "/reportes/cobranzas-transferencias",
   },
   {
     title: "Conciliación bancaria",
