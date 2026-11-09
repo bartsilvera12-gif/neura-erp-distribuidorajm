@@ -857,14 +857,12 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   // la caja ya quedó limpia para la venta siguiente.
   const comp = caja.comprobante!;
 
-  // Con SIFEN activo TODA venta va a la SET (Sin nombre: factura
-  // innominada). Sin SIFEN sigue el comprobante de siempre.
-  const emision = useEmisionSifen(venta.id, true);
+  // Factura: con SIFEN va a la SET (sin cliente, innominada). El ticket es
+  // aparte: interno, no va a la SET.
+  const emision = useEmisionSifen(venta.id, comp.documento === "factura");
   const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
-  const ticketInterno =
-    comp.documento === "ticket" &&
-    (!conSifen || ((emision.estado === "error" || emision.estado === "rechazado") && !emision.kudeListo));
+  const ticketInterno = comp.documento === "ticket";
 
   const datos: DatosComprobante = {
     venta,
@@ -891,7 +889,7 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
           vistazo es el número y el total, y lo que necesita hacer es mandárselo
           al cliente. La factura entera queda a un toque. */}
       {ticketInterno ? (
-        // Ticket interno: sin SIFEN, o si la factura innominada falló.
+        // Ticket: comprobante interno, sale directo.
         <>
           {conSifen ? (
             <div className="no-imprimir px-4 pt-4">

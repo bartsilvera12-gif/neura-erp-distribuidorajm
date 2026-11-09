@@ -15,6 +15,7 @@ import ModalCaja from "@/shared/caja/ModalCaja";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import AvisoDeposito from "@/shared/caja/AvisoDeposito";
 import PagoMixtoCampos from "@/shared/caja/PagoMixtoCampos";
+import { useSifenActivo } from "@/shared/hooks/useSifenActivo";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
@@ -65,12 +66,18 @@ export default function FinalizarVenta({
   onConfirmada: () => void;
 }) {
   const [modo, setModo] = useState<Modo>(caja.cliente ? "con-nombre" : "sin-nombre");
+  /**
+   * Factura Sin nombre: el cliente no da sus datos. Con factura electrónica
+   * sale innominada (consumidor final) y va igual a la SET.
+   */
+  const [facturaSinNombre, setFacturaSinNombre] = useState(false);
+  const sifen = useSifenActivo();
   const [aviso, setAviso] = useState<string | null>(null);
   const grupoComprobante = useRef<HTMLDivElement>(null);
   const grupoPago = useRef<HTMLDivElement>(null);
 
   const pago: Pago | null = caja.aCredito ? "credito" : caja.metodoPago;
-  const faltaCliente = modo === "con-nombre" && !caja.cliente;
+  const faltaCliente = modo === "con-nombre" && !caja.cliente && !facturaSinNombre;
   const listo = caja.puedeConfirmar && !faltaCliente && !caja.guardando;
 
   const foco = {
@@ -88,7 +95,7 @@ export default function FinalizarVenta({
 
   async function confirmar() {
     if (!listo) {
-      setAviso(faltaCliente ? "Elegí el cliente de la factura." : caja.motivoNoConfirmar);
+      setAviso(faltaCliente ? "Elegí el cliente de la factura, o «Sin nombre»." : caja.motivoNoConfirmar);
       if (faltaCliente) foco.cliente();
       return;
     }
@@ -122,7 +129,19 @@ export default function FinalizarVenta({
       if (caja.aCredito || !caja.metodoPago) caja.setMetodoPago(caja.metodoPago ?? "efectivo");
     } else {
       caja.setDocumento("factura");
+      // Al pasar a factura se elige a nombre de quién: un cliente o Sin nombre.
+      setFacturaSinNombre(false);
     }
+  }
+
+  /** Factura sin cliente: innominada. */
+  function facturarSinNombre() {
+    setAviso(null);
+    caja.elegirSinNombre();
+    caja.setDocumento("factura");
+    setFacturaSinNombre(true);
+    if (caja.aCredito || !caja.metodoPago) caja.setMetodoPago(caja.metodoPago ?? "efectivo");
+    foco.pago();
   }
 
   function elegirPago(p: Pago) {
@@ -204,16 +223,31 @@ export default function FinalizarVenta({
             {
               valor: "sin-nombre",
               texto: "Ticket",
-              detalle: "sin nombre",
+              detalle: sifen ? "interno · no va a la SET" : "sin nombre",
               Icono: Receipt,
               // El depósito es de un cliente: la venta va a su nombre.
               deshabilitado: Boolean(caja.deposito),
             },
-            { valor: "con-nombre", texto: "Factura", detalle: "con nombre del cliente", Icono: FileText },
+            {
+              valor: "con-nombre",
+              texto: "Factura",
+              detalle: sifen ? "va a la SET · con o sin nombre" : "con nombre del cliente",
+              Icono: FileText,
+            },
           ]}
         />
         {modo === "con-nombre" ? (
-          <ElegirCliente caja={caja} onElegido={foco.pago} />
+          <ElegirCliente
+            caja={caja}
+            onElegido={() => {
+              setFacturaSinNombre(false);
+              foco.pago();
+            }}
+            sinNombre={facturaSinNombre && !caja.cliente}
+            onSinNombre={facturarSinNombre}
+            onConNombre={() => setFacturaSinNombre(false)}
+            sifen={sifen}
+          />
         ) : null}
       </Seccion>
 
@@ -425,7 +459,23 @@ function FilaOpciones<T extends string>({
  * El cliente de la factura, sin salir de la ventana: buscar (Enter elige el
  * marcado, flechas para moverse) o registrarlo ahí mismo.
  */
-function ElegirCliente({ caja, onElegido }: { caja: CajaVenta; onElegido: () => void }) {
+function ElegirCliente({
+  caja,
+  onElegido,
+  sinNombre,
+  onSinNombre,
+  onConNombre,
+  sifen,
+}: {
+  caja: CajaVenta;
+  onElegido: () => void;
+  /** La factura va Sin nombre (innominada). */
+  sinNombre: boolean;
+  onSinNombre: () => void;
+  /** Deja Sin nombre para buscar un cliente. */
+  onConNombre: () => void;
+  sifen: boolean;
+}) {
   const { clientes, error, mutate } = useClientes();
   const [buscando, setBuscando] = useState(!caja.cliente);
   const [registrando, setRegistrando] = useState(false);
@@ -466,6 +516,30 @@ function ElegirCliente({ caja, onElegido }: { caja: CajaVenta; onElegido: () => 
             elegir(c);
           }}
         />
+      </div>
+    );
+  }
+
+  if (sinNombre) {
+    return (
+      <div className="mt-3 flex items-center gap-3 rounded-xl border-2 border-[#4FAEB2] px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900">Sin nombre</p>
+          <p className="truncate text-xs text-slate-500">
+            {sifen ? "Factura innominada (consumidor final) · va a la SET" : "Factura sin datos del cliente"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            onConNombre();
+            setBuscando(true);
+            enfocar(() => document.getElementById("cobro-buscar-cliente"));
+          }}
+          className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Elegir cliente
+        </button>
       </div>
     );
   }
@@ -548,14 +622,26 @@ function ElegirCliente({ caja, onElegido }: { caja: CajaVenta; onElegido: () => 
         ) : null}
       </ul>
 
-      <button
-        type="button"
-        onClick={() => setRegistrando(true)}
-        className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-      >
-        <UserPlus className="h-3.5 w-3.5" />
-        Registrar nuevo cliente
-      </button>
+      <div className="mt-1.5 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onSinNombre}
+          disabled={Boolean(caja.deposito)}
+          title={caja.deposito ? "La venta se paga con el depósito del cliente: va a su nombre." : undefined}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+        >
+          <Receipt className="h-3.5 w-3.5" />
+          Sin nombre
+        </button>
+        <button
+          type="button"
+          onClick={() => setRegistrando(true)}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          Registrar nuevo cliente
+        </button>
+      </div>
     </div>
   );
 }

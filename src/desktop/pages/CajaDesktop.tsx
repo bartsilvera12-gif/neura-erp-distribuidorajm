@@ -852,18 +852,14 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
   // la caja ya quedó limpia para la venta siguiente.
   const comp = caja.comprobante!;
 
-  // Con SIFEN activo TODA venta va a la SET: con cliente, factura a su
-  // nombre; Sin nombre, factura innominada (consumidor final). Lo que se
-  // imprime es el KuDE, apenas está firmado. Sin SIFEN sigue el comprobante
-  // de siempre (factura interna o ticket).
-  const emision = useEmisionSifen(venta.id, true);
+  // Factura: con SIFEN activo va a la SET —con cliente a su nombre, Sin
+  // nombre innominada (consumidor final)— y se imprime el KuDE apenas está
+  // firmado. Sin SIFEN, factura interna. El ticket es aparte: interno, no va
+  // a la SET.
+  const emision = useEmisionSifen(venta.id, comp.documento === "factura");
   const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
-  // Ticket interno: sin SIFEN, o si la factura innominada no se pudo armar
-  // (la venta no se traba: sale el ticket y el error queda a la vista).
-  const ticketInterno =
-    comp.documento === "ticket" &&
-    (!conSifen || ((emision.estado === "error" || emision.estado === "rechazado") && !emision.kudeListo));
+  const ticketInterno = comp.documento === "ticket";
 
   const mostrarKude =
     // Se imprime apenas está firmada; la SET contesta después, por detrás.
