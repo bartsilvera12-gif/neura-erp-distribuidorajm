@@ -12,9 +12,31 @@ import {
   pathRequiresModuleSlug,
 } from "@/lib/modulos/route-slug-map";
 import ZentraLoader from "@/components/ZentraLoader";
+import { DESKTOP_MIN_WIDTH_PX, DEVICE_COOKIE_NAME } from "@/shared/device/detect";
+import { canonicalErpRol } from "@/lib/usuarios/erp-rol-normalize";
 import { BootProvider } from "@/components/BootContext";
 
 const PUBLIC_ROUTES = ["/login"];
+
+/**
+ * En el celular la home (`/`) es el menú operativo, no el dashboard de KPIs:
+ * no pide el módulo Dashboard (el menú ya muestra solo lo que el usuario
+ * puede usar). Antes el repartidor, sin ese módulo, caía siempre en Reportes.
+ */
+function esCelular(): boolean {
+  if (typeof window === "undefined") return false;
+  if (document.cookie.split("; ").includes(`${DEVICE_COOKIE_NAME}=mobile`)) return true;
+  return window.innerWidth < DESKTOP_MIN_WIDTH_PX;
+}
+
+/** A dónde mandar a quien no puede entrar a la ruta pedida. */
+function destinoInicial(access: ModuleAccess): string {
+  // El repartidor trabaja vendiendo: su inicio es Ventas, no los reportes.
+  if (canonicalErpRol(access.rol) === "vendedor_movil" && isModuleSlugGranted("ventas", access.slugs)) {
+    return esCelular() ? "/" : "/ventas";
+  }
+  return firstAccessibleHref(access.slugs, { superAdmin: access.superAdmin });
+}
 
 type ModuleAccess = { superAdmin: boolean; slugs: Set<string>; rol: string | null };
 
@@ -120,13 +142,16 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
     }
 
     if (pathname.startsWith("/admin") && !access.superAdmin) {
-      router.replace(firstAccessibleHref(access.slugs, { superAdmin: false }));
+      router.replace(destinoInicial({ ...access, superAdmin: false }));
       return;
     }
 
+    // Home en el celular: el menú operativo, sin gate de Dashboard.
+    if (pathname === "/" && esCelular()) return;
+
     const slug = pathRequiresModuleSlug(pathname);
     if (slug && !access.superAdmin && !isModuleSlugGranted(slug, access.slugs)) {
-      const dest = firstAccessibleHref(access.slugs, { superAdmin: access.superAdmin });
+      const dest = destinoInicial(access);
       if (dest !== pathname.split("?")[0]) router.replace(dest);
     }
   }, [pathname, access, isPublic, router]);
