@@ -16,7 +16,7 @@ import { isModuleSlugGranted, pathRequiresModuleSlug } from "@/lib/modulos/route
  * instante y después recortarlo.
  */
 export function useAccesoRuta() {
-  const { modulos, isLoading } = useMisModulos();
+  const { modulos, isLoading, error, recargar } = useMisModulos();
 
   const puedeVer = useCallback(
     (href: string): boolean | null => {
@@ -30,5 +30,5 @@ export function useAccesoRuta() {
     [modulos, isLoading]
   );
 
-  return { puedeVer, cargando: isLoading };
+  return { puedeVer, cargando: isLoading, error, recargar };
 }

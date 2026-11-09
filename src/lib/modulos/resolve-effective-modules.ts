@@ -1,4 +1,4 @@
-import { isErpRolSupervisor } from "@/lib/usuarios/erp-rol-normalize";
+import { canonicalErpRol, isErpRolSupervisor } from "@/lib/usuarios/erp-rol-normalize";
 import { esModuloRestringido } from "./modulos-restringidos";
 
 export type ModuloRow = { id: string; nombre: string; slug: string };
@@ -19,6 +19,17 @@ const SUPERVISOR_OMNICANAL_GRANT_SLUGS = new Set([
   "conversaciones-finalizadas",
   "monitoreo",
 ]);
+
+/**
+ * Módulos que cada rol operativo necesita sí o sí para su trabajo (si la
+ * empresa los tiene activos), además de los que tenga asignados a mano.
+ */
+const BASE_POR_ROL: Record<string, Set<string>> = {
+  // El repartidor en la calle: vender, sus clientes, cobrar, su camión y devoluciones.
+  vendedor_movil: new Set(["ventas", "clientes", "cobranzas", "camiones", "notas_credito"]),
+  // El cajero del salón: la caja (ventas).
+  cajero: new Set(["ventas"]),
+};
 
 /** Admin de empresa (`admin` al crear empresa, `administrador` en el alta interna): ven todos los módulos habilitados para la empresa. */
 export function esRolAdminEmpresa(rol: string | null | undefined): boolean {
@@ -150,6 +161,18 @@ export async function resolveEffectiveModules(
   } else {
     const empresaSet = new Set(effectiveEmpresaModuloIds);
     moduloIds = userIds.filter((id) => empresaSet.has(id));
+  }
+
+  // Lo mínimo para trabajar según el rol, si la empresa lo tiene activo. Sin
+  // esto, un repartidor con módulos viejos asignados a mano (p. ej. el de
+  // Repartos, que ya no existe) entraba al celular y no veía nada.
+  const base = BASE_POR_ROL[canonicalErpRol(usuario.rol) ?? ""];
+  if (base) {
+    const empresaModulos = await modulosRowsByIds(supabase, effectiveEmpresaModuloIds);
+    const baseIds = empresaModulos
+      .filter((m) => base.has((m.slug ?? "").trim().toLowerCase()))
+      .map((m) => m.id);
+    moduloIds = [...new Set([...moduloIds, ...baseIds])];
   }
 
   if (isErpRolSupervisor(usuario.rol)) {

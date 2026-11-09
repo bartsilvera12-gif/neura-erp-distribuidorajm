@@ -72,7 +72,7 @@ function capitalizar(s: string): string {
 }
 
 export default function MenuOperativoMobile() {
-  const { puedeVer, cargando } = useAccesoRuta();
+  const { puedeVer, cargando, error, recargar } = useAccesoRuta();
   const { usuario } = useUsuarioActual();
   const { repartos } = useRepartos({ abiertos: true });
   const esAdmin = isErpRolAdministrador(usuario?.rol);
@@ -106,9 +106,32 @@ export default function MenuOperativoMobile() {
       {cargando ? (
         <p className="p-8 text-center text-sm text-slate-400">Cargando menú…</p>
       ) : visibles.length === 0 ? (
-        <p className="p-8 text-center text-sm text-slate-500">
-          Tu usuario no tiene módulos habilitados. Pedí a un administrador que los revise.
-        </p>
+        // Dos causas muy distintas: no se pudo leer (sin señal, sesión vencida)
+        // o de verdad no tiene nada asignado. Decir cuál, y dar una salida.
+        <div className="space-y-3 p-6 text-center text-sm text-slate-600">
+          {error ? (
+            <p>No se pudo cargar tu menú (sin conexión o sesión vencida).</p>
+          ) : !usuario ? (
+            <p>Tu sesión venció o tu usuario no está vinculado a la empresa. Volvé a entrar.</p>
+          ) : (
+            <p>
+              Tu usuario no tiene módulos habilitados. Pedí a un administrador que los revise en Usuarios →{" "}
+              {usuario.nombre ?? "tu usuario"}.
+            </p>
+          )}
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={recargar}
+              className="rounded-xl bg-[#0B3A3D] px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Reintentar
+            </button>
+            <Link href="/login" className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700">
+              Volver a entrar
+            </Link>
+          </div>
+        </div>
       ) : (
         <ul className="grid grid-cols-2 gap-3 p-3">
           {visibles.map((t, i) => {

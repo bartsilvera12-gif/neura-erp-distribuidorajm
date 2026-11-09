@@ -43,5 +43,7 @@ export function useMisModulos() {
     },
     isLoading: swr.isLoading && !swr.data,
     error: swr.error as Error | undefined,
+    /** Volver a pedir los módulos (p. ej. después de que el admin los corrigió). */
+    recargar: () => void swr.mutate(),
   };
 }
