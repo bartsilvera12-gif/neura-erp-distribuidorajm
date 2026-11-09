@@ -125,3 +125,38 @@ export function computeTotals(rows: CuentaPagarRow[]): CuentaPagarTotals {
   }
   return t;
 }
+
+/**
+ * Las compras del mismo período y proveedor que NO entran al reporte, para
+ * que se vea por qué la lista de Compras tiene más: las de contado (ya
+ * pagadas, no son deuda) y las anuladas.
+ */
+export async function contarExcluidas(
+  schemaRaw: string,
+  empresaId: string,
+  f: CuentasPagarFilters = {}
+): Promise<{ contado: number; total_contado: number; anuladas: number }> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const FECHA = `(c.fecha AT TIME ZONE 'America/Asuncion')::date`;
+  const params: unknown[] = [empresaId];
+  const where: string[] = ["c.empresa_id = $1::uuid"];
+  const add = (v: unknown) => { params.push(v); return `$${params.length}`; };
+  if (f.desde) where.push(`${FECHA} >= ${add(f.desde)}::date`);
+  if (f.hasta) where.push(`${FECHA} <= ${add(f.hasta)}::date`);
+  if (f.proveedor_id) where.push(`c.proveedor_id = ${add(f.proveedor_id)}::uuid`);
+  const contado = "COALESCE(c.tipo_pago, 'contado') <> 'credito' AND COALESCE(c.estado, '') <> 'anulada'";
+  const { rows } = await pool().query<{ contado: string; total_contado: string; anuladas: string }>(
+    `SELECT count(*) FILTER (WHERE ${contado})::text AS contado,
+            COALESCE(sum(c.total) FILTER (WHERE ${contado}), 0)::text AS total_contado,
+            count(*) FILTER (WHERE COALESCE(c.estado, '') = 'anulada')::text AS anuladas
+       FROM ${quoteSchemaTable(schema, "compras")} c
+      WHERE ${where.join(" AND ")}`,
+    params
+  );
+  const r = rows[0];
+  return {
+    contado: Number(r?.contado ?? 0),
+    total_contado: Number(r?.total_contado ?? 0),
+    anuladas: Number(r?.anuladas ?? 0),
+  };
+}

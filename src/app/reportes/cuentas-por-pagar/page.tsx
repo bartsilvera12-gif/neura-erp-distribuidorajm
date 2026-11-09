@@ -32,6 +32,7 @@ export default function CuentasPorPagarPage() {
 
   const [rows, setRows] = useState<Row[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
+  const [excluidas, setExcluidas] = useState<{ contado: number; total_contado: number; anuladas: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +53,7 @@ export default function CuentasPorPagarPage() {
       if (!r.ok || !j?.success) { setError(j?.error ?? `Error ${r.status}`); setRows([]); setTotals(null); return; }
       setRows(j.data.rows as Row[]);
       setTotals(j.data.totals as Totals);
+      setExcluidas(j.data.excluidas ?? null);
     } catch (e) { setError(e instanceof Error ? e.message : "Error de red"); }
     finally { setLoading(false); }
   }, [qs]);
@@ -128,6 +130,26 @@ export default function CuentasPorPagarPage() {
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {/* Por qué en Compras hay más: acá solo entra lo que se debe. */}
+      {excluidas && (excluidas.contado > 0 || excluidas.anuladas > 0) ? (
+        <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+          En estas fechas{proveedorId ? " y con este proveedor" : ""} no aparecen:{" "}
+          {excluidas.contado > 0 ? (
+            <b>
+              {excluidas.contado} {excluidas.contado === 1 ? "compra de contado" : "compras de contado"} (₲{" "}
+              {fmt(excluidas.total_contado)}, ya pagadas)
+            </b>
+          ) : null}
+          {excluidas.contado > 0 && excluidas.anuladas > 0 ? " y " : ""}
+          {excluidas.anuladas > 0 ? (
+            <b>
+              {excluidas.anuladas} {excluidas.anuladas === 1 ? "anulada" : "anuladas"}
+            </b>
+          ) : null}
+          . Cuentas por pagar muestra solo las compras <b>a crédito</b>, que son las que se deben.
+        </p>
+      ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full min-w-[1000px] text-xs">
