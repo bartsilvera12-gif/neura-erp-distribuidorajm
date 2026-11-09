@@ -857,11 +857,14 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
   // la caja ya quedó limpia para la venta siguiente.
   const comp = caja.comprobante!;
 
-  // Factura: si la empresa factura por SIFEN, se emite la electrónica y lo que
-  // se imprime es el KuDE aprobado. Si no, sigue el comprobante de siempre.
-  const emision = useEmisionSifen(venta.id, comp.documento === "factura");
+  // Con SIFEN activo TODA venta va a la SET (Sin nombre: factura
+  // innominada). Sin SIFEN sigue el comprobante de siempre.
+  const emision = useEmisionSifen(venta.id, true);
   const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
+  const ticketInterno =
+    comp.documento === "ticket" &&
+    (!conSifen || ((emision.estado === "error" || emision.estado === "rechazado") && !emision.kudeListo));
 
   const datos: DatosComprobante = {
     venta,
@@ -887,9 +890,14 @@ function Comprobante({ caja }: { caja: CajaVenta }) {
       {/* El comprobante empieza cerrado: lo que el vendedor necesita ver de un
           vistazo es el número y el total, y lo que necesita hacer es mandárselo
           al cliente. La factura entera queda a un toque. */}
-      {comp.documento === "ticket" ? (
-        // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
+      {ticketInterno ? (
+        // Ticket interno: sin SIFEN, o si la factura innominada falló.
         <>
+          {conSifen ? (
+            <div className="no-imprimir px-4 pt-4">
+              <EstadoFacturaSifen emision={emision} onVerKude={() => setVerKude(true)} />
+            </div>
+          ) : null}
           <TicketVenta datos={datos} />
           <div className="no-imprimir px-4">
             <button

@@ -241,6 +241,12 @@ export interface SifenPayloadReceptor {
    * cPaisRec + iTipIDRec + dDTipIDRec + dNumIDRec.
    */
   receptor_extranjero?: boolean;
+  /**
+   * Consumidor final que no da sus datos (venta «Sin nombre»): el DE va con
+   * receptor innominado —iNatRec=2, iTiOpe=2 (B2C), iTipIDRec=5,
+   * dNumIDRec=0, dNomRec «Sin Nombre»—.
+   */
+  innominado?: boolean;
   /** ISO 3166-1 alpha-3 (ej. PER). Obligatorio cuando receptor_extranjero es true. */
   codigo_pais_iso3?: string | null;
   /** tiTipDocRec SET (1–6 | 9). Con extranjero, null se interpreta como 9. */

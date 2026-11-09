@@ -218,6 +218,23 @@ function validateReceptor(
   if (trimStr(cliente.id) !== trimStr(factura.cliente_id)) {
     return { ok: false, error: "El cliente cargado no coincide con cliente_id de la factura." };
   }
+  // Cliente «SIN NOMBRE» (tipo de documento 5 = Innominado): consumidor
+  // final que no da sus datos. No hace falta RUC, cédula ni dirección.
+  if (normalizarTipoDocReceptorSifen(cliente.sifen_tipo_doc_receptor) === 5) {
+    return {
+      ok: true,
+      receptor: {
+        cliente_id: cliente.id,
+        nombre: "Sin Nombre",
+        documento: null,
+        ruc: null,
+        direccion: null,
+        telefono: null,
+        email: null,
+        innominado: true,
+      },
+    };
+  }
   if (clienteUsaReceptorSifenManual(cliente)) {
     return validateReceptorExplicitManual(cliente, factura.cliente_id);
   }

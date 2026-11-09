@@ -852,19 +852,25 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
   // la caja ya quedó limpia para la venta siguiente.
   const comp = caja.comprobante!;
 
-  // Factura: si la empresa factura por SIFEN, se emite la electrónica y lo que
-  // se imprime es el KuDE aprobado. Si no, sigue el comprobante de siempre.
-  const emision = useEmisionSifen(venta.id, comp.documento === "factura");
+  // Con SIFEN activo TODA venta va a la SET: con cliente, factura a su
+  // nombre; Sin nombre, factura innominada (consumidor final). Lo que se
+  // imprime es el KuDE, apenas está firmado. Sin SIFEN sigue el comprobante
+  // de siempre (factura interna o ticket).
+  const emision = useEmisionSifen(venta.id, true);
   const conSifen = emision.estado !== "inactivo";
   const unidades = comp.unidades;
+  // Ticket interno: sin SIFEN, o si la factura innominada no se pudo armar
+  // (la venta no se traba: sale el ticket y el error queda a la vista).
+  const ticketInterno =
+    comp.documento === "ticket" &&
+    (!conSifen || ((emision.estado === "error" || emision.estado === "rechazado") && !emision.kudeListo));
 
   const mostrarKude =
     // Se imprime apenas está firmada; la SET contesta después, por detrás.
     Boolean(emision.facturaId) && (verKude ?? (imprimir && emision.kudeListo));
   const mostrarFactura =
     verFactura ?? (imprimir && comp.documento === "factura" && emision.estado === "inactivo");
-  const objetivo =
-    comp.documento === "ticket" ? "ticket" : mostrarKude ? "kude" : mostrarFactura ? "factura" : null;
+  const objetivo = ticketInterno ? "ticket" : mostrarKude ? "kude" : mostrarFactura ? "factura" : null;
   useImprimirAlAbrir(imprimir ? objetivo : null);
 
   const cobro = etiquetaCobro(comp);
@@ -895,10 +901,15 @@ function Comprobante({ caja, imprimir }: { caja: CajaVenta; imprimir: boolean })
     </button>
   );
 
-  // Se eligió ticket (lo normal en una venta Sin nombre): sale directo.
-  if (comp.documento === "ticket") {
+  // Ticket interno (sin SIFEN, o si la innominada falló): sale directo.
+  if (ticketInterno) {
     return (
       <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] px-4 pb-5 pt-2 shadow-xl print:max-w-none print:rounded-none print:bg-white print:p-0 print:shadow-none">
+        {conSifen ? (
+          <div className="no-imprimir mb-2 mt-2">
+            <EstadoFacturaSifen emision={emision} onVerKude={() => setVerKude(true)} />
+          </div>
+        ) : null}
         <TicketVenta datos={datos} />
         <div className="no-imprimir mb-2">{botonWhatsapp}</div>
         <div className="no-imprimir flex gap-2">

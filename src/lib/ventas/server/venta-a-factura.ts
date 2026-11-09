@@ -2,6 +2,56 @@ import "server-only";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { obtenerSiguienteNumeroFacturaEmpresa } from "@/lib/facturacion/factura-suscripcion-servidor";
 import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
+import { reintentarSinColumnasFaltantes } from "@/lib/supabase/columnas-faltantes";
+
+/**
+ * El cliente «SIN NOMBRE» de la empresa: el receptor de las facturas
+ * electrónicas de las ventas Sin nombre (consumidor final innominado,
+ * documento tipo 5). Se crea solo la primera vez que hace falta.
+ */
+export async function clienteSinNombre(
+  supabase: AppSupabaseClient,
+  empresaId: string
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const { data: ya, error } = await supabase
+    .from("clientes")
+    .select("id")
+    .eq("empresa_id", empresaId)
+    .eq("sifen_tipo_doc_receptor", 5)
+    .limit(1);
+  if (error) return { ok: false, message: `No se pudo buscar el cliente Sin nombre: ${error.message}` };
+  const fila = (ya ?? [])[0] as { id?: string } | undefined;
+  if (fila?.id) return { ok: true, id: String(fila.id) };
+
+  const nuevo: Record<string, unknown> = {
+    empresa_id: empresaId,
+    nombre: "SIN NOMBRE",
+    nombre_contacto: "SIN NOMBRE",
+    razon_social: "SIN NOMBRE",
+    tipo_cliente: "persona",
+    estado: "activo",
+    sifen_tipo_doc_receptor: 5,
+  };
+  const r = await reintentarSinColumnasFaltantes<Record<string, unknown>, { message: string }>(
+    Object.keys(nuevo),
+    async (cols) => {
+      const ins = await supabase
+        .from("clientes")
+        .insert([Object.fromEntries(cols.map((c) => [c, nuevo[c]]))])
+        .select("id")
+        .single();
+      return {
+        data: (ins.data ?? null) as Record<string, unknown> | null,
+        error: ins.error ? { message: ins.error.message } : null,
+      };
+    },
+    ["empresa_id", "nombre", "nombre_contacto", "sifen_tipo_doc_receptor"]
+  );
+  if (r.error || !r.data?.id) {
+    return { ok: false, message: `No se pudo crear el cliente Sin nombre: ${r.error?.message ?? "sin respuesta"}` };
+  }
+  return { ok: true, id: String(r.data.id) };
+}
 
 /**
  * La factura de una venta de la caja, para emitirla por SIFEN.
@@ -76,13 +126,13 @@ export async function facturaDeVenta(
     return { ok: false, status: 409, message: "La venta está anulada: no se factura." };
   }
   if (v.factura_id) return { ok: true, facturaId: v.factura_id };
-  if (!v.cliente_id) {
-    return {
-      ok: false,
-      status: 400,
-      message:
-        "Para la factura electrónica elegí un cliente con RUC o cédula. Una venta Sin nombre sale con ticket.",
-    };
+  // Venta Sin nombre: factura electrónica innominada (consumidor final que
+  // no da sus datos), a nombre del cliente «SIN NOMBRE».
+  let clienteFactura = v.cliente_id;
+  if (!clienteFactura) {
+    const sn = await clienteSinNombre(supabase, empresaId);
+    if (!sn.ok) return { ok: false, status: 400, message: sn.message };
+    clienteFactura = sn.id;
   }
 
   const { data: itemsData, error: errI } = await supabase
@@ -107,7 +157,7 @@ export async function facturaDeVenta(
     .insert([
       {
         empresa_id: empresaId,
-        cliente_id: v.cliente_id,
+        cliente_id: clienteFactura,
         numero_factura: numero,
         fecha,
         fecha_vencimiento: credito ? fechaPy(vence) : fecha,
