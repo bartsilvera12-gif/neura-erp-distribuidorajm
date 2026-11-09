@@ -108,6 +108,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       }
     }
 
+    // Factura ya en la SET: anular la venta no la cancela allá. Quedaba válida
+    // en la SET y anulada acá (la SET contaba 21 facturas y el sistema 18).
+    // Se corrige con una nota de crédito, que sí va a la SET.
+    const sifen = await estadoFacturaSet(client, schema, empresaId, id);
+    if (sifen) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        errorResponse(
+          sifen.estado === "enviado"
+            ? `La factura ${sifen.numero} ya se mandó a la SET (está esperando la respuesta). No se puede anular la venta: hacé una nota de crédito en Devoluciones.`
+            : `La factura ${sifen.numero} ya está aprobada en la SET. Anular la venta no la cancela allá: hacé una nota de crédito en Devoluciones.`
+        ),
+        { status: 409 }
+      );
+    }
+
     const itemsQ = await client.query<{
       producto_id: string;
       producto_nombre: string;
@@ -250,6 +266,45 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   } finally {
     client?.release();
   }
+}
+
+/**
+ * Si la factura electrónica de la venta ya llegó a la SET (enviada o
+ * aprobada), su número y estado. `null` si no tiene factura o todavía no salió
+ * (borrador, firmada sin mandar, rechazada): esa se puede anular, y una venta
+ * anulada no se manda nunca a la SET.
+ */
+async function estadoFacturaSet(
+  client: Cliente,
+  schema: string,
+  empresaId: string,
+  ventaId: string
+): Promise<{ estado: string; numero: string } | null> {
+  if (
+    !(await tieneColumna(client, schema, "ventas", "factura_id")) ||
+    !(await tablaExiste(client, schema, "factura_electronica"))
+  ) {
+    return null;
+  }
+  const hayFacturas = await tablaExiste(client, schema, "facturas");
+  const q = (await client.query(
+    `SELECT lower(btrim(COALESCE(fe.estado_sifen, ''))) AS estado,
+            regexp_replace(COALESCE(fe.cdc, ''), '\\D', '', 'g') AS cdc,
+            ${hayFacturas ? "to_jsonb(f)->>'numero_factura'" : "NULL::text"} AS numero
+       FROM ${quoteSchemaTable(schema, "ventas")} v
+       JOIN ${quoteSchemaTable(schema, "factura_electronica")} fe ON fe.factura_id = v.factura_id
+       ${hayFacturas ? `LEFT JOIN ${quoteSchemaTable(schema, "facturas")} f ON f.id = v.factura_id` : ""}
+      WHERE v.id = $1::uuid AND v.empresa_id = $2::uuid
+      LIMIT 1`,
+    [ventaId, empresaId]
+  )) as { rows: { estado: string; cdc: string; numero: string | null }[] };
+  const r = q.rows[0];
+  if (!r) return null;
+  if (r.estado !== "enviado" && !r.estado.startsWith("aprobado")) return null;
+  // El número como lo ve la SET (sale del CDC): 001-004-0000290.
+  const numero =
+    r.cdc.length >= 24 ? `${r.cdc.slice(11, 14)}-${r.cdc.slice(14, 17)}-${r.cdc.slice(17, 24)}` : r.numero ?? "";
+  return { estado: r.estado, numero };
 }
 
 type Cliente = { query: (q: string, p?: unknown[]) => Promise<{ rows: unknown[] }> };
