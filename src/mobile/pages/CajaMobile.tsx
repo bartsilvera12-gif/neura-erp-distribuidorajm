@@ -119,9 +119,11 @@ function Encabezado({ caja, compacto }: { caja: CajaVenta; compacto?: boolean })
     >
       <div className="flex items-center gap-2">
         {caja.paso === "cliente" && soloCaja ? null : caja.paso === "cliente" ? (
+          // Salir de la caja vuelve al menú de inicio, no a la lista de ventas:
+          // desde ahí se elige lo siguiente (clientes, cobranzas, arqueo…).
           <Link
-            href="/ventas"
-            aria-label="Salir de la caja"
+            href="/"
+            aria-label="Volver al menú"
             className="-ml-1 rounded-lg p-1.5 active:bg-white/10"
           >
             <ArrowLeft className="h-5 w-5" />
