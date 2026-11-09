@@ -15,6 +15,11 @@ interface Row {
 }
 interface Totals { cantidad: number; total: number; vencido: number; por_vencer: number }
 
+/** «2026-11-09» → «09/11/2026», como en Compras. */
+const fechaPy = (f: string | null) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f ?? "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+};
 const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-PY");
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
@@ -73,7 +78,7 @@ export default function CuentasPorPagarPage() {
             <Link href="/reportes" className="hover:text-[#4FAEB2]">Reportes</Link> / <span className="font-semibold text-slate-700">Cuentas por Pagar</span>
           </nav>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Cuentas por Pagar</h1>
-          <p className="mt-1 text-sm text-slate-500">Deuda con proveedores por compras a crédito. Vencimiento = fecha + plazo. Excluye compras anuladas.</p>
+          <p className="mt-1 text-sm text-slate-500">Deuda con proveedores por compras a crédito. Vencimiento: el que cargaste en la compra (si no tiene, fecha + plazo). Excluye compras anuladas.</p>
         </div>
         <button onClick={exportar} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/5">
           Exportar Excel
@@ -148,8 +153,8 @@ export default function CuentasPorPagarPage() {
             ) : rows.map((r) => (
               <tr key={r.compra_id} className="border-b last:border-0 hover:bg-slate-50/60">
                 <td className="px-2 py-1.5 font-mono">{r.numero_control}</td>
-                <td className="px-2 py-1.5">{(r.fecha ?? "").slice(0, 10)}</td>
-                <td className="px-2 py-1.5">{(r.fecha_vencimiento ?? "").slice(0, 10)}</td>
+                <td className="px-2 py-1.5">{fechaPy(r.fecha)}</td>
+                <td className="px-2 py-1.5">{fechaPy(r.fecha_vencimiento)}</td>
                 <td className="px-2 py-1.5">{r.proveedor ?? "—"}</td>
                 <td className="px-2 py-1.5">{[r.tipo_comprobante, r.numero_comprobante].filter(Boolean).join(" ") || "—"}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{r.plazo_dias ?? "—"}</td>

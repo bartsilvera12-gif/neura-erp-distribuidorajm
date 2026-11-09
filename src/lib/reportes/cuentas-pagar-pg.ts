@@ -7,8 +7,12 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
  * Solo lectura. Como todavía no hay módulo de pagos a proveedores, el saldo
  * pendiente es el total de cada compra (no hay pagos parciales que descontar).
  *
- * Vencimiento = fecha de la compra + plazo (días). Cuota estimada = total / cuotas.
- * Excluye compras anuladas.
+ * Vencimiento = el que se cargó en la compra (fecha de vencimiento de la
+ * factura del proveedor, SQL 52); si no tiene, fecha de la compra + plazo.
+ * Cuota estimada = total / cuotas. Excluye compras anuladas.
+ *
+ * Las fechas van en hora de Paraguay, igual que en Compras: una compra de la
+ * noche no puede figurar con la fecha del día siguiente.
  */
 
 export interface CuentaPagarRow {
@@ -60,6 +64,20 @@ export async function listCuentasPorPagar(
   const tC = quoteSchemaTable(schema, "compras");
   const tPr = quoteSchemaTable(schema, "proveedores");
 
+  // fecha_vencimiento existe desde el SQL 52: sin él, fecha + plazo.
+  const conVenc =
+    (
+      await pool().query(
+        `SELECT 1 FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'compras' AND column_name = 'fecha_vencimiento'`,
+        [schema]
+      )
+    ).rows.length > 0;
+  const FECHA = `(c.fecha AT TIME ZONE 'America/Asuncion')::date`;
+  const VENCE = conVenc
+    ? `COALESCE(c.fecha_vencimiento, ${FECHA} + COALESCE(c.plazo_dias, 0))`
+    : `(${FECHA} + COALESCE(c.plazo_dias, 0))`;
+
   const params: unknown[] = [empresaId];
   const where: string[] = [
     "c.empresa_id = $1::uuid",
@@ -67,26 +85,28 @@ export async function listCuentasPorPagar(
     "COALESCE(c.estado,'') <> 'anulada'",
   ];
   const add = (v: unknown) => { params.push(v); return `$${params.length}`; };
-  if (f.desde) where.push(`c.fecha::date >= ${add(f.desde)}::date`);
-  if (f.hasta) where.push(`c.fecha::date <= ${add(f.hasta)}::date`);
+  if (f.desde) where.push(`${FECHA} >= ${add(f.desde)}::date`);
+  if (f.hasta) where.push(`${FECHA} <= ${add(f.hasta)}::date`);
   if (f.proveedor_id) where.push(`c.proveedor_id = ${add(f.proveedor_id)}::uuid`);
 
-  // Vencimiento = fecha + plazo (0 si no hay plazo). Estado por comparación con hoy.
+  // Estado por comparación con hoy (en Paraguay).
+  const HOY = `(now() AT TIME ZONE 'America/Asuncion')::date`;
   const sql = `
     SELECT c.id AS compra_id, c.numero_control,
-           c.fecha::date AS fecha,
-           (c.fecha::date + COALESCE(c.plazo_dias,0)) AS fecha_vencimiento,
+           ${FECHA}::text AS fecha,
+           ${VENCE}::text AS fecha_vencimiento,
            c.proveedor_id, COALESCE(c.proveedor_nombre, pr.nombre) AS proveedor, pr.ruc AS ruc,
            c.tipo_comprobante, c.numero_comprobante, c.nro_timbrado AS timbrado,
-           c.plazo_dias, GREATEST(1, COALESCE(c.cuotas,1)) AS cuotas,
+           COALESCE(c.plazo_dias, (${VENCE} - ${FECHA})) AS plazo_dias,
+           GREATEST(1, COALESCE(c.cuotas,1)) AS cuotas,
            c.total AS total,
            round(c.total / GREATEST(1, COALESCE(c.cuotas,1))) AS monto_cuota,
-           ((c.fecha::date + COALESCE(c.plazo_dias,0)) < current_date) AS vencida,
-           ((c.fecha::date + COALESCE(c.plazo_dias,0)) - current_date) AS dias_para_vencer
+           (${VENCE} < ${HOY}) AS vencida,
+           (${VENCE} - ${HOY}) AS dias_para_vencer
       FROM ${tC} c
       LEFT JOIN ${tPr} pr ON pr.id = c.proveedor_id
      WHERE ${where.join(" AND ")}
-     ORDER BY (c.fecha::date + COALESCE(c.plazo_dias,0)) ASC, c.numero_control ASC`;
+     ORDER BY ${VENCE} ASC, c.numero_control ASC`;
 
   const { rows } = await pool().query<CuentaPagarRow>(sql, params);
 
