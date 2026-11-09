@@ -6,7 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
 import {
-  datosDesdeSistema,
+  datosParaMostrar,
   guardarPlanilla,
   hayPlanillas,
   limpiarDatos,
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest, context: Ctx) {
         es_admin: esRolAdminEmpresa(ctx.auth.rol),
         sistema,
         guardada,
-        datos: guardada?.datos ?? datosDesdeSistema(sistema),
+        datos: datosParaMostrar(sistema, guardada),
       })
     );
   } catch (e) {

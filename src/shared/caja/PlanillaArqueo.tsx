@@ -60,12 +60,17 @@ export default function PlanillaArqueo({
   inline?: boolean;
 }) {
   const url = `/api/cajas/${cajaId}/planilla`;
-  const { data, error, mutate } = useSWR<Respuesta>(url, async () => {
-    const res = await fetchWithSupabaseSession(url, { cache: "no-store" });
-    const j = (await res.json().catch(() => ({}))) as { data?: Respuesta; error?: string };
-    if (!res.ok || !j.data) throw new Error(j.error ?? "No se pudo abrir la planilla.");
-    return j.data;
-  });
+  const { data, error, mutate } = useSWR<Respuesta>(
+    url,
+    async () => {
+      const res = await fetchWithSupabaseSession(url, { cache: "no-store" });
+      const j = (await res.json().catch(() => ({}))) as { data?: Respuesta; error?: string };
+      if (!res.ok || !j.data) throw new Error(j.error ?? "No se pudo abrir la planilla.");
+      return j.data;
+    },
+    // En vivo: cada venta o cobranza nueva aparece sola, sin recargar.
+    { refreshInterval: 20_000, revalidateOnFocus: true, keepPreviousData: true }
+  );
 
   useEffect(() => {
     if (inline) return;
@@ -91,10 +96,9 @@ export default function PlanillaArqueo({
     <Formulario
       // Sin guardar todavía, sigue a lo que el sistema va sumando (ventas,
       // cobranzas, gastos); ya guardada, manda lo que se cargó.
-      key={
-        data.guardada?.updated_at ??
-        `s-${data.sistema.contado}-${data.sistema.credito.length}-${data.sistema.cobranzas.length}-${data.sistema.gastos.length}-${data.sistema.transferencias.length}`
-      }
+      // No se rearma en cada actualización: perdería el conteo a medio cargar.
+      // El formulario se pone al día solo (ver `Formulario`).
+      key={`${data.guardada?.id ?? "nueva"}-${data.guardada?.estado ?? "borrador"}`}
       r={data}
       url={url}
       onCerrar={onCerrar}
@@ -131,6 +135,26 @@ function Formulario({
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const estado = r.guardada?.estado ?? "borrador";
+  // Si tocó a mano algo que viene del sistema, se deja de actualizar solo
+  // hasta que guarde: si no, la próxima actualización le borraría el cambio.
+  const [tocado, setTocado] = useState(r.datos.manual === true);
+  const enVivo = estado === "borrador" && !tocado;
+
+  // Sin enviar, la planilla sigue a las ventas: cada lectura nueva trae lo del
+  // sistema. El conteo de billetes y las observaciones son de quien la llena.
+  useEffect(() => {
+    if (estado !== "borrador" || tocado) return;
+    const sis = r.sistema;
+    setD((x) => ({
+      ...x,
+      contado: sis.contado,
+      cheques: sis.cheques,
+      credito: sis.credito,
+      cobranzas: sis.cobranzas,
+      gastos: sis.gastos,
+      transferencias: sis.transferencias,
+    }));
+  }, [r.sistema, estado, tocado]);
   const soloLectura = estado === "revisada" && !r.es_admin;
   const s = r.sistema;
 
@@ -139,7 +163,10 @@ function Formulario({
   const porCategoria = s.por_categoria ?? [];
   const efectivo = totalConteo(d.conteo);
   const t = totalesPlanilla(d, efectivo);
-  const cambiar = (patch: Partial<DatosPlanilla>) => setD((x) => ({ ...x, ...patch }));
+  const cambiar = (patch: Partial<DatosPlanilla>) => {
+    if (Object.keys(patch).some((k) => !["conteo", "observaciones", "apertura"].includes(k))) setTocado(true);
+    setD((x) => ({ ...x, ...patch }));
+  };
 
   async function guardar(enviar: boolean) {
     if (enviar && !window.confirm("¿Enviar la planilla al administrador?")) return;
@@ -149,7 +176,7 @@ function Formulario({
       const res = await fetchWithSupabaseSession(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ datos: d, enviar }),
+        body: JSON.stringify({ datos: { ...d, manual: tocado }, enviar }),
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j.error ?? "No se pudo guardar la planilla.");
@@ -177,6 +204,7 @@ function Formulario({
 
   function traerDelSistema() {
     if (!window.confirm("¿Volver a traer las ventas, cobranzas y movimientos del sistema? Lo que cambiaste a mano en esas listas se pierde (el conteo de billetes se queda).")) return;
+    setTocado(false);
     setD((x) => ({
       ...x,
       apertura: s.caja.monto_apertura + s.caja.sencillo,
@@ -204,6 +232,12 @@ function Formulario({
             {ESTADO[estado].texto}
             {estado === "revisada" && r.guardada?.revisada_por ? ` por ${r.guardada.revisada_por}` : ""}
           </span>
+          {estado === "borrador" ? (
+            <span className="no-imprimir ml-2 mt-1.5 inline-flex items-center gap-1 text-xs text-slate-500">
+              <span className={`h-2 w-2 rounded-full ${enVivo ? "animate-pulse bg-emerald-500" : "bg-amber-400"}`} />
+              {enVivo ? "En vivo: se actualiza con cada venta" : "Corregida a mano: no se actualiza sola («Traer del sistema» la vuelve a poner en vivo)"}
+            </span>
+          ) : null}
         </div>
         <div className="no-imprimir flex flex-wrap gap-2">
           {!soloLectura ? (

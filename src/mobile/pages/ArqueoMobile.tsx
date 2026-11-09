@@ -17,8 +17,11 @@ export default function ArqueoMobile() {
   const [fecha, setFecha] = useState(hoyEnAsuncion());
   // Lo normal es mirar la propia caja. La lista de todas las del día es para
   // revisar el negocio, no para vender, así que se pide a mano.
-  const [todas, setTodas] = useState(false);
+  // El administrador arranca viendo todas: su propia caja casi nunca tiene
+  // ventas (las cobran los camioneros y el salón) y le salía todo en cero.
+  const [elegido, setTodas] = useState<boolean | null>(null);
   const { isAdmin } = useIsAdmin();
+  const todas = elegido ?? isAdmin;
   // El camión de la jornada va en la cabecera: el arqueo es de una ruta, no de
   // un mostrador, y saber de qué camión se está hablando es media lectura.
   const { repartos } = useRepartos({ abiertos: true });
@@ -101,7 +104,7 @@ export default function ArqueoMobile() {
           esHoy ? (
             <button
               type="button"
-              onClick={() => setTodas((v) => !v)}
+              onClick={() => setTodas(!todas)}
               className="block w-full rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-600"
             >
               {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}

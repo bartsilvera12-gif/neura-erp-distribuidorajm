@@ -56,6 +56,11 @@ export interface DatosPlanilla {
   gastos: RenglonPlanilla[];
   transferencias: RenglonPlanilla[];
   observaciones: string;
+  /**
+   * Corrigió a mano algo que viene del sistema (contado, listas, cheques).
+   * Sin esto, mientras no se envía, la planilla se actualiza sola con las ventas.
+   */
+  manual?: boolean;
 }
 
 export type EstadoPlanilla = "borrador" | "enviada" | "revisada";

@@ -276,6 +276,28 @@ export function datosDesdeSistema(p: PlanillaArqueo): DatosPlanilla {
   };
 }
 
+/**
+ * Lo que se muestra en la planilla.
+ *
+ * Mientras no se envía y nadie corrigió a mano lo del sistema, va EN VIVO:
+ * contado, crédito, cobranzas, gastos, transferencias y cheques se vuelven a
+ * tomar en cada lectura, así el camionero ve sumar cada venta. De lo guardado
+ * quedan el conteo de billetes, la apertura y las observaciones. Antes, apenas
+ * se guardaba una vez, la planilla quedaba congelada (en cero si se guardó al
+ * empezar el día). Enviada, o corregida a mano, manda lo guardado.
+ */
+export function datosParaMostrar(p: PlanillaArqueo, g: PlanillaGuardada | null): DatosPlanilla {
+  const sis = datosDesdeSistema(p);
+  if (!g) return sis;
+  if (g.estado !== "borrador" || g.datos.manual) return g.datos;
+  return {
+    ...sis,
+    apertura: Number(g.datos.apertura) || sis.apertura,
+    conteo: g.datos.conteo ?? sis.conteo,
+    observaciones: g.datos.observaciones ?? "",
+  };
+}
+
 function limpiarRenglones(v: unknown, conFactura: boolean): DatosPlanilla["credito"] {
   if (!Array.isArray(v)) return [];
   return v
@@ -304,6 +326,7 @@ export function limpiarDatos(raw: unknown): DatosPlanilla {
     gastos: limpiarRenglones(o.gastos, false),
     transferencias: limpiarRenglones(o.transferencias, false),
     observaciones: String(o.observaciones ?? "").slice(0, 1000),
+    manual: o.manual === true,
   };
 }
 

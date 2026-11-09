@@ -24,8 +24,11 @@ export default function ArqueoDesktop() {
   const esRango = desde !== hasta;
   // Lo normal es mirar la propia caja. La lista de todas las del día es para
   // revisar el negocio, no para vender, así que se pide a mano.
-  const [todas, setTodas] = useState(false);
+  // El administrador arranca viendo todas: su propia caja casi nunca tiene
+  // ventas (las cobran los camioneros y el salón) y le salía todo en cero.
+  const [elegido, setTodas] = useState<boolean | null>(null);
   const { isAdmin } = useIsAdmin();
+  const todas = elegido ?? isAdmin;
   // El administrador, al mirar un día pasado, ve todas las cajas de ese día
   // (es revisión del negocio, no venta). Hoy sigue arrancando en su caja.
   const esHoy = fecha === hoy;
@@ -116,7 +119,7 @@ export default function ArqueoDesktop() {
         esHoy ? (
           <button
             type="button"
-            onClick={() => setTodas((v) => !v)}
+            onClick={() => setTodas(!todas)}
             className="mb-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
           >
             {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
