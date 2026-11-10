@@ -131,6 +131,10 @@ const POR_ROL: Record<string, Accion[]> = {
     "reparto.cerrar",
     "reparto.cargar",
     "reparto.transferir",
+    // Sin Repartos, el camión arranca y termina el día con su propia caja:
+    // la abre (con el cambio que lleva) y la cierra con su arqueo.
+    "caja.abrir",
+    "caja.cerrar",
     "caja.movimiento",
     "inventario.editar",
   ],
