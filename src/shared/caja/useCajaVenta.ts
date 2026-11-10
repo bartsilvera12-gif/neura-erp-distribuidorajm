@@ -5,6 +5,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import type { Reparto } from "@/lib/repartos/types";
 import { saveVenta } from "@/lib/ventas/storage";
+import { aplicarDescuento, errorDescuento, montoDescuento, porcentajeDe, type TipoDescuento } from "@/lib/ventas/descuento";
 import { clienteNombre, getCliente } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Producto } from "@/lib/inventario/types";
@@ -126,6 +127,9 @@ export function useCajaVenta() {
   // cobro: a crédito no entra plata hoy y no hay con qué cobrarla.
   const [aCredito, setACredito] = useState(false);
   const [plazoDias, setPlazoDias] = useState("");
+  /** Descuento sobre el total: en % o en guaraníes. Vacío = sin descuento. */
+  const [descuentoTipo, setDescuentoTipo] = useState<TipoDescuento>("porcentaje");
+  const [descuentoValor, setDescuentoValor] = useState("");
 
   /**
    * Qué comprobante sale al confirmar: factura A4 o ticket. Si nadie eligió,
@@ -258,14 +262,30 @@ export function useCajaVenta() {
     });
   }, [carrito, moneda, tipoCambioNum, lista]);
 
+  /** Lo escrito en el campo del descuento, como número (acepta 2,5 en %). */
+  const descuentoNum = useMemo(() => {
+    const t = descuentoValor.trim();
+    if (!t) return 0;
+    return descuentoTipo === "porcentaje"
+      ? Number(t.replace(/\./g, "").replace(",", ".")) || 0
+      : Number(t.replace(/\D/g, "")) || 0;
+  }, [descuentoValor, descuentoTipo]);
+
   const totales = useMemo(() => {
+    // Subtotal a precio de lista; el total es lo que se cobra, con el descuento.
     const subtotal = lineas.reduce((acc, l) => acc + l.subtotal, 0);
-    const montoIva = lineas.reduce((acc, l) => acc + l.monto_iva, 0);
+    const descuento = montoDescuento(subtotal, descuentoTipo, descuentoNum);
+    const conDescuento = descuento > 0 ? aplicarDescuento(lineas, descuento) : lineas;
+    const montoIva = conDescuento.reduce((acc, l) => acc + l.monto_iva, 0);
     return {
       subtotal,
+      descuento,
+      descuentoPorcentaje: porcentajeDe(subtotal, descuento),
+      /** Por qué el descuento no vale (más del tope, todo el total), o null. */
+      descuentoError: errorDescuento(subtotal, descuento),
       montoIva,
-      // El total es el subtotal: el IVA no se suma, ya estaba contado.
-      total: subtotal,
+      // El IVA no se suma, ya estaba contado: el total es el subtotal menos el descuento.
+      total: subtotal - descuento,
       // Sólo cuenta lo que se vende de a uno: sumar 1,350 KG de carne con 3
       // gaseosas da un número que no significa nada.
       unidades: carrito.reduce(
@@ -274,7 +294,7 @@ export function useCajaVenta() {
       ),
       renglones: carrito.length,
     };
-  }, [lineas, carrito]);
+  }, [lineas, carrito, descuentoTipo, descuentoNum]);
 
   /** Lo que el depósito paga de esta venta, y lo que queda por cobrar. */
   const depositoAplicado = deposito && !aCredito ? Math.min(deposito.saldo, totales.total) : 0;
@@ -313,11 +333,13 @@ export function useCajaVenta() {
         return false;
       }
       if (!mixtoCuadra) return false;
+      if (totales.descuentoError) return false;
       if (faltaElegirReparto) return false;
       return true;
     }
     return false;
   }, [
+    totales.descuentoError,
     mixtoCuadra,
     cubiertaPorDeposito,
     paso,
@@ -349,6 +371,7 @@ export function useCajaVenta() {
     if (!clienteElegido) return "Elegí el cliente, o tocá «Sin nombre» para vender sin identificarlo.";
     if (carrito.length === 0) return "Agregá al menos un producto.";
     if (moneda === "USD" && tipoCambioNum <= 0) return "Cargá el tipo de cambio.";
+    if (totales.descuentoError) return totales.descuentoError;
     if (aCredito && !creditoDisponible) {
       return "Este cliente no puede comprar a crédito. Elegí otra forma de cobro.";
     }
@@ -361,6 +384,7 @@ export function useCajaVenta() {
     if (faltaElegirReparto) return "Elegí de qué camión sale la mercadería.";
     return null;
   }, [
+    totales.descuentoError,
     mixtoCuadra,
     faltaMixto,
     aCobrar,
@@ -385,9 +409,11 @@ export function useCajaVenta() {
       return false;
     }
     if (!mixtoCuadra) return false;
+    if (totales.descuentoError) return false;
     if (faltaElegirReparto) return false;
     return true;
   }, [
+    totales.descuentoError,
     mixtoCuadra,
     cubiertaPorDeposito,
     clienteElegido,
@@ -503,6 +529,8 @@ export function useCajaVenta() {
     setMixtoEstado({ efectivo: 0, transferencia: 0, cheque: 0 });
     setACredito(false);
     setPlazoDias("");
+    setDescuentoValor("");
+    setDescuentoTipo("porcentaje");
     setDocumento(null);
     setDeposito(null);
     setError(null);
@@ -534,6 +562,10 @@ export function useCajaVenta() {
       setError("Elegí de qué camión sale la mercadería.");
       return false;
     }
+    if (totales.descuentoError) {
+      setError(totales.descuentoError);
+      return false;
+    }
 
     setGuardando(true);
     setError(null);
@@ -551,13 +583,16 @@ export function useCajaVenta() {
       ? MEDIOS_MIXTO.map((m) => ({ medio: m.value, monto: mixto[m.value] })).filter((p) => p.monto > 0)
       : null;
 
+    // Se mandan las líneas a precio de lista (el servidor controla el precio) y
+    // el descuento aparte: el servidor lo reparte y guarda la venta por lo cobrado.
     const res = await saveVenta({
       items: lineas,
       moneda,
       tipo_cambio: tipoCambioNum,
       subtotal: totales.subtotal,
-      monto_iva: totales.montoIva,
-      total: totales.total,
+      monto_iva: lineas.reduce((acc, l) => acc + l.monto_iva, 0),
+      total: totales.subtotal,
+      descuento: totales.descuento,
       tipo_venta: aCredito ? "CREDITO" : "CONTADO",
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
       // A crédito no se cobra ahora: el medio se registra recién al cobrar.
@@ -594,6 +629,10 @@ export function useCajaVenta() {
           ? pagaConNum
           : null,
       pagosMixto,
+      descuento:
+        totales.descuento > 0
+          ? { monto: totales.descuento, porcentaje: totales.descuentoPorcentaje, subtotal: totales.subtotal }
+          : null,
       deposito:
         res.depositoAplicado > 0 && deposito
           ? {
@@ -672,8 +711,12 @@ export function useCajaVenta() {
       plazoDias,
       documento: documentoElegido,
       deposito,
+      descuentoTipo,
+      descuentoValor,
     }),
     [
+      descuentoTipo,
+      descuentoValor,
       cliente,
       sinNombre,
       carrito,
@@ -702,6 +745,8 @@ export function useCajaVenta() {
     setPlazoDias(s.plazoDias);
     setDocumento(s.documento);
     setDeposito(s.deposito);
+    setDescuentoTipo(s.descuentoTipo ?? "porcentaje");
+    setDescuentoValor(s.descuentoValor ?? "");
     setError(null);
   }, []);
 
@@ -773,6 +818,8 @@ export function useCajaVenta() {
     faltaMixto,
     aCredito,
     plazoDias,
+    descuentoTipo,
+    descuentoValor,
     caja,
     cajasDisponibles,
     aperturaSugerida,
@@ -815,6 +862,8 @@ export function useCajaVenta() {
     setMixto,
     setACredito,
     setPlazoDias,
+    setDescuentoTipo,
+    setDescuentoValor,
     setRepartoId,
     setError,
     irA,
@@ -841,6 +890,9 @@ export interface VentaEnEsperaSnapshot {
   plazoDias: string;
   documento: DocumentoVenta | null;
   deposito: DepositoCaja | null;
+  /** Opcionales: ventas en espera guardadas antes del descuento no los tienen. */
+  descuentoTipo?: TipoDescuento;
+  descuentoValor?: string;
 }
 
 /** Depósito del cliente con que se paga la venta en curso. */
@@ -887,6 +939,8 @@ export interface ComprobanteCaja {
   pagosMixto?: PagoMixto[] | null;
   /** Parte de la venta pagada con un depósito del cliente. */
   deposito?: { recibo_numero: string; aplicado: number; cubreTodo: boolean } | null;
+  /** Descuento sobre el total: cuánto, qué % y el subtotal antes de descontar. */
+  descuento?: { monto: number; porcentaje: number; subtotal: number } | null;
   /** Unidad de cada producto: no viaja en la venta y sin ella 1,5 KG se lee 1,5 a secas. */
   unidades: Record<string, string>;
 }

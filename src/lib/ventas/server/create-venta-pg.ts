@@ -2,6 +2,7 @@ import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { aplicarDepositoEnTx } from "@/lib/cobranzas/server/recibos-pg";
 import { quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { precioSegunLista, type ListaPrecio } from "@/lib/ventas/listas-precio";
+import { aplicarDescuento, errorDescuento, porcentajeDe, textoDescuento } from "@/lib/ventas/descuento";
 
 export interface CreateVentaItemInput {
   producto_id: string;
@@ -52,6 +53,12 @@ export interface CreateVentaPgParams {
   subtotalDeclarado: number;
   montoIvaDeclarado: number;
   totalDeclarado: number;
+  /**
+   * Descuento sobre el total, en guaraníes. Los ítems y los totales declarados
+   * vienen sin descontar (a precio de lista, que se controla); el descuento se
+   * reparte acá entre las líneas y la venta queda por lo realmente cobrado.
+   */
+  descuento?: number;
 }
 
 function qTable(schema: string, table: string): string {
@@ -88,25 +95,45 @@ async function tablaExiste(
 
 export async function createVentaTransaccionalPg(
   params: CreateVentaPgParams
-): Promise<{ ventaId: string; numeroControl: string; fechaIso: string; depositoAplicado: number }> {
+): Promise<{
+  ventaId: string;
+  numeroControl: string;
+  fechaIso: string;
+  depositoAplicado: number;
+  /** Las líneas como quedaron guardadas (con el descuento repartido). */
+  items: CreateVentaItemInput[];
+  descuento: number;
+}> {
   const pool = getChatPostgresPool();
   if (!pool) {
     throw new Error("Sin conexión directa a Postgres (configura SUPABASE_DB_URL).");
   }
 
-  const items = params.items;
-  if (!items.length) {
+  const itemsLista = params.items;
+  if (!itemsLista.length) {
     throw new Error("La venta debe tener al menos un ítem.");
   }
 
-  const calc = recalcTotals(items);
+  const calcLista = recalcTotals(itemsLista);
   if (
-    Math.abs(calc.subtotal - params.subtotalDeclarado) > TOL ||
-    Math.abs(calc.montoIva - params.montoIvaDeclarado) > TOL ||
-    Math.abs(calc.total - params.totalDeclarado) > TOL
+    Math.abs(calcLista.subtotal - params.subtotalDeclarado) > TOL ||
+    Math.abs(calcLista.montoIva - params.montoIvaDeclarado) > TOL ||
+    Math.abs(calcLista.total - params.totalDeclarado) > TOL
   ) {
     throw new Error("Los totales no coinciden con los ítems; revisá el carrito.");
   }
+
+  // Descuento sobre el total: se reparte entre las líneas, y desde acá la
+  // venta (total, IVA, caja, factura) es por lo realmente cobrado.
+  const descuento = Math.round(params.descuento ?? 0);
+  const errDesc = errorDescuento(calcLista.total, descuento);
+  if (errDesc) throw new Error(errDesc);
+  const items = descuento > 0 ? aplicarDescuento(itemsLista, descuento) : itemsLista;
+  const calc = recalcTotals(items);
+  const observaciones =
+    descuento > 0
+      ? [textoDescuento(calcLista.total, descuento), params.observaciones].filter(Boolean).join(" · ")
+      : params.observaciones;
 
   // Unidades que mueve cada línea: una caja mueve las que trae. Se completa
   // dentro de la transacción, cuando se leen las cajas.
@@ -197,7 +224,7 @@ export async function createVentaTransaccionalPg(
      * cambió mientras la pantalla estaba abierta: se avisa para recargar.
      */
     const precioDb = new Map(locked.rows.map((r) => [r.id, Number(r.precio_venta ?? 0)]));
-    for (const it of items) {
+    for (const it of itemsLista) {
       const unidad = precioDb.get(it.producto_id) ?? 0;
       const caja = it.empaque_id ? factorDe.get(it.empaque_id) : null;
       // La caja tiene su precio; sin precio propio, vale sus unidades.
@@ -262,7 +289,7 @@ export async function createVentaTransaccionalPg(
       SELECT column_name AS columna
         FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = 'ventas'
-         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio')
+         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio', 'descuento_monto', 'descuento_porcentaje')
       `,
       [params.schema]
     );
@@ -286,6 +313,16 @@ export async function createVentaTransaccionalPg(
     if (columnas.has("lista_precio")) {
       extraCols.push("lista_precio");
       extraVals.push(params.listaPrecio);
+    }
+    // Descuento (SQL 62): cuánto se descontó, para listarlo y sumarlo después.
+    // Sin la migración igual queda escrito en las observaciones.
+    if (columnas.has("descuento_monto")) {
+      extraCols.push("descuento_monto");
+      extraVals.push(descuento);
+    }
+    if (columnas.has("descuento_porcentaje")) {
+      extraCols.push("descuento_porcentaje");
+      extraVals.push(descuento > 0 ? porcentajeDe(calcLista.total, descuento) : 0);
     }
     // Los placeholders siguen después de los 12 fijos del INSERT.
     const extraPlaceholders = extraCols.map((_, i) => `$${13 + i}`);
@@ -315,7 +352,7 @@ export async function createVentaTransaccionalPg(
         params.tipoVenta,
         params.plazoDias,
         fechaIso,
-        params.observaciones,
+        observaciones,
         ...extraVals,
       ]
     );
@@ -458,7 +495,12 @@ export async function createVentaTransaccionalPg(
       (await tablaExiste(client, params.schema, "caja_movimientos"))
     ) {
       const movT = quoteSchemaTable(params.schema, "caja_movimientos");
-      const concepto = depositoAplicado > 0 ? `Venta ${numeroControl} (resto del depósito)` : `Venta ${numeroControl}`;
+      const conceptoBase = depositoAplicado > 0 ? `Venta ${numeroControl} (resto del depósito)` : `Venta ${numeroControl}`;
+      // Con descuento, el arqueo muestra que entró menos a propósito.
+      const concepto =
+        descuento > 0
+          ? `${conceptoBase} · desc. ${porcentajeDe(calcLista.total, descuento).toLocaleString("es-PY")}% Gs. ${descuento.toLocaleString("es-PY")}`
+          : conceptoBase;
       // Mixto: un movimiento por medio, así el arqueo sabe cuánto efectivo
       // hay en el cajón y cuánto entró por transferencia o en cheque.
       const partes =
@@ -598,7 +640,7 @@ export async function createVentaTransaccionalPg(
     }
 
     await client.query("COMMIT");
-    return { ventaId, numeroControl, fechaIso, depositoAplicado };
+    return { ventaId, numeroControl, fechaIso, depositoAplicado, items, descuento };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw e;

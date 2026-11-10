@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import {
   LOGO_FACTURA,
+  descuentoDeVenta,
   esFacturaLegal,
   fechaHoraEmision,
   gs,
@@ -33,6 +34,7 @@ function anchoGuardado(): Ancho {
 export default function TicketVenta({ datos }: { datos: DatosComprobante }) {
   const [ancho, setAncho] = useState<Ancho>(anchoGuardado);
   const { venta, emisor } = datos;
+  const desc = descuentoDeVenta(venta);
   const legal = esFacturaLegal(emisor);
   const angosto = ancho === 58;
 
@@ -127,6 +129,12 @@ export default function TicketVenta({ datos }: { datos: DatosComprobante }) {
 
           <Linea />
 
+          {desc ? (
+            <>
+              <Fila etiqueta="Sin descuento" valor={gs(desc.sinDescuento)} />
+              <Fila etiqueta={`Descuento ${desc.texto}`} valor={`-${gs(desc.monto)}`} />
+            </>
+          ) : null}
           <Fila etiqueta="Subtotal" valor={gs(venta.total - venta.monto_iva)} />
           <Fila etiqueta="IVA" valor={gs(venta.monto_iva)} />
           <div className="my-1 border-t border-black" />

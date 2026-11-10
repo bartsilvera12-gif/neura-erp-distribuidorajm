@@ -102,6 +102,9 @@ export interface Venta {
   reparto_id?: string | null;
   /** Lista de precio de la venta: minorista o mayorista (−10%). */
   lista_precio?: "minorista" | "mayorista";
+  /** Descuento sobre el total (Gs. y %). El total ya es lo cobrado, con el descuento. */
+  descuento_monto?: number;
+  descuento_porcentaje?: number;
 
   /** Cliente de la venta. `null` = venta sin nombre. */
   cliente_id?: string | null;

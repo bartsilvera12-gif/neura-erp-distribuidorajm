@@ -33,6 +33,8 @@ export async function getVentas(): Promise<Venta[]> {
 export async function saveVenta(
   datos: Omit<Venta, "id" | "numero_control" | "fecha"> & {
     deposito_id?: string | null;
+    /** Descuento sobre el total, en guaraníes. */
+    descuento?: number;
     /** Pago mixto: cuánto entra por cada medio. */
     pagos?: { medio: string; monto: number }[] | null;
   }
@@ -61,6 +63,7 @@ export async function saveVenta(
         cliente_id: datos.cliente_id ?? null,
         deposito_id: datos.deposito_id ?? null,
         pagos: datos.pagos ?? null,
+        descuento: datos.descuento ?? 0,
         observaciones: null,
       }),
     });

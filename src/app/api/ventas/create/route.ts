@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { porcentajeDe } from "@/lib/ventas/descuento";
 import { METODOS_COBRO, MEDIOS_MIXTO, type MedioMixto, type PagoMixto } from "@/lib/ventas/types";
 import { esListaPrecio, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
@@ -55,6 +56,7 @@ function toVentaResponse(
     subtotal: number;
     monto_iva: number;
     total: number;
+    descuento?: number;
   }
 ): Venta {
   const lineas: LineaVenta[] = items.map((i) => ({
@@ -81,6 +83,12 @@ function toVentaResponse(
     tipo_venta: meta.tipo_venta,
     plazo_dias: meta.plazo_dias,
     fecha: meta.fechaIso,
+    ...(meta.descuento && meta.descuento > 0
+      ? {
+          descuento_monto: meta.descuento,
+          descuento_porcentaje: porcentajeDe(meta.total + meta.descuento, meta.descuento),
+        }
+      : {}),
   };
 }
 
@@ -203,6 +211,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("Totales inválidos."), { status: 400 });
     }
 
+    // Descuento sobre el total, en guaraníes (0 = sin descuento).
+    const descuento = o.descuento === null || o.descuento === undefined ? 0 : Math.round(Number(o.descuento));
+    if (!Number.isFinite(descuento) || descuento < 0) {
+      return NextResponse.json(errorResponse("Descuento inválido."), { status: 400 });
+    }
+
     if (moneda === "USD" && tipoCambio <= 0) {
       return NextResponse.json(errorResponse("Tipo de cambio inválido para USD."), { status: 400 });
     }
@@ -273,7 +287,7 @@ export async function POST(request: NextRequest) {
         ? depositoRaw
         : null;
 
-    const { ventaId, numeroControl, fechaIso, depositoAplicado } = await createVentaTransaccionalPg({
+    const creada = await createVentaTransaccionalPg({
       schema,
       empresaId: auth.empresa_id,
       clienteId,
@@ -293,18 +307,20 @@ export async function POST(request: NextRequest) {
       subtotalDeclarado,
       montoIvaDeclarado,
       totalDeclarado,
+      descuento,
     });
+    const { ventaId, numeroControl, fechaIso, depositoAplicado } = creada;
 
     let sub = 0;
     let iv = 0;
     let tot = 0;
-    for (const it of items) {
+    for (const it of creada.items) {
       sub += it.subtotal;
       iv += it.monto_iva;
       tot += it.total_linea;
     }
 
-    const venta = toVentaResponse(items, {
+    const venta = toVentaResponse(creada.items, {
       id: ventaId,
       numero_control: numeroControl,
       fechaIso,
@@ -315,9 +331,12 @@ export async function POST(request: NextRequest) {
       subtotal: sub,
       monto_iva: iv,
       total: tot,
+      descuento: creada.descuento,
     });
 
-    return NextResponse.json(successResponse({ venta, deposito_aplicado: depositoAplicado }));
+    return NextResponse.json(
+      successResponse({ venta, deposito_aplicado: depositoAplicado, descuento: creada.descuento })
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error al crear la venta.";
     const status =
@@ -325,7 +344,8 @@ export async function POST(request: NextRequest) {
       msg.includes("no existen") ||
       msg.includes("Cliente no encontrado") ||
       msg.includes("Totales no coinciden") ||
-      msg.includes("al menos un")
+      msg.includes("al menos un") ||
+      msg.includes("descuento")
         ? 400
         : 500;
     return NextResponse.json(errorResponse(msg), { status });

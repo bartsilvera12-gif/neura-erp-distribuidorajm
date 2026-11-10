@@ -133,6 +133,11 @@ export function comprobanteEnTexto(d: DatosComprobante): string {
   }
 
   lineas.push("");
+  const desc = descuentoDeVenta(d.venta);
+  if (desc) {
+    lineas.push(`Total sin descuento: ${gs(desc.sinDescuento)}`);
+    lineas.push(`Descuento ${desc.texto}: -${gs(desc.monto)}`);
+  }
   lineas.push(`IVA incluido: ${gs(d.venta.monto_iva)}`);
   lineas.push(`*TOTAL A PAGAR: ${gs(d.venta.total)}*`);
   lineas.push(`Forma de pago: ${d.formaPago}`);
@@ -148,6 +153,21 @@ export function comprobanteEnTexto(d: DatosComprobante): string {
  * 5% o 10%), como en el formato de la SET, y abajo se liquida el IVA contenido.
  * Todo sale de las cifras guardadas en la venta: no se recalcula nada.
  */
+/**
+ * Descuento de la venta para imprimirlo: las líneas y el total ya están con el
+ * descuento; esto muestra de cuánto era sin él y cuánto se descontó.
+ */
+export function descuentoDeVenta(v: Venta): { monto: number; sinDescuento: number; texto: string } | null {
+  const monto = Number(v.descuento_monto ?? 0);
+  if (!(monto > 0)) return null;
+  const pct = Number(v.descuento_porcentaje ?? 0);
+  return {
+    monto,
+    sinDescuento: v.total + monto,
+    texto: pct > 0 ? `${pct.toLocaleString("es-PY")}%` : "",
+  };
+}
+
 export function columnasIva(venta: Venta) {
   const t = { exentas: 0, cinco: 0, diez: 0, iva5: 0, iva10: 0 };
   for (const it of venta.items) {

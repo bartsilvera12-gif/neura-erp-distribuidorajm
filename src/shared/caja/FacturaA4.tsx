@@ -1,6 +1,7 @@
 import { formatCantidad } from "@/lib/inventario/unidades";
 import {
   LOGO_FACTURA,
+  descuentoDeVenta,
   columnasIva,
   esFacturaLegal,
   fechaCorta,
@@ -47,6 +48,7 @@ const DERECHA = new Set<Col>([
 
 export default function FacturaA4({ datos }: { datos: DatosComprobante }) {
   const { venta, emisor } = datos;
+  const dscto = descuentoDeVenta(venta);
   const legal = esFacturaLegal(emisor);
   const emision = fechaHoraEmision(venta.fecha);
   const col = columnasIva(venta);
@@ -219,6 +221,13 @@ export default function FacturaA4({ datos }: { datos: DatosComprobante }) {
             cinco={miles(col.cinco)}
             diez={miles(col.diez)}
           />
+          {dscto ? (
+            <div className="flex font-normal tabular-nums">
+              <span className="flex-1">
+                Descuento {dscto.texto} aplicado sobre Gs. {miles(dscto.sinDescuento)}: Gs. {miles(dscto.monto)} (ya descontado en los precios)
+              </span>
+            </div>
+          ) : null}
           <FilaTotal
             etiqueta="TOTAL DE LA OPERACIÓN"
             diez={miles(venta.total)}

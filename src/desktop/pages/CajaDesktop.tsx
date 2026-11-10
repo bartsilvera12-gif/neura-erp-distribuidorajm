@@ -655,6 +655,15 @@ function PanelCobro({
             <span className="text-slate-500">IVA incluido</span>
             <span className="tabular-nums text-slate-700">{formatGs(caja.totales.montoIva)}</span>
           </div>
+          {caja.totales.descuento > 0 ? (
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">
+                Descuento {caja.totales.descuentoPorcentaje.toLocaleString("es-PY")}% (sobre{" "}
+                {formatGs(caja.totales.subtotal)})
+              </span>
+              <span className="tabular-nums text-rose-600">−{formatGs(caja.totales.descuento)}</span>
+            </div>
+          ) : null}
           <div className="flex items-center justify-between gap-3">
             <span className="shrink-0 text-slate-500">Precio</span>
             <div className="min-w-0">

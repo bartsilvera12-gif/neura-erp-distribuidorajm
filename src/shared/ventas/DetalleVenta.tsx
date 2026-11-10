@@ -290,8 +290,24 @@ export default function DetalleVenta({
               <span className="tabular-nums">{gs(exentas)}</span>
             </div>
           ) : null}
+          {(venta.descuento_monto ?? 0) > 0 ? (
+            <>
+              <div className="flex justify-between text-slate-600">
+                <span>Total sin descuento</span>
+                <span className="tabular-nums">{gs(venta.total + (venta.descuento_monto ?? 0))}</span>
+              </div>
+              <div className="flex justify-between font-medium text-rose-600">
+                <span>
+                  Descuento
+                  {venta.descuento_porcentaje ? ` ${venta.descuento_porcentaje.toLocaleString("es-PY")}%` : ""}
+                  {venta.cliente_nombre ? ` a ${venta.cliente_nombre}` : ""}
+                </span>
+                <span className="tabular-nums">−{gs(venta.descuento_monto ?? 0)}</span>
+              </div>
+            </>
+          ) : null}
           <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
-            <span>Total</span>
+            <span>{(venta.descuento_monto ?? 0) > 0 ? "Total cobrado" : "Total"}</span>
             <span className="tabular-nums">{gs(venta.total)}</span>
           </div>
         </div>

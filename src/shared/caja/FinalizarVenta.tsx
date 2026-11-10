@@ -15,6 +15,7 @@ import ModalCaja from "@/shared/caja/ModalCaja";
 import CalculadoraVuelto from "@/shared/caja/CalculadoraVuelto";
 import AvisoDeposito from "@/shared/caja/AvisoDeposito";
 import PagoMixtoCampos from "@/shared/caja/PagoMixtoCampos";
+import DescuentoVenta from "@/shared/caja/DescuentoVenta";
 import { useSifenActivo } from "@/shared/hooks/useSifenActivo";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useClientes } from "@/shared/hooks/useClientes";
@@ -251,6 +252,8 @@ export default function FinalizarVenta({
           />
         ) : null}
       </Seccion>
+
+      <DescuentoVenta caja={caja} grande onEnter={foco.pago} />
 
       <Seccion numero={2} titulo="Forma de pago">
         {caja.cubiertaPorDeposito ? (

@@ -26,6 +26,9 @@ interface VentaRow {
   reparto_id: string | null;
   lista_precio: string | null;
   factura_id: string | null;
+  descuento_monto: string | number | null;
+  descuento_porcentaje: string | number | null;
+  observaciones: string | null;
 }
 
 interface VentaItemRow {
@@ -84,11 +87,21 @@ export async function GET(request: NextRequest) {
     const colsQ = await queryWithRetry<{ c: string }>(pool,
       `SELECT column_name AS c FROM information_schema.columns
         WHERE table_schema = $1 AND table_name = 'ventas'
-          AND column_name IN ('metodo_pago', 'cliente_id', 'reparto_id', 'lista_precio', 'factura_id')`,
+          AND column_name IN ('metodo_pago', 'cliente_id', 'reparto_id', 'lista_precio', 'factura_id',
+                              'descuento_monto', 'descuento_porcentaje', 'observaciones')`,
       [schema]
     );
     const opc = new Set(colsQ.rows.map((r) => r.c));
-    const extra = ["metodo_pago", "cliente_id", "reparto_id", "lista_precio", "factura_id"]
+    const extra = [
+      "metodo_pago",
+      "cliente_id",
+      "reparto_id",
+      "lista_precio",
+      "factura_id",
+      "descuento_monto",
+      "descuento_porcentaje",
+      "observaciones",
+    ]
       .map((c) => (opc.has(c) ? c : `NULL::text AS ${c}`))
       .join(", ");
 
@@ -309,6 +322,7 @@ export async function GET(request: NextRequest) {
         factura_id: r.factura_id ?? null,
         factura_numero: r.factura_id ? facturaDe.get(r.factura_id)?.numero ?? null : null,
         factura_estado_sifen: r.factura_id ? facturaDe.get(r.factura_id)?.estado ?? null : null,
+        ...descuentoDe(r),
       };
     });
 
@@ -317,4 +331,19 @@ export async function GET(request: NextRequest) {
     console.error("[/api/ventas GET]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudieron cargar las ventas."), { status: 500 });
   }
+}
+
+/**
+ * Descuento de la venta: de sus columnas (SQL 62) o, si todavía no corrió,
+ * de lo que quedó escrito en las observaciones («Descuento 2% (Gs. 52.000)…»).
+ */
+function descuentoDe(r: VentaRow): { descuento_monto?: number; descuento_porcentaje?: number } {
+  const monto = Number(r.descuento_monto ?? 0) || 0;
+  if (monto > 0) return { descuento_monto: monto, descuento_porcentaje: Number(r.descuento_porcentaje ?? 0) || 0 };
+  const m = /Descuento ([\d.,]+)% \(Gs\. ([\d.]+)\)/.exec(r.observaciones ?? "");
+  if (!m) return {};
+  return {
+    descuento_monto: Number(m[2].replace(/\./g, "")) || 0,
+    descuento_porcentaje: Number(m[1].replace(/\./g, "").replace(",", ".")) || 0,
+  };
 }

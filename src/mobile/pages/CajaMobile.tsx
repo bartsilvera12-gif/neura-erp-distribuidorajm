@@ -47,6 +47,7 @@ import { esFacturaLegal, fechaHora, type DatosComprobante } from "@/lib/ventas/c
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { formatCantidad } from "@/lib/inventario/unidades";
 import { etiquetaCobro, formatGs, PASOS_CAJA, useCajaVenta, type CajaVenta } from "@/shared/caja/useCajaVenta";
+import DescuentoVenta from "@/shared/caja/DescuentoVenta";
 import SelectorReparto from "@/shared/caja/SelectorReparto";
 import { METODOS_PAGO, METODOS_COBRO, type MetodoPagoVenta, type TipoIvaVenta } from "@/lib/ventas/types";
 
@@ -710,6 +711,8 @@ function PasoPago({ caja }: { caja: CajaVenta }) {
       <div className="mt-3">
         <SelectorReparto caja={caja} />
       </div>
+
+      <DescuentoVenta caja={caja} />
 
       <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 text-center">
         <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
