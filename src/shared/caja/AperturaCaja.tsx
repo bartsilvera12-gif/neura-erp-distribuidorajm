@@ -172,13 +172,13 @@ export default function AperturaCaja({
               <p className="text-sm font-semibold text-amber-900">Todavía no hay caja abierta</p>
               <p className="mt-1 text-xs leading-relaxed text-amber-900">
                 {exigida
-                  ? "Abrí la caja para empezar a vender. El efectivo inicial es el cambio con el que arranca el cajón; el arqueo cuadra contra eso."
-                  : "No hace falta abrirla a mano: se abre sola con el primer cobro. Abrila acá solo si salís con cambio en el cajón, para que el arqueo lo cuente desde el arranque."}
+                  ? "Abrí la caja para empezar a vender. El efectivo inicial es el cambio con el que arranca el cajón; si arrancás sin plata, poné 0."
+                  : "Podés vender sin abrirla: la caja se abre sola en 0 con la primera venta. Abrila acá solo si salís con cambio en el cajón; si arrancás sin plata, no hace falta nada."}
               </p>
               {sugerido > 0 ? (
                 <p className="mt-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs leading-relaxed text-emerald-800">
                   Viene del cierre anterior: <span className="font-semibold">{gs(sugerido)}</span>. Lo
-                  cargamos solo en “Efectivo inicial”; podés dejarlo así o ajustarlo.
+                  cargamos solo en “Efectivo inicial”. Si esa plata ya se rindió y arrancás sin nada, poné 0.
                 </p>
               ) : null}
             </>
