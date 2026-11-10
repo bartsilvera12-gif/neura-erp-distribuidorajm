@@ -42,9 +42,15 @@ type Respuesta = {
 };
 
 const CADA_MS = 4000;
+/**
+ * Cada consulta a la SET pasa por varias consultas a la base y una llamada a
+ * la SET: se arranca rápido (4 s) y se va espaciando hasta 30 s. Si sigue sin
+ * respuesta, la termina el vigilante del servidor.
+ */
+const esperaDe = (n: number) => Math.min(CADA_MS * Math.pow(1.6, n), 30_000);
 /** Estados con XML firmado: el KuDE se puede imprimir. */
 const ESTADOS_CON_KUDE = new Set(["firmado", "enviado", "en_proceso", "aprobado", "error_envio"]);
-const INTENTOS = 30; // ≈ 2 minutos
+const INTENTOS = 14; // ≈ 5 minutos, espaciando
 
 export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
   const [estado, setEstado] = useState<EstadoEmision>(habilitado ? "cargando" : "inactivo");
@@ -98,7 +104,7 @@ export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
       return;
     }
     setEstado("esperando");
-    setTimeout(() => void consultar(), CADA_MS);
+    setTimeout(() => void consultar(), esperaDe(intentos.current));
   }, [ventaId, aplicar]);
 
   const emitir = useCallback(async () => {

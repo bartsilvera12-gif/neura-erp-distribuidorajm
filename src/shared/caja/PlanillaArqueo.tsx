@@ -69,7 +69,7 @@ export default function PlanillaArqueo({
       return j.data;
     },
     // En vivo: cada venta o cobranza nueva aparece sola, sin recargar.
-    { refreshInterval: 20_000, revalidateOnFocus: true, keepPreviousData: true }
+    { refreshInterval: 60_000, revalidateOnFocus: true, keepPreviousData: true }
   );
 
   useEffect(() => {

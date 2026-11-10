@@ -35,6 +35,9 @@ export function useCatalogoVenta(repartoId?: string | null) {
     () => getProductosConOrigen(repartoId),
     {
       revalidateOnFocus: true,
+      // Cada impresión de ticket devuelve el foco a la página: sin esto, el
+      // catálogo entero se volvía a pedir después de casi cada venta.
+      focusThrottleInterval: 120_000,
       dedupingInterval: 30_000,
       keepPreviousData: true,
     }

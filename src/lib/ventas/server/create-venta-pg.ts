@@ -232,17 +232,21 @@ export async function createVentaTransaccionalPg(
       }
     }
 
+    // Una venta por vez toma número: sin este bloqueo, la caja y un camión que
+    // cobran al mismo tiempo leían el mismo último número y salían con el mismo
+    // VTA. El bloqueo dura hasta el COMMIT de esta venta.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('ventas:numero:' || $1::text))`, [params.empresaId]);
+    // Mismo cálculo que antes (el mayor VTA-n), escrito para que pueda usar el
+    // índice por expresión idx_ventas_numctl_num si existe.
     const maxRow = await client.query<{ mx: string | null }>(
       `
-      SELECT COALESCE(MAX(
-        CASE
-          WHEN numero_control ~ '^VTA-[0-9]+$'
-          THEN substring(numero_control from '[0-9]+$')::bigint
-          ELSE NULL::bigint
-        END
+      SELECT COALESCE((
+        SELECT (substring(numero_control from '[0-9]+$'))::bigint
+          FROM ${ventasT}
+         WHERE empresa_id = $1 AND numero_control ~ '^VTA-[0-9]+$'
+         ORDER BY (substring(numero_control from '[0-9]+$'))::bigint DESC
+         LIMIT 1
       ), 0)::text AS mx
-      FROM ${ventasT}
-      WHERE empresa_id = $1
       `,
       [params.empresaId]
     );

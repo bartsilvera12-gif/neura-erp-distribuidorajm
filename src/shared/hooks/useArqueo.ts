@@ -14,7 +14,7 @@ export function useArqueo(fecha?: string, todas = false) {
     `cajas:arqueo:${fecha ?? "hoy"}:${todas ? "todas" : "mia"}`,
     () => getArqueo(fecha, todas),
     // En vivo: las ventas nuevas aparecen solas mientras el arqueo está abierto.
-    { revalidateOnFocus: true, dedupingInterval: 15_000, refreshInterval: 30_000, keepPreviousData: true }
+    { revalidateOnFocus: true, dedupingInterval: 15_000, refreshInterval: 60_000, keepPreviousData: true }
   );
   return {
     arqueo: swr.data ?? null,

@@ -27,6 +27,11 @@ const REINTENTO_MS = 5 * 60_000;
 /** Recién al tercer fallo seguido de envío se avisa: un corte de red suelto no es un problema. */
 const FALLOS_PARA_AVISAR = 3;
 const MAX_POR_VUELTA = 8;
+/** Una factura enviada se le pregunta a la SET como mucho una vez por minuto. */
+const CONSULTA_ENVIADO_MS = 60_000;
+/** Con varias pantallas abiertas, la vuelta corre una vez por empresa y por minuto. */
+const VUELTA_MS = 55_000;
+const ultimaVuelta = new Map<string, number>();
 
 // Mismo proceso para la caja y el vigilante: una factura no se manda dos veces a la vez.
 const enCurso = new Set<string>();
@@ -52,6 +57,12 @@ export async function vigilarFacturasSifen(
   usuarioId: string | null
 ): Promise<ResultadoVigilancia> {
   const res: ResultadoVigilancia = { revisadas: 0, aprobadas: 0, problemas: 0 };
+
+  // Cada navegador abierto llama cada minuto: con dos o tres pantallas la
+  // vuelta se repetía entera. Basta una por empresa por minuto.
+  const ahoraVuelta = Date.now();
+  if (ahoraVuelta - (ultimaVuelta.get(empresaId) ?? 0) < VUELTA_MS) return res;
+  ultimaVuelta.set(empresaId, ahoraVuelta);
 
   const { data: cfg } = await supabase
     .from("empresa_sifen_config")
@@ -91,7 +102,7 @@ export async function vigilarFacturasSifen(
     if (e !== "enviado" && reciente) return false;
     const ultimo = ultimoIntento.get(v.factura_id) ?? 0;
     // La respuesta se pregunta cada vuelta; un paso que falló, cada 5 minutos.
-    const espera = e === "enviado" ? 0 : (fallos.get(v.factura_id) ?? 0) > 0 ? REINTENTO_MS : 0;
+    const espera = e === "enviado" ? CONSULTA_ENVIADO_MS : (fallos.get(v.factura_id) ?? 0) > 0 ? REINTENTO_MS : 0;
     return ahora - ultimo >= espera;
   });
 

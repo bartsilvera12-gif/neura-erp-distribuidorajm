@@ -204,11 +204,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Solo los ítems de las ventas listadas: antes se traían los de TODA la
+    // historia de la empresa en cada carga (crece cientos de filas por día).
+    const idsVentas = ventasQ.rows.map((r) => r.id);
     const itemsQ = await queryWithRetry<VentaItemRow>(pool,
       `SELECT venta_id, producto_id, producto_nombre, sku, cantidad,
               precio_venta_original, precio_venta, tipo_iva, subtotal, monto_iva, total_linea
-         FROM ${tI} WHERE empresa_id = $1::uuid`,
-      [empresaId]
+         FROM ${tI} WHERE empresa_id = $1::uuid AND venta_id = ANY($2::uuid[])`,
+      [empresaId, idsVentas]
     );
 
     // Detalle del pago mixto: cuando la venta se cobró con más de un medio,
@@ -260,8 +263,9 @@ export async function GET(request: NextRequest) {
     const unidadProducto = new Map<string, string>();
     try {
       const q = await queryWithRetry<{ id: string; unidad_medida: string | null }>(pool,
-        `SELECT id, unidad_medida FROM ${quoteSchemaTable(schema, "productos")} WHERE empresa_id = $1::uuid`,
-        [empresaId]
+        `SELECT id, unidad_medida FROM ${quoteSchemaTable(schema, "productos")}
+          WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
+        [empresaId, [...new Set(itemsQ.rows.map((r) => r.producto_id).filter(Boolean))]]
       );
       for (const r of q.rows) if (r.unidad_medida) unidadProducto.set(r.id, r.unidad_medida);
     } catch (e) {

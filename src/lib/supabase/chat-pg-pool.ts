@@ -102,7 +102,9 @@ export function getChatPostgresPool(): pg.Pool | null {
     pool = new pg.Pool({
       connectionString: url,
       max,
-      idleTimeoutMillis: 20_000,
+      // Conexiones ociosas se guardan 5 min: con pantallas que se actualizan cada
+      // minuto, cerrarlas a los 20 s obligaba a reconectar (y negociar TLS) cada vez.
+      idleTimeoutMillis: 300_000,
       connectionTimeoutMillis: 12_000,
       allowExitOnIdle: true,
       ssl: url.includes("supabase") ? { rejectUnauthorized: false } : undefined,

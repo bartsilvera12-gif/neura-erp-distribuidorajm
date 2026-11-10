@@ -410,7 +410,11 @@ export default function NotificacionesBell() {
   }, [sesion?.id, sesion?.data_schema]);
 
   useEffect(() => {
-    const t = window.setInterval(() => void cargarRef.current?.(), POLL_MS);
+    // Con la pestaña oculta no se consulta (las nuevas llegan igual por tiempo
+    // real); al volver a la pestaña se actualiza.
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") void cargarRef.current?.();
+    }, POLL_MS);
     return () => window.clearInterval(t);
   }, []);
 
