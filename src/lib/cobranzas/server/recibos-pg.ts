@@ -253,6 +253,67 @@ export async function anularDeposito(pool: Pool, schemaRaw: string, empresaId: s
 }
 
 /**
+ * Anula el cobro de una venta a crédito (quedó cargado al cliente equivocado,
+ * o con otro monto): el recibo queda marcado como anulado —no se borra, su
+ * número no se reutiliza— y el ingreso de caja deja de contar, así la venta
+ * vuelve a quedar con deuda y el arqueo no espera esa plata. Después se cobra
+ * de nuevo a quien corresponde.
+ */
+export async function anularCobro(
+  pool: Pool,
+  schemaRaw: string,
+  empresaId: string,
+  id: string,
+  d: { usuario: string | null; motivo: string }
+): Promise<{ numero: number }> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  if (!(await hayTabla(pool, schema))) throw new ReciboError("Falta correr el SQL 53 (recibos de dinero).", 409);
+  const tR = quoteSchemaTable(schema, "recibos_cobro");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const q = await client.query<{ numero: number; anulado: boolean; tipo: string; mov: string | null }>(
+      `SELECT numero, anulado, COALESCE(to_jsonb(r)->>'tipo', 'cobro') AS tipo, caja_movimiento_id::text AS mov
+         FROM ${tR} r WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+      [id, empresaId]
+    );
+    const r = q.rows[0];
+    if (!r) throw new ReciboError("El recibo no existe.", 404);
+    if (r.anulado) throw new ReciboError("Ese recibo ya está anulado.", 409);
+    if (r.tipo !== "cobro") throw new ReciboError("Ese recibo es un depósito: se anula como depósito.", 400);
+
+    if (r.mov) {
+      await client.query(
+        `UPDATE ${quoteSchemaTable(schema, "caja_movimientos")} SET anulado_at = now()
+          WHERE id = $1::uuid AND empresa_id = $2::uuid AND anulado_at IS NULL`,
+        [r.mov, empresaId]
+      );
+    }
+    const nota = `ANULADO${d.usuario ? ` por ${d.usuario}` : ""}${d.motivo ? `: ${d.motivo}` : ""}`.slice(0, 500);
+    const conObs = (
+      await client.query(
+        `SELECT 1 FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'recibos_cobro' AND column_name = 'observaciones'`,
+        [schema]
+      )
+    ).rows.length > 0;
+    await client.query(
+      `UPDATE ${tR} SET anulado = true
+              ${conObs ? ", observaciones = COALESCE(NULLIF(observaciones, '') || ' | ', '') || $3" : ""}
+        WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+      conObs ? [id, empresaId, nota] : [id, empresaId]
+    );
+    await client.query("COMMIT");
+    return { numero: r.numero };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Dentro de la transacción de la venta: usa el saldo del depósito para pagarla
  * (hasta el total). Devuelve cuánto se aplicó; lo que falte se cobra aparte.
  */

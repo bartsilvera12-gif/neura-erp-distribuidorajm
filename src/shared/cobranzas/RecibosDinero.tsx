@@ -13,6 +13,7 @@ import SmartCombobox from "@/components/ui/SmartCombobox";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
 import CobranzasTabs from "./CobranzasTabs";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 type Recibo = {
   id: string;
@@ -90,6 +91,7 @@ export default function RecibosDinero() {
   const [imprimir, setImprimir] = useState<DatosReciboCobro | null>(null);
   const [nuevoDeposito, setNuevoDeposito] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const { isAdmin } = useIsAdmin();
 
   const url = `/api/cobranzas/recibos?desde=${desde}&hasta=${hasta}${filtro === "con-saldo" ? "&con_saldo=1" : ""}`;
   type Respuesta = { disponible: boolean; depositos?: boolean; recibos: Recibo[] };
@@ -125,6 +127,26 @@ export default function RecibosDinero() {
 
   function pasarAVenta(id: string) {
     router.push(`/ventas/nueva?deposito=${id}`);
+  }
+
+  /** Cobro cargado mal (otro cliente, otro monto): la venta vuelve a deber. */
+  async function anularCobro(r: Recibo) {
+    const motivo = window.prompt(
+      `¿Anular el cobro ${numero(r.numero)} de ${r.cliente_nombre} por ${gs(r.monto)}?\n\n` +
+        `La venta ${r.venta_numero ?? ""} vuelve a quedar con deuda y la plata sale de la caja. ` +
+        `Después cobrá de nuevo a quien corresponde.\n\nMotivo:`,
+      "Cobrado al cliente equivocado"
+    );
+    if (motivo === null) return;
+    setAviso(null);
+    const res = await fetchWithSupabaseSession(`/api/cobranzas/recibos/${r.id}/anular`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ motivo }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    setAviso(res.ok ? `Cobro ${numero(r.numero)} anulado. Ya se puede cobrar de nuevo a quien corresponde.` : (j.error ?? "No se pudo anular el cobro."));
+    void mutate();
   }
 
   async function anular(r: Recibo) {
@@ -314,6 +336,17 @@ export default function RecibosDinero() {
                         >
                           <Printer className="h-4 w-4" />
                         </button>
+                        {!deposito && isAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => void anularCobro(r)}
+                            title="Anular cobro"
+                            aria-label="Anular cobro"
+                            className="rounded-lg p-1.5 text-red-600 hover:bg-red-50"
+                          >
+                            <Ban className="h-4 w-4" />
+                          </button>
+                        ) : null}
                         {deposito && r.aplicado === 0 ? (
                           <button
                             type="button"
