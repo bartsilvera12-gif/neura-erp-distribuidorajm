@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Package, RefreshCw, Truck } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Package, RefreshCw, Search, Truck, X } from "lucide-react";
 import CamionesPanel from "@/shared/caja/CamionesPanel";
 import InventarioCamion from "./InventarioCamion";
 import ComprasCamion from "./ComprasCamion";
 import { useCamiones, useObjetivos } from "@/shared/hooks/useRepartos";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { formatCantidad, parseCantidad } from "@/lib/inventario/unidades";
+import { compararPorCodigo, formatCantidad, parseCantidad } from "@/lib/inventario/unidades";
 import type { ObjetivoCamion } from "@/lib/repartos/types";
 
 const TEAL = "#4FAEB2";
@@ -93,13 +93,46 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
   // Al contar se pueden encontrar productos que no figuraban: con "ver todos"
   // aparece el catálogo entero. Al cargar del salón también se ve todo, porque
   // se cargan productos que el camión todavía no tiene.
-  const visibles = useMemo(
-    () => (verTodos || modo === "cargar" ? items : items.filter((i) => i.actual > 0)),
-    [items, verTodos, modo]
+  // Búsqueda por código o nombre: con el código exacto + Enter se salta
+  // directo a la cantidad de ese producto, como en la caja.
+  const [buscar, setBuscar] = useState("");
+  const refBuscar = useRef<HTMLInputElement>(null);
+  const ordenados = useMemo(
+    () => [...items].sort((a, b) => compararPorCodigo({ sku: a.codigo ?? "", nombre: a.nombre }, { sku: b.codigo ?? "", nombre: b.nombre })),
+    [items]
   );
+  const visibles = useMemo(() => {
+    const q = buscar.trim().toLowerCase();
+    if (q) {
+      // Buscando se mira todo el catálogo: el producto puede no estar arriba todavía.
+      const base = modo === "salon" ? ordenados.filter((i) => i.actual > 0) : ordenados;
+      return base.filter((i) => (i.codigo ?? "").toLowerCase().startsWith(q) || i.nombre.toLowerCase().includes(q));
+    }
+    return verTodos || modo === "cargar" ? ordenados : ordenados.filter((i) => i.actual > 0);
+  }, [ordenados, verTodos, modo, buscar]);
+
+  /** Enter en el buscador: si el código coincide con uno, va a su cantidad. */
+  function irAlCodigo() {
+    const q = buscar.trim().toLowerCase();
+    if (!q) return;
+    const exacto = items.find((i) => (i.codigo ?? "").toLowerCase() === q) ?? (visibles.length === 1 ? visibles[0] : null);
+    if (!exacto) return;
+    setBuscar(exacto.codigo || exacto.nombre);
+    setTimeout(() => document.getElementById(`cant-${exacto.producto_id}`)?.focus(), 0);
+  }
+
+  /** Enter en una cantidad: vuelve al buscador para el código siguiente. */
+  function siguienteCodigo() {
+    setBuscar("");
+    setTimeout(() => refBuscar.current?.focus(), 0);
+  }
+
+  /** Lo que ya tiene cantidad, para verlo aunque la búsqueda lo esconda. */
+  const cargados = modo === "contar" ? [] : items.filter((i) => valorDe(i) > 0);
 
   function cambiarModo(m: Modo) {
     setModo(m);
+    setBuscar("");
     setValores({});
     setMotivos({});
     setAviso(null);
@@ -268,10 +301,55 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
             <InventarioCamion camionId={camionId} version={version} />
           )}
         </>
-      ) : error ? (
+      ) : null}
+
+      {modo !== "ver" ? (
+        <div className="mb-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={refBuscar}
+              autoFocus
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  irAlCodigo();
+                }
+              }}
+              placeholder="Código o nombre del producto (Enter para ir a la cantidad)"
+              aria-label="Buscar producto por código o nombre"
+              className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-9 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+            />
+            {buscar ? (
+              <button
+                type="button"
+                onClick={() => siguienteCodigo()}
+                aria-label="Limpiar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+          {cargados.length > 0 ? (
+            <p className="mt-2 text-xs text-slate-600">
+              <span className="font-semibold">{cargados.length} {cargados.length === 1 ? "producto" : "productos"}:</span>{" "}
+              {cargados.map((i) => `${i.codigo ? `${i.codigo} ` : ""}${i.nombre} (${formatCantidad(valorDe(i), i.unidad)})`).join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {modo === "ver" ? null : error ? (
         <p className="rounded-lg bg-red-50 p-3 text-xs text-red-700">{error.message}</p>
       ) : isLoading ? (
         <p className="py-6 text-sm text-slate-400">Cargando stock…</p>
+      ) : visibles.length === 0 && buscar.trim() ? (
+        <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500">
+          {modo === "salon" ? "El camión no tiene ningún producto con ese código o nombre." : "No hay ningún producto con ese código o nombre."}
+        </p>
       ) : visibles.length === 0 ? (
         <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500">
           El camión está vacío. Usá “Cargar del salón” para subirle mercadería, o cargalo con una
@@ -284,13 +362,23 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
             const diferencia = modo === "contar" && valores[i.producto_id] !== undefined && v !== i.actual;
             return (
               <li key={i.producto_id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-                <span className="min-w-0 flex-1 basis-48 text-sm text-slate-900">{i.nombre}</span>
+                <span className="min-w-0 flex-1 basis-48 text-sm text-slate-900">
+                  {i.codigo ? <span className="mr-2 font-mono text-xs text-slate-500">{i.codigo}</span> : null}
+                  {i.nombre}
+                </span>
                 <span className="w-28 text-right text-sm tabular-nums text-slate-600">
                   {formatCantidad(i.actual, i.unidad)} {i.unidad}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <input
+                    id={`cant-${i.producto_id}`}
                     inputMode="decimal"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        siguienteCodigo();
+                      }
+                    }}
                     value={valores[i.producto_id] ?? ""}
                     onChange={(e) => setValores((p) => ({ ...p, [i.producto_id]: e.target.value }))}
                     placeholder={modo === "contar" ? formatCantidad(i.actual, i.unidad) : "0"}

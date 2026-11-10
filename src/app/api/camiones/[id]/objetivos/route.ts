@@ -26,6 +26,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 type FilaObjetivo = {
   producto_id: string;
   nombre: string;
+  codigo: string;
   unidad: string;
   objetivo: string | null;
   actual: string;
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const q = await queryWithRetry<FilaObjetivo>(
       pool,
       `SELECT p.id AS producto_id, p.nombre,
+              COALESCE(btrim(to_jsonb(p)->>'sku'), '') AS codigo,
               COALESCE(NULLIF(p.unidad_medida, ''), '') AS unidad,
               su.stock_maximo::text AS objetivo,
               COALESCE(su.stock_actual, 0)::text AS actual
@@ -97,6 +99,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       return {
         producto_id: r.producto_id,
         nombre: r.nombre,
+        codigo: r.codigo,
         unidad: r.unidad,
         objetivo,
         actual,

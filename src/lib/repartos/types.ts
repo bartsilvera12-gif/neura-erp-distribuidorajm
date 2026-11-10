@@ -71,6 +71,8 @@ export interface Ubicacion {
 export interface ObjetivoCamion {
   producto_id: string;
   nombre: string;
+  /** Código del producto (sku), para buscarlo y cargarlo por código. */
+  codigo?: string;
   unidad: string;
   /** `null` = ese producto no se sugiere para este camión. */
   objetivo: number | null;
