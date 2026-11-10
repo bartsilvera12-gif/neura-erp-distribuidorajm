@@ -13,6 +13,14 @@ type ReporteCard = {
 
 const REPORTES: ReporteCard[] = [
   {
+    title: "Metas de ventas",
+    subtitle: "Metas del mes",
+    description:
+      "Cargar, cambiar y consultar la meta de ventas de cada mes (también la del mes que viene), para toda la empresa y por persona, con el avance de lo vendido, lo que falta y cuánto hay que vender por día.",
+    icon: Target,
+    href: "/reportes/metas-ventas",
+  },
+  {
     title: "Compras por semana",
     subtitle: "Como la planilla",
     description:
@@ -117,7 +125,7 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/ranking-clientes",
   },
   {
-    title: "Metas comerciales",
+    title: "Metas por producto",
     subtitle: "Comercial",
     description:
       "Objetivos de cantidad vendida por producto y por mes, con el avance real y el porcentaje de cumplimiento (vendido ÷ meta).",
