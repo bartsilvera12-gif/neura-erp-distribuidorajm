@@ -9,6 +9,7 @@ import { resolverUsuarioTenant } from "@/lib/usuarios/server/usuario-tenant";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import type { ConteoEfectivo } from "@/lib/cajas/conteo";
+import { cerrarCajasVencidas } from "@/lib/cajas/server/cierre-automatico";
 
 const TZ = "America/Asuncion";
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -63,6 +64,9 @@ export async function GET(request: NextRequest) {
     if (existeQ.rows[0]?.cajas === null || existeQ.rows[0]?.movs === null) {
       return NextResponse.json(successResponse({ arqueo: { disponible: false, cajas: [] } }));
     }
+
+    // Pasadas las 23:00, la caja del día se cierra sola.
+    await cerrarCajasVencidas(pool, schema, empresaId);
 
     const fechaQ = await queryWithRetry<{ fecha: string }>(
       pool,

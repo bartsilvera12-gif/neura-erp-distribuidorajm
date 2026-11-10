@@ -50,6 +50,8 @@ export default function ReporteComprasPage() {
   const [hasta, setHasta] = useState(today());
   const [proveedorId, setProveedorId] = useState("");
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [categoriaId, setCategoriaId] = useState("");
+  const [categorias, setCategorias] = useState<{ id: string; nombre: string; parent_id: string | null }[]>([]);
 
   const [data, setData] = useState<Reporte | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,8 +62,9 @@ export default function ReporteComprasPage() {
     if (desde) p.set("desde", desde);
     if (hasta) p.set("hasta", hasta);
     if (proveedorId) p.set("proveedor_id", proveedorId);
+    if (categoriaId) p.set("categoria_id", categoriaId);
     return p.toString();
-  }, [desde, hasta, proveedorId]);
+  }, [desde, hasta, proveedorId, categoriaId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,7 +87,31 @@ export default function ReporteComprasPage() {
 
   useEffect(() => {
     getProveedores().then(setProveedores).catch(() => {});
+    apiFetch("/api/inventario/categorias")
+      .then((r) => r.json())
+      .then((j) => setCategorias(Array.isArray(j?.data?.categorias) ? j.data.categorias : []))
+      .catch(() => {});
   }, []);
+
+  // Categorías con sus subcategorías debajo (sangradas), para elegir un sector
+  // entero (p. ej. Carnicería) o una parte.
+  const opcionesCategoria = useMemo(() => {
+    const hijos = new Map<string | null, typeof categorias>();
+    for (const c of categorias) {
+      const k = c.parent_id && categorias.some((x) => x.id === c.parent_id) ? c.parent_id : null;
+      hijos.set(k, [...(hijos.get(k) ?? []), c]);
+    }
+    const out: { id: string; nombre: string; nivel: number }[] = [];
+    const recorrer = (padre: string | null, nivel: number) => {
+      for (const c of (hijos.get(padre) ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre))) {
+        out.push({ id: c.id, nombre: c.nombre, nivel });
+        if (nivel < 5) recorrer(c.id, nivel + 1);
+      }
+    };
+    recorrer(null, 0);
+    return out;
+  }, [categorias]);
+  const nombreCategoria = opcionesCategoria.find((c) => c.id === categoriaId)?.nombre ?? null;
   useEffect(() => {
     load();
   }, [load]);
@@ -110,7 +137,7 @@ export default function ReporteComprasPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-5">
         <label className="text-xs font-semibold text-slate-500">Desde
           <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
         </label>
@@ -123,12 +150,27 @@ export default function ReporteComprasPage() {
             {proveedores.map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}</option>)}
           </select>
         </label>
+        <label className="text-xs font-semibold text-slate-500">Categoría
+          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
+            <option value="">Todas</option>
+            {opcionesCategoria.map((c) => (
+              <option key={c.id} value={c.id}>{`${"\u00A0\u00A0".repeat(c.nivel)}${c.nombre}`}</option>
+            ))}
+          </select>
+        </label>
         <div className="flex items-end">
           <button onClick={load} className="w-full rounded-lg bg-[#4FAEB2] px-3 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">Aplicar</button>
         </div>
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {nombreCategoria ? (
+        <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+          Mostrando solo lo comprado de <b>{nombreCategoria}</b> (y sus subcategorías): los ítems y el total de cada
+          compra son los de esa categoría, no los de la factura entera.
+        </p>
+      ) : null}
 
       {resumen && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

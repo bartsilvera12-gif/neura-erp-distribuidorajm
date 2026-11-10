@@ -64,6 +64,12 @@ export interface FiltrosCompras {
   desde: string;
   hasta: string;
   proveedor_id?: string | null;
+  /**
+   * Solo lo comprado de esa categoría (y sus subcategorías), por la categoría
+   * principal del producto. Con este filtro, ítems y total de cada compra son
+   * los de esa categoría, no los del documento entero.
+   */
+  categoria_id?: string | null;
 }
 
 function pool() {
@@ -110,9 +116,37 @@ export async function getReporteCompras(
     filtroProveedor = ` AND c.proveedor_id = $${params.length}::uuid`;
   }
 
+  // Filtro por categoría: ítems y total salen solo de las líneas de esa
+  // categoría (o de una subcategoría), y la compra aparece si tiene alguna.
+  let ctePorCategoria = "";
+  let itemsExpr = `(SELECT count(*)::int FROM ${tItems} ci WHERE ci.compra_id = c.id)`;
+  let totalExpr = "c.total";
+  let joinCategoria = "";
+  if (f.categoria_id) {
+    params.push(f.categoria_id);
+    const pCat = `$${params.length}::uuid`;
+    const tCat = quoteSchemaTable(schema, "categorias_productos");
+    const tProd = quoteSchemaTable(schema, "productos");
+    ctePorCategoria = `WITH RECURSIVE cats AS (
+         SELECT id FROM ${tCat} WHERE id = ${pCat} AND empresa_id = $1::uuid
+         UNION
+         SELECT h.id FROM ${tCat} h JOIN cats ON h.parent_id = cats.id
+       ),
+       lineas AS (
+         SELECT ci.compra_id, count(*)::int AS items, COALESCE(sum(ci.total_linea), 0) AS total
+           FROM ${tItems} ci JOIN ${tProd} p ON p.id = ci.producto_id
+          WHERE p.categoria_principal_id IN (SELECT id FROM cats)
+          GROUP BY ci.compra_id
+       )`;
+    itemsExpr = "l.items";
+    totalExpr = "l.total";
+    joinCategoria = "JOIN lineas l ON l.compra_id = c.id";
+  }
+
   const { rows } = await queryWithRetry<FilaCompra>(
     pool(),
-    `SELECT c.id,
+    `${ctePorCategoria}
+     SELECT c.id,
             to_char((c.fecha AT TIME ZONE $${params.length + 1})::date, 'YYYY-MM-DD') AS fecha,
             c.proveedor_nombre AS proveedor,
             c.proveedor_id AS proveedor_id,
@@ -122,15 +156,16 @@ export async function getReporteCompras(
                      NULLIF(btrim(c.numero_control), '')) AS numero,
             c.tipo_pago AS condicion,
             c.estado AS estado,
-            (SELECT count(*)::int FROM ${tItems} ci WHERE ci.compra_id = c.id) AS items,
-            c.total AS total
+            ${itemsExpr} AS items,
+            ${totalExpr} AS total
        FROM ${tC} c
+       ${joinCategoria}
        LEFT JOIN ${tPr} pr ON pr.id = c.proveedor_id
       WHERE c.empresa_id = $1::uuid
         AND COALESCE(c.estado, '') <> 'anulada'
         AND (c.fecha AT TIME ZONE $${params.length + 1})::date BETWEEN $2::date AND $3::date
         ${filtroProveedor}
-      ORDER BY (c.fecha AT TIME ZONE $${params.length + 1})::date DESC, c.total DESC`,
+      ORDER BY (c.fecha AT TIME ZONE $${params.length + 1})::date DESC, ${totalExpr} DESC`,
     [...params, TZ]
   );
 

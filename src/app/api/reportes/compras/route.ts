@@ -31,7 +31,10 @@ export async function GET(request: NextRequest) {
     const proveedorRaw = sp.get("proveedor_id") ?? "";
     const proveedor_id = UUID.test(proveedorRaw) ? proveedorRaw : null;
 
-    const data = await getReporteCompras(schema, ctx.auth.empresa_id, { desde, hasta, proveedor_id });
+    const categoriaRaw = sp.get("categoria_id") ?? "";
+    const categoria_id = UUID.test(categoriaRaw) ? categoriaRaw : null;
+
+    const data = await getReporteCompras(schema, ctx.auth.empresa_id, { desde, hasta, proveedor_id, categoria_id });
     return NextResponse.json(successResponse(data));
   } catch (e) {
     console.error("[/api/reportes/compras GET]", e instanceof Error ? e.message : e);

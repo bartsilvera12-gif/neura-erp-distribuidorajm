@@ -169,7 +169,15 @@ function Formulario({
   };
 
   async function guardar(enviar: boolean) {
-    if (enviar && !window.confirm("¿Enviar la planilla al administrador?")) return;
+    if (
+      enviar &&
+      !window.confirm(
+        s.caja.estado === "abierta"
+          ? "¿Enviar la planilla al administrador y CERRAR LA CAJA? Las ventas que se hagan después van a una caja nueva."
+          : "¿Enviar la planilla al administrador?"
+      )
+    )
+      return;
     setGuardando(true);
     setAviso(null);
     try {
@@ -422,7 +430,11 @@ function Formulario({
               <button type="button" onClick={() => void guardar(true)} disabled={guardando}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
                 <Send className="h-4 w-4" />
-                {estado === "enviada" ? "Volver a enviar" : "Enviar al administrador"}
+                {estado === "enviada"
+                  ? "Volver a enviar"
+                  : s.caja.estado === "abierta"
+                    ? "Enviar y cerrar caja"
+                    : "Enviar al administrador"}
               </button>
             )}
           </>

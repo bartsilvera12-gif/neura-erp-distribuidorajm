@@ -9,6 +9,7 @@ import type { ConteoEfectivo } from "@/lib/cajas/conteo";
 import type { DatosPlanilla, EstadoPlanilla, PlanillaGuardada, PlanillaResumen } from "@/lib/cajas/planilla";
 import { totalesPlanilla } from "@/lib/cajas/planilla";
 import { limpiarConteo, totalConteo } from "@/lib/cajas/conteo";
+import { cerrarUna } from "@/lib/cajas/server/cierre-automatico";
 
 async function columnas(pool: Pool, schema: string, tabla: string): Promise<Set<string>> {
   const r = await pool.query<{ c: string }>(
@@ -408,6 +409,12 @@ export async function guardarPlanilla(
       efectivo + (Number(d.datos.cheques) || 0), t.diferencia,
     ]
   );
+  // Enviar la planilla es terminar el día: la caja se cierra ahí mismo, con el
+  // conteo de billetes de la planilla. Antes la caja quedaba abierta y las
+  // ventas del día siguiente caían en la misma caja.
+  if (d.enviar && sistema.caja.estado === "abierta") {
+    await cerrarUna(pool, schema, empresaId, cajaId, { ahora: true, cerradaPor: d.usuarioId });
+  }
   return rows[0];
 }
 

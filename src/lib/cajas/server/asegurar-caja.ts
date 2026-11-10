@@ -1,5 +1,6 @@
 import "server-only";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { cerrarCajasVencidas } from "@/lib/cajas/server/cierre-automatico";
 
 /**
  * Devuelve la caja abierta de la empresa; si no hay ninguna, abre una.
@@ -19,6 +20,10 @@ export async function asegurarCajaAbierta(
 ): Promise<string | null> {
   const pool = getChatPostgresPool();
   if (!pool) return null;
+
+  // Antes de buscar caja: si la abierta pasó las 23:00 de su día, se cierra y
+  // esta venta abre una nueva. Va antes de tomar la conexión (usa el pool).
+  await cerrarCajasVencidas(pool, schema, empresaId);
 
   const client = await pool.connect();
   try {

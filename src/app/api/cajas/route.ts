@@ -9,6 +9,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { puede } from "@/lib/usuarios/server/permisos-pg";
 import { saldoCierreAnterior } from "@/lib/cajas/server/saldo-cierre-anterior";
+import { cerrarCajasVencidas } from "@/lib/cajas/server/cierre-automatico";
 
 /** GET /api/cajas?estado=abierta — la caja abierta de la empresa, si hay. */
 export async function GET(request: NextRequest) {
@@ -32,6 +33,9 @@ export async function GET(request: NextRequest) {
     }
 
     const tC = quoteSchemaTable(schema, "cajas");
+
+    // Pasadas las 23:00, la caja del día se cierra sola (y la próxima venta abre otra).
+    await cerrarCajasVencidas(pool, schema, empresaId);
 
     // La caja abierta de QUIEN PREGUNTA (o una sin dueño), no la última de la
     // empresa: es la misma regla que usan el arqueo y la apertura automática
