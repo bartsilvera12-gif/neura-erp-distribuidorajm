@@ -54,6 +54,14 @@ export async function POST(request: NextRequest) {
     const tV = quoteSchemaTable(schema, "ventas");
     const tM = quoteSchemaTable(schema, "caja_movimientos");
 
+    // La caja se asegura ANTES de tomar la conexión de la venta: tiene su
+    // propia transacción, y pedir una segunda conexión con la primera tomada
+    // traba el pool cuando hay varios cobros a la vez.
+    const cajaId = await asegurarCajaAbierta(schema, empresaId, ctx.auth.usuarioCatalogId ?? null);
+    if (!cajaId) {
+      return NextResponse.json(errorResponse("No hay caja donde registrar el cobro."), { status: 409 });
+    }
+
     client = await pool.connect();
     await client.query("BEGIN");
 
@@ -101,22 +109,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await client.query("COMMIT");
-
-    // La caja se abre fuera de esta transacción porque tiene la suya: si no
-    // hubiera ninguna abierta, el cobro la abre igual que lo hace una venta.
-    const cajaId = await asegurarCajaAbierta(schema, empresaId, ctx.auth.usuarioCatalogId ?? null);
-    if (!cajaId) {
-      return NextResponse.json(errorResponse("No hay caja donde registrar el cobro."), { status: 409 });
-    }
-
-    const ins = await pool.query<{ id: string; created_at: string }>(
+    // El ingreso va en la misma transacción que el bloqueo de la venta: dos
+    // cobros simultáneos no pueden pasar los dos el control de saldo.
+    const ins = await client.query<{ id: string; created_at: string }>(
       `INSERT INTO ${tM} (empresa_id, caja_id, tipo, concepto, monto, medio_pago, venta_id)
        VALUES ($1::uuid, $2::uuid, 'ingreso', $3, $4::numeric, $5, $6::uuid)
        RETURNING id, created_at`,
       [empresaId, cajaId, `Cobro ${venta.numero_control}`, monto, medio, ventaId]
     );
     const mov = ins.rows[0];
+    await client.query("COMMIT");
+    // Se suelta ya: el recibo usa el pool por su cuenta.
+    client.release();
+    client = null;
 
     // Recibo de dinero numerado (SQL 53). Si falla, el cobro ya está hecho:
     // no se lo hace fallar por el recibo, sale con la referencia del movimiento.

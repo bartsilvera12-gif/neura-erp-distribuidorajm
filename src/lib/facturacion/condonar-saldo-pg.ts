@@ -37,6 +37,8 @@ export async function condonarSaldoFactura(
   const pool = getChatPostgresPool();
   if (!pool) throw new CondonarError("Conexión no disponible.", 500);
   const tF = quoteSchemaTable(schema, "facturas");
+  // Antes de tomar la conexión (ver compras-pg).
+  const configContable = await getConfigContable(schema, empresaId);
 
   const client = await pool.connect();
   try {
@@ -57,7 +59,7 @@ export async function condonarSaldoFactura(
     let asientoId: string | null = null;
 
     if (contabilizado) {
-      const config = await getConfigContable(schema, empresaId);
+      const config = configContable;
       const ctaDesc = config?.cuenta_descuentos_incobrables_id;
       const ctaClientes = config?.cuenta_clientes_id;
       if (!ctaDesc) throw new ContabilidadError("Configurá la cuenta de Descuentos/Incobrables en Configuración Contable.");

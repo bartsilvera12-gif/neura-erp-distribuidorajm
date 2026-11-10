@@ -170,6 +170,15 @@ export async function contabilizarFacturaVenta(schemaRaw: string, empresaId: str
   const config = await getConfigContable(schema, empresaId);
 
   const client = await pool().connect();
+  // Se suelta apenas termina la transacción: lo que viene después (hook de
+  // anticipos, marcar error) usa el pool y no tiene que esperar a esta conexión.
+  let suelto = false;
+  const soltar = () => {
+    if (!suelto) {
+      suelto = true;
+      client.release();
+    }
+  };
   try {
     await client.query("BEGIN");
     const { rows: fr } = await client.query<{
@@ -207,6 +216,7 @@ export async function contabilizarFacturaVenta(schemaRaw: string, empresaId: str
       [facturaId, empresaId, asiento.id]
     );
     await client.query("COMMIT");
+    soltar();
     // Hook best-effort: reclasificar anticipos de cobros de esta factura (Debe
     // Anticipos / Haber Clientes). El backfill de anticipos es la red de seguridad.
     try {
@@ -218,11 +228,12 @@ export async function contabilizarFacturaVenta(schemaRaw: string, empresaId: str
     return { status: "contabilizado", asientoId: asiento.id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
+    soltar();
     const msg = e instanceof Error ? e.message : "Error al contabilizar la factura.";
     await marcarError(schema, "facturas", empresaId, facturaId, msg);
     return { status: "error", motivo: msg };
   } finally {
-    client.release();
+    soltar();
   }
 }
 
@@ -235,6 +246,15 @@ export async function contabilizarNotaCreditoVenta(schemaRaw: string, empresaId:
   const config = await getConfigContable(schema, empresaId);
 
   const client = await pool().connect();
+  // Se suelta apenas termina la transacción: lo que viene después (hook de
+  // anticipos, marcar error) usa el pool y no tiene que esperar a esta conexión.
+  let suelto = false;
+  const soltar = () => {
+    if (!suelto) {
+      suelto = true;
+      client.release();
+    }
+  };
   try {
     await client.query("BEGIN");
     const { rows: nr } = await client.query<{
@@ -282,11 +302,12 @@ export async function contabilizarNotaCreditoVenta(schemaRaw: string, empresaId:
     return { status: "contabilizado", asientoId: asiento.id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
+    soltar();
     const msg = e instanceof Error ? e.message : "Error al contabilizar la NC.";
     await marcarError(schema, "nota_credito", empresaId, ncId, msg);
     return { status: "error", motivo: msg };
   } finally {
-    client.release();
+    soltar();
   }
 }
 

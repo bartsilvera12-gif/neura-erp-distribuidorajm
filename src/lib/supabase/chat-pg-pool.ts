@@ -107,6 +107,17 @@ export function getChatPostgresPool(): pg.Pool | null {
       allowExitOnIdle: true,
       ssl: url.includes("supabase") ? { rejectUnauthorized: false } : undefined,
     });
+    // Límites por conexión: una consulta trabada o una transacción olvidada
+    // no puede quedarse con una de las pocas conexiones del pool para siempre.
+    // Se aplican con SET al conectar (y no como parámetro de arranque) porque
+    // algunos poolers rechazan esos parámetros. Si el SET falla, se sigue igual.
+    pool.on("connect", (client) => {
+      client
+        .query("SET statement_timeout = '60s'; SET idle_in_transaction_session_timeout = '60s'")
+        .catch((err: unknown) => {
+          console.warn("[pg-pool] no se pudieron fijar los timeouts:", err instanceof Error ? err.message : String(err));
+        });
+    });
     pool.on("error", (err) => {
       console.error("[pg-pool][idle-client-error]", err instanceof Error ? err.message : String(err));
     });

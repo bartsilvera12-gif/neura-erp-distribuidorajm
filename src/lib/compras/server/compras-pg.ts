@@ -401,6 +401,10 @@ export async function insertCompraMultilinea(
       : [...porIva.entries()].sort((a, b) => b[1] - a[1])[0][0];
   const primera = calculadas[0];
 
+  // La configuración contable se lee antes de tomar la conexión: leerla por el
+  // pool en medio de la transacción pide una segunda conexión y puede trabarlo.
+  const configContable = d.sin_asiento ? null : await getConfigContable(schema, empresaId);
+
   const client = await pool().connect();
   let movimientoId: string | null = null;
   try {
@@ -599,7 +603,7 @@ export async function insertCompraMultilinea(
     // ── Contabilidad: cuenta de CADA línea al Debe + IVA Crédito; Haber caja/banco o proveedores ──
     // Una compra sin asiento termina acá (más los estados de recepción/orden).
     if (!d.sin_asiento) {
-      const config = await getConfigContable(schema, empresaId);
+      const config = configContable;
       const lineasAsiento = construirLineasDocumento({
         config,
         lineasFiscales: calculadas.map((l) => ({

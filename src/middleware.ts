@@ -65,7 +65,17 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  // Refresca la sesión, pero con tiempo límite: si el servidor de usuarios
+  // (Supabase Auth) anda lento, no puede trabar todas las páginas y llamadas a
+  // la vez. La sesión se refresca en el próximo pedido.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    supabase.auth.getUser().catch(() => null),
+    new Promise((resolve) => {
+      timer = setTimeout(resolve, 4000);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
 
   return supabaseResponse;
 }
@@ -76,6 +86,6 @@ export async function middleware(request: NextRequest) {
  */
 export const config = {
   matcher: [
-    "/((?!api/webhooks|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/webhooks|api/deploy-info|_next/static|_next/image|sounds/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|mp3|ogg|webmanifest|txt|map)$).*)",
   ],
 };

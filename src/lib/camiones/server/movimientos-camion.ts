@@ -21,24 +21,24 @@ async function abrir(schema: string, empresaId: string, camionId: string) {
   const pool = getChatPostgresPool();
   if (!pool) throw new CamionError("Pool no disponible.", 500);
   const client = await pool.connect();
-  await client.query("BEGIN");
-  const cam = await client.query<{ alias: string; ubicacion_id: string | null }>(
-    `SELECT alias, ubicacion_id FROM ${quoteSchemaTable(schema, "camiones")}
-      WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
-    [camionId, empresaId]
-  );
-  const row = cam.rows[0];
-  if (!row) {
-    await client.query("ROLLBACK");
+  // Si algo falla antes de devolver el cliente, se suelta acá: con un pool de
+  // pocas conexiones, un cliente perdido traba a toda la app.
+  try {
+    await client.query("BEGIN");
+    const cam = await client.query<{ alias: string; ubicacion_id: string | null }>(
+      `SELECT alias, ubicacion_id FROM ${quoteSchemaTable(schema, "camiones")}
+        WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+      [camionId, empresaId]
+    );
+    const row = cam.rows[0];
+    if (!row) throw new CamionError("Ese camión no existe.", 404);
+    if (!row.ubicacion_id) throw new CamionError(`El camión ${row.alias} no tiene ubicación de inventario.`, 409);
+    return { client, alias: row.alias, ubicacionId: row.ubicacion_id };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
     client.release();
-    throw new CamionError("Ese camión no existe.", 404);
+    throw e;
   }
-  if (!row.ubicacion_id) {
-    await client.query("ROLLBACK");
-    client.release();
-    throw new CamionError(`El camión ${row.alias} no tiene ubicación de inventario.`, 409);
-  }
-  return { client, alias: row.alias, ubicacionId: row.ubicacion_id };
 }
 
 async function stockDelCamion(

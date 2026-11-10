@@ -53,6 +53,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const tVI = quoteSchemaTable(schema, "ventas_items");
     const tP = quoteSchemaTable(schema, "productos");
 
+    // Antes de tomar la conexión: buscar el usuario usa el pool, y pedirlo con
+    // una conexión tomada traba el pool cuando hay varias operaciones a la vez.
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     client = await pool.connect();
     await client.query("BEGIN");
 
@@ -85,7 +88,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     // Quién puede anular: el administrador, siempre. El vendedor móvil, solo lo
     // suyo y en el día: corregir el error de tipeo recién hecho es parte de
     // vender, pero tocar la jornada de ayer ya es cuestión del que controla.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     const esAdmin = esRolAdminEmpresa(ctx.auth.rol) || !isErpRolVendedorMovil(yo?.rol);
     if (!esAdmin) {
       if (venta.fecha_dia !== venta.hoy) {

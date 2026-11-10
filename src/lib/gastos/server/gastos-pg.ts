@@ -379,6 +379,10 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
     if (existingId) return (await getGasto(schema, empresaId, existingId))!.header;
   }
 
+  // Contabilidad leída antes de tomar la conexión (ver compras-pg).
+  const lleva = await llevaContabilidad(schema, empresaId);
+  const configContable = lleva ? await getConfigContable(schema, empresaId) : null;
+
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
@@ -455,8 +459,8 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
     // entero. Sin imputar, el gasto igual cumple su función —comprobante,
     // timbrado e IVA para el crédito fiscal y el Libro de Compras—.
     const imputado = computed.every((it) => !!it.cuenta_contable_id);
-    if (imputado && (await llevaContabilidad(schema, empresaId))) {
-      const config = await getConfigContable(schema, empresaId);
+    if (imputado && lleva) {
+      const config = configContable;
       const esContado = h.tipo_pago !== "credito";
       const lineasFiscales = computed.map((it) => ({
         cuenta_contable_id: it.cuenta_contable_id as string,

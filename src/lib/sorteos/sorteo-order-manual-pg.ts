@@ -109,8 +109,9 @@ export async function createSorteoManualCashSaleViaDirectPostgres(
     return { ok: false, message: "No hay conexión directa a la base de datos configurada." };
   }
 
-  const client = await poolInst.connect();
+  // Antes de conectar: si el schema es inválido tira, y no puede quedar una conexión tomada.
   const qsch = quoteIdent(sch);
+  const client = await poolInst.connect();
 
   try {
     const entCols = await loadColumns(client, sch, "sorteo_entradas");

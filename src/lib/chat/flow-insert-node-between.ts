@@ -201,7 +201,7 @@ export async function insertFlowNodeBetweenTransactionalPg(
       wiredTo: oldNext,
     };
   } catch (e) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => undefined);
     throw e;
   } finally {
     client.release();

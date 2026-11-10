@@ -596,7 +596,7 @@ export async function createVentaTransaccionalPg(
     await client.query("COMMIT");
     return { ventaId, numeroControl, fechaIso, depositoAplicado };
   } catch (e) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => undefined);
     throw e;
   } finally {
     client.release();

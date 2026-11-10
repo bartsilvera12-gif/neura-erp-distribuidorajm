@@ -130,7 +130,7 @@ async function confirmarPg(
 
     return { ok: true, cupones_impresion_count: cupCount, cupones_impresos_at: at };
   } catch (e) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => undefined);
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, status: 500, message: msg };
   } finally {

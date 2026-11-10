@@ -111,12 +111,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const tU = quoteSchemaTable(schema, "inventario_ubicaciones");
     const tM = quoteSchemaTable(schema, "movimientos_inventario");
 
+    // Antes de tomar la conexión: buscar el usuario usa el pool, y pedirlo con
+    // una conexión tomada traba el pool cuando hay varias operaciones a la vez.
+    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     client = await pool.connect();
     await client.query("BEGIN");
 
     // Alcance del rol: el vendedor móvil solo toca sus propios repartos. El
     // chequeo va en el servidor porque ocultar el botón no impide la llamada.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
     if (alcanceRepartos(yo?.rol) === "propios") {
       const dueno = await client.query<{ ok: number }>(
         `SELECT 1 AS ok FROM ${quoteSchemaTable(schema, "repartos")}
