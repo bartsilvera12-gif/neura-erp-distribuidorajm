@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { MessageCircle, Printer, X } from "lucide-react";
 import { useEmisor } from "@/shared/hooks/useEmisor";
 import { fechaCorta, miles, ubicacionEmisor } from "@/lib/ventas/comprobante";
@@ -35,6 +37,25 @@ export interface DatosReciboCobro {
   telefono?: string | null;
 }
 
+type ItemDeVenta = { producto: string; cantidad: number; empaque: string | null };
+
+/** «3 Caja x12 · Pollo entero», «2,5 Queso paraguay». */
+function lineaItem(i: ItemDeVenta): string {
+  const cant = Number.isInteger(i.cantidad) ? String(i.cantidad) : i.cantidad.toLocaleString("es-PY", { maximumFractionDigits: 3 });
+  return i.empaque ? `${cant} ${i.empaque} · ${i.producto}` : `${cant} ${i.producto}`;
+}
+
+/** Lo que se llevó en la venta que se está pagando: va en «En concepto de». */
+function useItemsDeVenta(numero: string | null) {
+  const key = numero ? `/api/ventas/items?numero=${encodeURIComponent(numero)}` : null;
+  const { data } = useSWR<ItemDeVenta[]>(key, async (url: string) => {
+    const res = await fetchWithSupabaseSession(url, { cache: "no-store" });
+    const j = (await res.json().catch(() => ({}))) as { data?: { items?: ItemDeVenta[] } };
+    return res.ok ? (j.data?.items ?? []) : [];
+  });
+  return data ?? null;
+}
+
 function medioLabel(valor: string): string {
   return METODOS_COBRO.find((m) => m.value === valor)?.label ?? valor;
 }
@@ -51,6 +72,8 @@ export default function ReciboCobro({
   onCerrar: () => void;
 }) {
   const { emisor } = useEmisor();
+  // Un depósito trae su propio concepto; el pago de una venta muestra qué se llevó.
+  const items = useItemsDeVenta(!datos.concepto && datos.ventaNumero ? datos.ventaNumero : null);
   const refTicket = useRef<HTMLDivElement>(null);
   const [largoMm, setLargoMm] = useState<number>(150);
 
@@ -60,7 +83,7 @@ export default function ReciboCobro({
     const alto = refTicket.current.getBoundingClientRect().height;
     // + 4mm de margen inferior.
     setLargoMm(Math.max(60, Math.ceil(alto / PX_POR_MM) + 4));
-  }, [datos]);
+  }, [datos, items]);
 
   function imprimir() {
     window.print();
@@ -163,6 +186,13 @@ export default function ReciboCobro({
             <div>
               <p className="text-[8pt] font-bold uppercase">En concepto de</p>
               <p className="leading-tight">{concepto}</p>
+              {items && items.length > 0 ? (
+                <ul className="mt-1 space-y-0.5 text-[9pt] leading-tight">
+                  {items.map((i, n) => (
+                    <li key={n}>- {lineaItem(i)}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <div className="flex items-baseline gap-2">
               <p className="text-[8pt] font-bold uppercase">Forma de pago:</p>
