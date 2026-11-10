@@ -322,16 +322,26 @@ function Formulario({
             {/* La cuenta */}
             <div className="rounded-xl border-2 border-slate-200 p-4">
               <p className="mb-2 text-sm font-semibold text-slate-800">Cuenta de la caja</p>
-              <Linea texto="Apertura / sencillo" valor={d.apertura} />
-              <Linea texto="Contado" valor={d.contado} />
-              <Linea texto="Cobranza crédito" valor={t.cobranzas} />
-              <Linea texto="Debe rendir" valor={t.debe} fuerte />
+              {/* Arriba: todo lo que entró, por cualquier medio. Abajo: dónde
+                  está esa plata. Las transferencias y los cheques están en los
+                  dos lados a propósito: entraron, pero no están en billetes. */}
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Lo que entró a la caja</p>
+              <Linea texto="Apertura / sencillo" ayuda="con lo que arrancó la caja" valor={d.apertura} />
+              <Linea texto="Ventas de contado" ayuda="efectivo, transferencia, tarjeta y cheque" valor={d.contado} />
+              <Linea texto="Cobranza de créditos" ayuda="deudas cobradas, por cualquier medio" valor={t.cobranzas} />
+              <Linea texto="Debe rendir" ayuda="todo lo de arriba (no solo efectivo)" valor={t.debe} fuerte />
               <div className="my-2 border-t border-slate-100" />
-              <Linea texto="Efectivo contado" valor={efectivo} />
-              {d.cheques ? <Linea texto="Cheques" valor={d.cheques} /> : null}
-              <Linea texto="Gastos, vales y otros" valor={t.gastos} />
-              <Linea texto="Transferencias" valor={t.transferencias} />
-              <Linea texto="Rinde" valor={t.rinde} fuerte />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Dónde está esa plata</p>
+              <Linea texto="Efectivo contado" ayuda="billetes y monedas del cajón" valor={efectivo} />
+              {efectivo === 0 ? (
+                <p className="my-1 rounded-md bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-800">
+                  Falta contar los billetes: cargalos en «Composición de caja». Hasta entonces la diferencia no es real.
+                </p>
+              ) : null}
+              {d.cheques ? <Linea texto="Cheques" ayuda="recibidos, no son efectivo" valor={d.cheques} /> : null}
+              <Linea texto="Gastos, vales y otros" ayuda="lo que se pagó o retiró de la caja" valor={t.gastos} />
+              <Linea texto="Transferencias" ayuda="entraron al banco, no al cajón" valor={t.transferencias} />
+              <Linea texto="Rinde" ayuda="todo lo de esta parte" valor={t.rinde} fuerte />
               <div
                 className={`mt-2 flex items-center justify-between rounded-lg px-3 py-2 text-sm font-bold ${
                   Math.round(t.diferencia) === 0
@@ -344,6 +354,7 @@ function Formulario({
                 <span>{Math.round(t.diferencia) === 0 ? "Cuadra" : t.diferencia < 0 ? "Falta" : "Sobra"}</span>
                 <span className="tabular-nums">{gs(Math.abs(t.diferencia))}</span>
               </div>
+              <p className="mt-1 text-[11px] text-slate-500">Debe rendir − Rinde. Si falta, hay menos plata de la que entró.</p>
             </div>
 
             {/* Datos para transferencias */}
@@ -462,10 +473,13 @@ function CampoMonto({
   );
 }
 
-function Linea({ texto, valor, fuerte = false }: { texto: string; valor: number; fuerte?: boolean }) {
+function Linea({ texto, valor, fuerte = false, ayuda }: { texto: string; valor: number; fuerte?: boolean; ayuda?: string }) {
   return (
-    <div className={`flex items-center justify-between py-0.5 text-sm ${fuerte ? "font-bold text-slate-900" : "text-slate-600"}`}>
-      <span>{texto}</span>
+    <div className={`flex items-center justify-between gap-3 py-0.5 text-sm ${fuerte ? "font-bold text-slate-900" : "text-slate-600"}`}>
+      <span className="min-w-0">
+        {texto}
+        {ayuda ? <span className="block text-[11px] font-normal leading-tight text-slate-400">{ayuda}</span> : null}
+      </span>
       <span className="tabular-nums">{gs(valor)}</span>
     </div>
   );
