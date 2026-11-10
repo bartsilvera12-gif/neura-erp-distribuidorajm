@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags, ArrowLeftRight } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags, ArrowLeftRight, CalendarDays, Sheet } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -12,6 +12,22 @@ type ReporteCard = {
 };
 
 const REPORTES: ReporteCard[] = [
+  {
+    title: "Compras por semana",
+    subtitle: "Como la planilla",
+    description:
+      "Las compras del mes como la planilla de Excel: por semana, cada día con sus facturas y el total; total semanal, acumulado del mes y gráficos. Filtro por proveedor y categoría. Imprimible y exportable a Excel.",
+    icon: CalendarDays,
+    href: "/reportes/compras-semanal",
+  },
+  {
+    title: "Arqueo del mes",
+    subtitle: "Como la planilla",
+    description:
+      "El arqueo diario de cada camionero y del salón, como la planilla: contado, cobranzas, crédito, cheques, transferencias, gastos, efectivo y diferencia por día, subtotal por semana, total del mes y total general.",
+    icon: Sheet,
+    href: "/reportes/arqueo-mensual",
+  },
   {
     title: "Libro de Compras",
     subtitle: "Contabilidad",

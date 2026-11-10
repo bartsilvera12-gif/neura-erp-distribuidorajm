@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, BarChart3, FileText, Lock, TrendingUp, Wallet } from "lucide-react";
+import { ArrowUpRight, BarChart3, FileText, Lock, TrendingUp, Wallet, CalendarDays, Sheet } from "lucide-react";
 
 /**
  * Vista mobile de Reportes — menú de accesos rápidos. El detalle de cada reporte
@@ -29,6 +29,20 @@ export default function ReportesMobile() {
           tone="bg-violet-100 text-violet-700"
           title="Gerencia"
           subtitle="KPIs comerciales, top clientes y categorías"
+        />
+        <ReporteItem
+          href="/reportes/compras-semanal"
+          icon={CalendarDays}
+          tone="bg-teal-100 text-teal-800"
+          title="Compras por semana"
+          subtitle="Como la planilla: por semana y por día"
+        />
+        <ReporteItem
+          href="/reportes/arqueo-mensual"
+          icon={Sheet}
+          tone="bg-orange-100 text-orange-700"
+          title="Arqueo del mes"
+          subtitle="Cada camionero y el salón, día por día"
         />
         <ReporteItem
           href="/reportes/cierres-caja"
