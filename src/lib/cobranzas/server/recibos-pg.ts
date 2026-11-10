@@ -265,15 +265,16 @@ export async function anularCobro(
   empresaId: string,
   id: string,
   d: { usuario: string | null; motivo: string }
-): Promise<{ numero: number }> {
+): Promise<{ numero: number; ventaId: string | null }> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   if (!(await hayTabla(pool, schema))) throw new ReciboError("Falta correr el SQL 53 (recibos de dinero).", 409);
   const tR = quoteSchemaTable(schema, "recibos_cobro");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const q = await client.query<{ numero: number; anulado: boolean; tipo: string; mov: string | null }>(
-      `SELECT numero, anulado, COALESCE(to_jsonb(r)->>'tipo', 'cobro') AS tipo, caja_movimiento_id::text AS mov
+    const q = await client.query<{ numero: number; anulado: boolean; tipo: string; mov: string | null; venta_id: string | null }>(
+      `SELECT numero, anulado, COALESCE(to_jsonb(r)->>'tipo', 'cobro') AS tipo, caja_movimiento_id::text AS mov,
+              venta_id::text AS venta_id
          FROM ${tR} r WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
       [id, empresaId]
     );
@@ -304,7 +305,7 @@ export async function anularCobro(
       conObs ? [id, empresaId, nota] : [id, empresaId]
     );
     await client.query("COMMIT");
-    return { numero: r.numero };
+    return { numero: r.numero, ventaId: r.venta_id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw e;

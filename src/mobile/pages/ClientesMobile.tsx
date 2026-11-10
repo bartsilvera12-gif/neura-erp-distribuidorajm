@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Plus, Search, Users } from "lucide-react";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
+import { buscarClientes } from "@/lib/clientes/buscar";
 import type { Cliente, EstadoCliente, OrigenCliente } from "@/lib/clientes/types";
 
 /**
@@ -25,23 +26,13 @@ export default function ClientesMobile() {
   const [estado, setEstado] = useState<EstadoFilter>("todos");
 
   const clientesFiltrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const ordenados = [...clientes].sort((a, b) =>
-      (b.created_at ?? "").localeCompare(a.created_at ?? "")
-    );
-    return ordenados.filter((c) => {
-      if (estado !== "todos" && c.estado !== estado) return false;
-      if (!q) return true;
-      const nombre = clienteNombre(c).toLowerCase();
-      return (
-        nombre.includes(q) ||
-        (c.empresa ?? "").toLowerCase().includes(q) ||
-        (c.nombre_contacto ?? "").toLowerCase().includes(q) ||
-        (c.razon_social ?? "").toLowerCase().includes(q) ||
-        (c.ruc ?? "").toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q)
-      );
-    });
+    const delEstado = clientes.filter((c) => estado === "todos" || c.estado === estado);
+    // Sin búsqueda: los más nuevos primero. Buscando: los que empiezan con lo
+    // escrito arriba (ver buscarClientes: sin tildes y por palabras sueltas).
+    if (!query.trim()) {
+      return [...delEstado].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+    }
+    return buscarClientes(delEstado, query);
   }, [clientes, query, estado]);
 
   const counts = useMemo(() => {

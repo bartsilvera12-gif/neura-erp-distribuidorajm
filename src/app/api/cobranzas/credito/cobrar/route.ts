@@ -7,6 +7,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
 import { emitirReciboCobro, numeroRecibo } from "@/lib/cobranzas/server/recibos-pg";
+import { sincronizarFacturaDeVenta } from "@/lib/cobranzas/server/sincronizar-factura";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEDIOS = new Set(["efectivo", "tarjeta", "transferencia", "cheque", "otro"]);
@@ -125,6 +126,9 @@ export async function POST(request: NextRequest) {
 
     // Recibo de dinero numerado (SQL 53). Si falla, el cobro ya está hecho:
     // no se lo hace fallar por el recibo, sale con la referencia del movimiento.
+    // La factura de la venta baja su saldo (y queda "Pagado" si se cobró todo).
+    await sincronizarFacturaDeVenta(pool, schema, empresaId, ventaId);
+
     const recibo = await emitirReciboCobro(pool, schema, empresaId, {
       ventaId,
       ventaNumero: venta.numero_control,

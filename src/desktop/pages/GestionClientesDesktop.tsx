@@ -111,7 +111,7 @@ function BadgeFactura({ estado }: { estado: string }) {
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${it.cls}`}
     >
       <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${it.dot}`} />
-      {estado === "Corregida NC" ? "Corregida (NC SET)" : estado}
+      {estado === "Corregida NC" ? "Corregida (NC SET)" : estado === "Pagado" ? "Cobrado" : estado}
     </span>
   );
 }
@@ -869,13 +869,20 @@ function GestionClientesPageInner() {
   // ── Facturas enriquecidas: estado efectivo + días mora + ordenadas DESC ───
 
   const facturasOrdenadas = useMemo(() => {
+    // Lo que falta cobrar arriba (vencidas primero), lo cobrado abajo, y al
+    // final anuladas y corregidas. Dentro de cada grupo, por vencimiento.
+    const grupo: Record<string, number> = { Vencido: 0, Pendiente: 1, Pagado: 2 };
     return [...facturasFiltradas]
-      .sort((a, b) => {
-        const av = toCalendarDateStr(a.fecha_vencimiento) || String(a.fecha_vencimiento).slice(0, 10);
-        const bv = toCalendarDateStr(b.fecha_vencimiento) || String(b.fecha_vencimiento).slice(0, 10);
-        return bv.localeCompare(av);
+      .map((f) => ({ f, e: estadoFacturaParaUi(f, hoyStr) }))
+      .sort((x, y) => {
+        const g = (grupo[x.e] ?? 3) - (grupo[y.e] ?? 3);
+        if (g !== 0) return g;
+        const av = toCalendarDateStr(x.f.fecha_vencimiento) || String(x.f.fecha_vencimiento).slice(0, 10);
+        const bv = toCalendarDateStr(y.f.fecha_vencimiento) || String(y.f.fecha_vencimiento).slice(0, 10);
+        // Pendientes: la que vence antes, primero. Cobradas: la más nueva primero.
+        return x.e === "Pagado" ? bv.localeCompare(av) : av.localeCompare(bv);
       })
-      .map((f) => {
+      .map(({ f }) => {
         const fv = toCalendarDateStr(f.fecha_vencimiento) || String(f.fecha_vencimiento).slice(0, 10);
         const estadoEfectivo = estadoFacturaParaUi(f, hoyStr) as EstadoFactura;
         const diasMora =
@@ -1181,7 +1188,7 @@ function GestionClientesPageInner() {
                           <p className="text-sm font-bold text-amber-700">{cntPendientes}</p>
                         </div>
                         <div className="rounded-lg border border-emerald-200 bg-white px-2 py-1.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">Pagadas</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">Cobradas</p>
                           <p className="text-sm font-bold text-emerald-700">{cntPagadas}</p>
                         </div>
                         <div className="rounded-lg border border-[#4FAEB2]/30 bg-white px-2 py-1.5">

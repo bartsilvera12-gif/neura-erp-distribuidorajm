@@ -28,6 +28,7 @@ import AvisoCatalogoCaja, { textoMotivoSalon } from "@/shared/caja/AvisoCatalogo
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useTecladoVirtual } from "@/shared/hooks/useTecladoVirtual";
 import { clienteNombre } from "@/lib/clientes/storage";
+import { buscarClientes } from "@/lib/clientes/buscar";
 import SelectorCantidad from "@/shared/caja/SelectorCantidad";
 import MiniaturaProducto from "@/components/inventario/MiniaturaProducto";
 import TicketVenta from "@/shared/caja/TicketVenta";
@@ -207,19 +208,7 @@ function PasoCliente({
   const [query, setQuery] = useState("");
 
   const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return clientes.slice(0, 40);
-    return clientes
-      .filter((c) => {
-        const nombre = clienteNombre(c).toLowerCase();
-        return (
-          nombre.includes(q) ||
-          (c.ruc ?? "").toLowerCase().includes(q) ||
-          (c.documento ?? "").toLowerCase().includes(q) ||
-          c.codigo_cliente.toLowerCase().includes(q)
-        );
-      })
-      .slice(0, 40);
+    return buscarClientes(clientes, query, 40);
   }, [clientes, query]);
 
   if (sub === "nuevo") {

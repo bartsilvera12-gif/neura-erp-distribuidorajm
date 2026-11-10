@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { coincideCliente } from "@/lib/clientes/buscar";
 import { useSearchParams } from "next/navigation";
 import { getClientes, clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
@@ -404,21 +405,8 @@ export default function ClientesPage() {
   }, [searchParams]);
 
   const filtrados = clientes.filter((c) => {
-    const nombre = clienteNombre(c).toLowerCase();
-    const q      = busqueda.toLowerCase();
-    if (q) {
-      const match =
-        nombre.includes(q) ||
-        (c.nombre_contacto ?? "").toLowerCase().includes(q) ||
-        (c.empresa         ?? "").toLowerCase().includes(q) ||
-        (c.razon_social    ?? "").toLowerCase().includes(q) ||
-        (c.codigo_cliente ?? "").toLowerCase().includes(q) ||
-        (c.email          ?? "").toLowerCase().includes(q) ||
-        (c.telefono       ?? "").toLowerCase().includes(q) ||
-        (c.ruc            ?? "").toLowerCase().includes(q) ||
-        (c.ciudad         ?? "").toLowerCase().includes(q);
-      if (!match) return false;
-    }
+    // Sin tildes y por palabras sueltas (ver lib/clientes/buscar).
+    if (busqueda.trim() && !coincideCliente(c, busqueda)) return false;
     if (filtroEstado       && c.estado              !== filtroEstado) return false;
     if (filtroOrigen       && c.origen              !== filtroOrigen) return false;
     if (filtroTipo         && c.tipo_cliente        !== filtroTipo) return false;

@@ -6,6 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
 import { anularCobro, ReciboError } from "@/lib/cobranzas/server/recibos-pg";
+import { sincronizarFacturaDeVenta } from "@/lib/cobranzas/server/sincronizar-factura";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +32,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       usuario: ctx.auth.user?.email ?? null,
       motivo,
     });
+    // La factura de esa venta vuelve a tener saldo (y a figurar pendiente).
+    if (r.ventaId) await sincronizarFacturaDeVenta(pool, schema, ctx.auth.empresa_id, r.ventaId);
     return NextResponse.json(successResponse({ anulado: true, numero: r.numero }));
   } catch (e) {
     if (e instanceof ReciboError) return NextResponse.json(errorResponse(e.message), { status: e.status });

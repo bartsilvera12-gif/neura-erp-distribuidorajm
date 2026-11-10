@@ -19,6 +19,7 @@ import { useSifenActivo } from "@/shared/hooks/useSifenActivo";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
+import { buscarClientes } from "@/lib/clientes/buscar";
 import { formatGs, type CajaVenta } from "@/shared/caja/useCajaVenta";
 import { METODOS_COBRO, type MetodoPagoVenta } from "@/lib/ventas/types";
 import type { Cliente } from "@/lib/clientes/types";
@@ -483,17 +484,8 @@ function ElegirCliente({
   const [marcado, setMarcado] = useState(0);
 
   const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const lista = q
-      ? clientes.filter(
-          (c) =>
-            clienteNombre(c).toLowerCase().includes(q) ||
-            (c.ruc ?? "").toLowerCase().includes(q) ||
-            (c.documento ?? "").toLowerCase().includes(q) ||
-            c.codigo_cliente.toLowerCase().includes(q)
-        )
-      : clientes;
-    return lista.slice(0, 6);
+    // Hasta 8 resultados: la caja se usa con el dedo y no hay lugar para más.
+    return buscarClientes(clientes, query, 8);
   }, [clientes, query]);
 
   function elegir(c: Cliente) {
