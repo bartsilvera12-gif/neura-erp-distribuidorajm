@@ -106,10 +106,15 @@ export default function RecibosDinero() {
     { revalidateOnFocus: true, keepPreviousData: true }
   );
 
+  // Un recibo anulado ya no es un pago: no se lista (la venta vuelve a figurar
+  // en créditos por cobrar). Queda guardado y se ve con «Ver anulados».
+  const [verAnulados, setVerAnulados] = useState(false);
+  const anulados = (data?.recibos ?? []).filter((r) => r.anulado).length;
   const lista = useMemo(() => {
     const t = q.trim().toLowerCase();
     return (data?.recibos ?? []).filter(
       (r) =>
+        (verAnulados || !r.anulado) &&
         (filtro === "todos" || filtro === "con-saldo" || (r.tipo ?? "cobro") === filtro) &&
         (!t ||
         r.cliente_nombre.toLowerCase().includes(t) ||
@@ -118,7 +123,7 @@ export default function RecibosDinero() {
         (r.venta_numero ?? "").toLowerCase().includes(t) ||
         (r.cliente_ruc ?? "").includes(t))
     );
-  }, [data, q, filtro]);
+  }, [data, q, filtro, verAnulados]);
   const total =
     filtro === "con-saldo"
       ? lista.reduce((s, r) => s + saldoDe(r), 0)
@@ -145,7 +150,7 @@ export default function RecibosDinero() {
       body: JSON.stringify({ motivo }),
     });
     const j = (await res.json().catch(() => ({}))) as { error?: string };
-    setAviso(res.ok ? `Cobro ${numero(r.numero)} anulado. Ya se puede cobrar de nuevo a quien corresponde.` : (j.error ?? "No se pudo anular el cobro."));
+    setAviso(res.ok ? `Cobro ${numero(r.numero)} anulado: sale de esta lista y la venta vuelve a Créditos por cobrar.` : (j.error ?? "No se pudo anular el cobro."));
     void mutate();
   }
 
@@ -213,6 +218,13 @@ export default function RecibosDinero() {
           </button>
         ))}
       </div>
+
+      {anulados > 0 ? (
+        <label className="flex items-center gap-1.5 text-xs text-slate-500">
+          <input type="checkbox" checked={verAnulados} onChange={(e) => setVerAnulados(e.target.checked)} />
+          Ver anulados ({anulados})
+        </label>
+      ) : null}
 
       <div className="flex flex-wrap items-end gap-3">
         {filtro === "con-saldo" ? (
