@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { coincideCliente } from "@/lib/clientes/buscar";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { getClientes, clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
@@ -454,6 +455,14 @@ export default function ClientesPage() {
           <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900">Clientes</h1>
           <p className="text-xs text-slate-500">Base de clientes activos de la empresa</p>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+        {/* Mismo cliente cargado dos veces (salón y camión): se unifican acá. */}
+        <Link
+          href="/clientes/duplicados"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Duplicados
+        </Link>
         <button
           type="button"
           onClick={() => setNuevoOpen(true)}
@@ -474,6 +483,7 @@ export default function ClientesPage() {
           </svg>
           Nuevo cliente
         </button>
+        </div>
       </div>
 
       {/* Filtros */}

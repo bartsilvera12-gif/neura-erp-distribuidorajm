@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags, ArrowLeftRight, CalendarDays, Sheet } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Lock, Trophy, Users, Target, Package, Tags, ArrowLeftRight, CalendarDays, Sheet, BadgePercent } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -19,6 +19,14 @@ const REPORTES: ReporteCard[] = [
       "Cargar, cambiar y consultar la meta de ventas de cada mes (también la del mes que viene), para toda la empresa y por persona, con el avance de lo vendido, lo que falta y cuánto hay que vender por día.",
     icon: Target,
     href: "/reportes/metas-ventas",
+  },
+  {
+    title: "Descuentos",
+    subtitle: "Control",
+    description:
+      "Todas las ventas con descuento del período: cliente, venta o factura, importe original, porcentaje y monto descontado, lo cobrado y quién aplicó el descuento. Imprimible y exportable a Excel.",
+    icon: BadgePercent,
+    href: "/reportes/descuentos",
   },
   {
     title: "Compras por semana",

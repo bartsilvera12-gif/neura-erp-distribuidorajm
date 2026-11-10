@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { apiCreateCliente } from "@/lib/api/client";
-import { clienteDesdeFila } from "@/lib/clientes/storage";
+import { apiCreateCliente, type DuplicadoMatchClient } from "@/lib/api/client";
+import { clienteDesdeFila, getCliente } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
 import ConsultarSetButton, { type DatosSet } from "@/components/clientes/ConsultarSetButton";
 
@@ -52,11 +52,28 @@ export default function NuevoClienteRapido({
   }
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * El cliente ya estaba cargado (en el salón, en un camión o en Clientes):
+   * en vez de crear otro, se usa ese, con su RUC y sus datos.
+   */
+  const [existentes, setExistentes] = useState<DuplicadoMatchClient[]>([]);
+
+  async function usarExistente(id: string) {
+    setGuardando(true);
+    const c = await getCliente(id).catch(() => null);
+    setGuardando(false);
+    if (!c) {
+      setError("No se pudo abrir ese cliente. Buscalo por nombre o RUC.");
+      return;
+    }
+    onCreado(c);
+  }
 
   const puedeGuardar = nombre.trim().length >= 2 && !guardando;
 
   async function guardar() {
     setError(null);
+    setExistentes([]);
 
     setGuardando(true);
     // `persona` es lo que corresponde a un cliente de mostrador: así el nombre
@@ -87,7 +104,13 @@ export default function NuevoClienteRapido({
     setGuardando(false);
 
     if (!res.ok) {
-      setError(res.error);
+      const activos = res.code === "DUPLICATE" ? (res.matches ?? []).filter((m) => m.activo) : [];
+      if (activos.length > 0) {
+        setExistentes(activos);
+        setError("Este cliente ya está cargado. Usalo así no queda duplicado:");
+      } else {
+        setError(res.error);
+      }
       return;
     }
     onCreado(clienteDesdeFila(res.data));
@@ -134,6 +157,25 @@ export default function NuevoClienteRapido({
         <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">
           {error}
         </p>
+      ) : null}
+      {existentes.length > 0 ? (
+        <div className="mt-2 space-y-1.5">
+          {existentes.map((m) => (
+            <button
+              key={m.cliente_id}
+              type="button"
+              onClick={() => void usarExistente(m.cliente_id)}
+              disabled={guardando}
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-[#4FAEB2] bg-[#4FAEB2]/5 px-3 py-2.5 text-left text-sm hover:bg-[#4FAEB2]/10 disabled:opacity-40"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-slate-900">{m.nombre}</span>
+                {m.documento ? <span className="block text-xs text-slate-500">RUC/CI {m.documento}</span> : null}
+              </span>
+              <span className="shrink-0 text-xs font-semibold text-[#3F8E91]">Usar este cliente</span>
+            </button>
+          ))}
+        </div>
       ) : null}
 
       <button

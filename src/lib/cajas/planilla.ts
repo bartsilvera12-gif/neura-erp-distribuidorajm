@@ -1,4 +1,5 @@
 import type { ConteoEfectivo } from "./conteo";
+import type { VentaConDescuento } from "@/lib/ventas/descuentos-reporte";
 
 /** Un renglón de la planilla: a quién o qué, el N° de factura y el importe. */
 export interface RenglonPlanilla {
@@ -41,6 +42,8 @@ export interface PlanillaArqueo {
   otros_medios: number;
   /** Lo vendido en esta caja por categoría de producto (mayor primero). */
   por_categoria: { categoria: string; total: number }[];
+  /** Ventas de esta caja con descuento, para controlarlas en el cierre. */
+  descuentos: VentaConDescuento[];
   cuentas: { banco: string; cuenta: string | null; alias: string | null; titular: string | null; documento: string | null }[];
 }
 

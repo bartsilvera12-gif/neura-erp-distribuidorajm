@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { porcentajeDe } from "@/lib/ventas/descuento";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { METODOS_COBRO, MEDIOS_MIXTO, type MedioMixto, type PagoMixto } from "@/lib/ventas/types";
 import { esListaPrecio, type ListaPrecio } from "@/lib/ventas/listas-precio";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
@@ -287,6 +288,25 @@ export async function POST(request: NextRequest) {
         ? depositoRaw
         : null;
 
+    // Quién aplica el descuento: queda en la venta para el cierre de caja.
+    let descuentoUsuario: string | null = null;
+    if (descuento > 0) {
+      descuentoUsuario = auth.user.email ?? null;
+      if (auth.usuarioCatalogId) {
+        try {
+          const { data } = await createServiceRoleClient()
+            .from("usuarios")
+            .select("nombre, email")
+            .eq("id", auth.usuarioCatalogId)
+            .maybeSingle();
+          const u = (data ?? {}) as { nombre?: string | null; email?: string | null };
+          descuentoUsuario = u.nombre?.trim() || u.email || descuentoUsuario;
+        } catch {
+          /* queda el correo */
+        }
+      }
+    }
+
     const creada = await createVentaTransaccionalPg({
       schema,
       empresaId: auth.empresa_id,
@@ -308,6 +328,7 @@ export async function POST(request: NextRequest) {
       montoIvaDeclarado,
       totalDeclarado,
       descuento,
+      descuentoUsuario,
     });
     const { ventaId, numeroControl, fechaIso, depositoAplicado } = creada;
 

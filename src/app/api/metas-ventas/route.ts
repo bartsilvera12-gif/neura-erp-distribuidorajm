@@ -5,6 +5,7 @@ import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
+import { esTipoMeta } from "@/lib/metas/metas-ventas";
 import { borrarMeta, copiarMetas, guardarMeta, metasDelMes, MetaError } from "@/lib/metas/metas-ventas-pg";
 
 export const runtime = "nodejs";
@@ -43,7 +44,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/metas-ventas — solo el administrador.
- *   { mes, clave, monto, nota }        crea o cambia una meta
+ *   { mes, clave, monto, nota, tipo?, producto_id? }  crea o cambia una meta
+ *     (tipo: guaranies | unidades | kilos; producto_id: meta de un producto)
  *   { accion: "copiar", desde, hasta } copia las metas de un mes a otro
  */
 export async function POST(request: NextRequest) {
@@ -66,6 +68,8 @@ export async function POST(request: NextRequest) {
       monto: Number(b.monto),
       nota: typeof b.nota === "string" && b.nota.trim() ? b.nota.trim().slice(0, 300) : null,
       usuario: c.ctx.auth.user?.email ?? null,
+      tipo: esTipoMeta(b.tipo) ? b.tipo : "guaranies",
+      productoId: typeof b.producto_id === "string" && UUID.test(b.producto_id) ? b.producto_id : null,
     });
     return NextResponse.json(successResponse({ ok: true }));
   } catch (e) {

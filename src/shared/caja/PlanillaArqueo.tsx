@@ -1,5 +1,6 @@
 "use client";
 
+import TablaDescuentos from "@/shared/ventas/TablaDescuentos";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { CheckCircle2, Plus, Printer, RotateCcw, Send, Trash2, X } from "lucide-react";
@@ -315,6 +316,9 @@ function Formulario({
             </div>
           </div>
         ) : null}
+
+        {/* Descuentos: resaltados para que el encargado los controle. */}
+        <TablaDescuentos filas={s.descuentos ?? []} />
 
         <div className="grid gap-5 lg:grid-cols-2">
           {/* Composición de caja */}

@@ -10,6 +10,8 @@ import type { DatosPlanilla, EstadoPlanilla, PlanillaGuardada, PlanillaResumen }
 import { totalesPlanilla } from "@/lib/cajas/planilla";
 import { limpiarConteo, totalConteo } from "@/lib/cajas/conteo";
 import { cerrarUna } from "@/lib/cajas/server/cierre-automatico";
+import { ventasConDescuento } from "@/lib/ventas/server/descuentos-pg";
+import type { VentaConDescuento } from "@/lib/ventas/descuentos-reporte";
 
 async function columnas(pool: Pool, schema: string, tabla: string): Promise<Set<string>> {
   const r = await pool.query<{ c: string }>(
@@ -203,6 +205,14 @@ export async function planillaArqueo(
     }
   }
 
+  // Descuentos de esta caja: se listan aparte en el cierre para controlarlos.
+  let descuentos: VentaConDescuento[] = [];
+  try {
+    descuentos = await ventasConDescuento(pool, schema, empresaId, { cajaId });
+  } catch (e) {
+    console.error("[planillaArqueo] descuentos:", e instanceof Error ? e.message : e);
+  }
+
   // «Datos para transferencias»: las cuentas propias de la empresa (SQL 33).
   let cuentas: PlanillaArqueo["cuentas"] = [];
   if ((await existe(pool, schema, "bancos")) && (await columnas(pool, schema, "bancos")).has("es_cuenta_propia")) {
@@ -245,6 +255,7 @@ export async function planillaArqueo(
     cheques,
     otros_medios: otrosMedios,
     por_categoria: porCategoria,
+    descuentos,
     cuentas,
   };
 }

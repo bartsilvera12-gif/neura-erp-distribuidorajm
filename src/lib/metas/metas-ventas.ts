@@ -9,15 +9,44 @@
 
 export type Ambito = { clave: string; nombre: string };
 
+/**
+ * Qué se mide: guaraníes vendidos, unidades (productos que se venden de a
+ * uno) o kilos (productos que se venden por peso).
+ */
+export type TipoMeta = "guaranies" | "unidades" | "kilos";
+
+export const TIPOS_META: { value: TipoMeta; label: string; corto: string }[] = [
+  { value: "guaranies", label: "Guaraníes", corto: "Gs." },
+  { value: "unidades", label: "Unidades", corto: "u." },
+  { value: "kilos", label: "Kilos", corto: "kg" },
+];
+
+export function esTipoMeta(v: unknown): v is TipoMeta {
+  return v === "guaranies" || v === "unidades" || v === "kilos";
+}
+
+/** «Gs. 1.500.000», «320 u.», «1.250,5 kg». */
+export function formatoMeta(tipo: TipoMeta, n: number): string {
+  if (tipo === "guaranies") return `Gs. ${Math.round(Number(n) || 0).toLocaleString("es-PY")}`;
+  const v = (Number(n) || 0).toLocaleString("es-PY", { maximumFractionDigits: tipo === "kilos" ? 1 : 0 });
+  return tipo === "kilos" ? `${v} kg` : `${v} u.`;
+}
+
+export type ProductoMeta = { id: string; nombre: string; unidad: string };
+
 export type MetaVentas = {
   id: string;
   mes: string;
+  tipo: TipoMeta;
+  /** Meta de un solo producto (unidades o kilos de ese producto). */
+  producto_id: string | null;
+  producto_nombre: string | null;
   clave: string;
   nombre: string;
   monto: number;
   nota: string | null;
   vendido: number;
-  /** Lo vendido por día del mes (YYYY-MM-DD → monto), para el gráfico. */
+  /** Lo vendido por día del mes (YYYY-MM-DD → monto, unidades o kilos), para el gráfico. */
   por_dia: Record<string, number>;
 };
 
@@ -33,6 +62,10 @@ export type MetasDelMes = {
   /** Meses con metas cargadas (pasados y futuros), con la meta total y lo vendido. */
   meses: ResumenMes[];
   es_admin: boolean;
+  /** Se pueden cargar metas de unidades y kilos (SQL 63). */
+  con_tipos: boolean;
+  /** Productos para elegir en una meta por producto (solo para el administrador). */
+  productos: ProductoMeta[];
 };
 
 export const CLAVE_TOTAL = "total";

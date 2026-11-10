@@ -7,11 +7,20 @@ import { ChevronLeft, ChevronRight, Copy, Pencil, Plus, Trash2 } from "lucide-re
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import MontoInput from "@/components/ui/MontoInput";
 import { nombreMes } from "@/lib/reportes/compras-semanal";
-import { CLAVE_TOTAL, cuentasMeta, type MetaVentas, type MetasDelMes } from "@/lib/metas/metas-ventas";
+import {
+  CLAVE_TOTAL,
+  TIPOS_META,
+  cuentasMeta,
+  formatoMeta,
+  type MetaVentas,
+  type MetasDelMes,
+  type TipoMeta,
+} from "@/lib/metas/metas-ventas";
 
 /**
- * Metas de ventas mensuales (en guaraníes): se cargan, se cambian y se ve el
- * avance de lo vendido contra la meta. Se puede cargar por adelantado la
+ * Metas de ventas mensuales en guaraníes, en unidades o en kilos (de todo o
+ * de un producto): se cargan, se cambian y se ve el avance de lo vendido
+ * contra la meta. Se puede cargar por adelantado la
  * meta del mes siguiente (o de cualquier mes) eligiendo el mes arriba.
  *
  * Meta de «Total empresa» y, si se quiere, una por persona (cada camionero,
@@ -36,7 +45,8 @@ export default function MetasVentasPage() {
   const [data, setData] = useState<MetasDelMes | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [editando, setEditando] = useState<{ clave: string; monto: number; nota: string } | null>(null);
+  const [tipo, setTipo] = useState<TipoMeta>("guaranies");
+  const [editando, setEditando] = useState<{ clave: string; monto: number; nota: string; productoId: string } | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -56,8 +66,16 @@ export default function MetasVentasPage() {
 
   const esAdmin = data?.es_admin ?? false;
   const hoy = data?.hoy ?? `${mesActual()}-01`;
-  const total = data?.metas.find((m) => m.clave === CLAVE_TOTAL) ?? null;
-  const sinMeta = (data?.ambitos ?? []).filter((a) => !data?.metas.some((m) => m.clave === a.clave));
+  // Las del tipo elegido: generales (todo lo vendido) y por producto.
+  const delTipo = (data?.metas ?? []).filter((m) => m.tipo === tipo);
+  const generales = delTipo.filter((m) => !m.producto_id);
+  const porProducto = delTipo
+    .filter((m) => m.producto_id)
+    .sort((a, b) => (a.producto_nombre ?? "").localeCompare(b.producto_nombre ?? "") || (a.clave === CLAVE_TOTAL ? -1 : 1));
+  const total = generales.find((m) => m.clave === CLAVE_TOTAL) ?? null;
+  const sinMeta = (data?.ambitos ?? []).filter((a) => !generales.some((m) => m.clave === a.clave));
+  const tipoInfo = TIPOS_META.find((t) => t.value === tipo)!;
+  const editar = (m: MetaVentas) => setEditando({ clave: m.clave, monto: m.monto, nota: m.nota ?? "", productoId: m.producto_id ?? "" });
   const esFuturo = mes > hoy.slice(0, 7);
 
   async function guardar() {
@@ -68,7 +86,14 @@ export default function MetasVentasPage() {
       const r = await fetchWithSupabaseSession("/api/metas-ventas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mes, clave: editando.clave, monto: editando.monto, nota: editando.nota }),
+        body: JSON.stringify({
+          mes,
+          tipo,
+          clave: editando.clave,
+          monto: editando.monto,
+          nota: editando.nota,
+          producto_id: editando.productoId || null,
+        }),
       });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) throw new Error(j.error ?? "No se pudo guardar la meta.");
@@ -83,7 +108,7 @@ export default function MetasVentasPage() {
   }
 
   async function borrar(m: MetaVentas) {
-    if (!window.confirm(`¿Borrar la meta de ${m.nombre} de ${nombreBonito(mes)}?`)) return;
+    if (!window.confirm(`¿Borrar la meta de ${m.nombre}${m.producto_nombre ? ` (${m.producto_nombre})` : ""} de ${nombreBonito(mes)}?`)) return;
     const r = await fetchWithSupabaseSession(`/api/metas-ventas?id=${m.id}`, { method: "DELETE" });
     if (!r.ok) setAviso("No se pudo borrar la meta.");
     await cargar();
@@ -111,8 +136,8 @@ export default function MetasVentasPage() {
         </nav>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Metas de ventas</h1>
         <p className="mt-1 text-sm text-slate-500">
-          La meta de ventas de cada mes y cuánto se lleva vendido. Elegí el mes con las flechas: también se puede
-          cargar la meta del mes que viene.
+          La meta de cada mes en guaraníes, unidades o kilos, y cuánto se lleva vendido. Elegí el mes con las
+          flechas: también se puede cargar la meta del mes que viene.
         </p>
       </div>
 
@@ -142,7 +167,7 @@ export default function MetasVentasPage() {
             </button>
             <button
               type="button"
-              onClick={() => setEditando({ clave: sinMeta[0]?.clave ?? CLAVE_TOTAL, monto: 0, nota: "" })}
+              onClick={() => setEditando({ clave: sinMeta[0]?.clave ?? CLAVE_TOTAL, monto: 0, nota: "", productoId: "" })}
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]"
             >
               <Plus className="h-4 w-4" /> Cargar meta
@@ -150,6 +175,29 @@ export default function MetasVentasPage() {
           </div>
         ) : null}
       </div>
+
+      {/* Tipo de meta */}
+      {data?.con_tipos ? (
+        <div className="inline-flex overflow-hidden rounded-xl border border-slate-200 bg-white p-1">
+          {TIPOS_META.map((t) => {
+            const n = (data?.metas ?? []).filter((m) => m.tipo === t.value).length;
+            return (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => {
+                  setTipo(t.value);
+                  setEditando(null);
+                }}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold ${tipo === t.value ? "bg-[#0B3A3D] text-white" : "text-slate-600 hover:bg-slate-50"}`}
+              >
+                {t.label}
+                {n > 0 ? <span className="ml-1.5 rounded-full bg-white/20 px-1.5 text-xs">{n}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       {aviso ? <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">{aviso}</p> : null}
@@ -160,7 +208,28 @@ export default function MetasVentasPage() {
       {/* Formulario */}
       {editando ? (
         <div className="rounded-2xl border-2 border-[#4FAEB2] bg-white p-4 shadow-sm">
-          <p className="mb-3 text-sm font-bold text-slate-900">Meta de {nombreBonito(mes)}</p>
+          <p className="mb-3 text-sm font-bold text-slate-900">
+            Meta de {nombreBonito(mes)} · en {tipoInfo.label.toLowerCase()}
+          </p>
+          {tipo !== "guaranies" ? (
+            <label className="mb-3 block text-xs font-semibold text-slate-500">Producto
+              <select
+                value={editando.productoId}
+                onChange={(e) => setEditando({ ...editando, productoId: e.target.value })}
+                className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-sm"
+              >
+                <option value="">
+                  {tipo === "kilos" ? "Todos los productos por kilo" : "Todos los productos por unidad"}
+                </option>
+                {(data?.productos ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                    {p.unidad ? ` (${p.unidad})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1.4fr_auto]">
             <label className="text-xs font-semibold text-slate-500">Para
               <select
@@ -173,13 +242,26 @@ export default function MetasVentasPage() {
                 ))}
               </select>
             </label>
-            <label className="text-xs font-semibold text-slate-500">Meta de ventas (Gs.)
-              <MontoInput
-                value={editando.monto}
-                onChange={(v) => setEditando({ ...editando, monto: v })}
-                decimals={false}
-                className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-right text-sm font-semibold tabular-nums"
-              />
+            <label className="text-xs font-semibold text-slate-500">
+              {tipo === "guaranies" ? "Meta de ventas (Gs.)" : tipo === "kilos" ? "Meta en kilos" : "Meta en unidades"}
+              {tipo === "guaranies" ? (
+                <MontoInput
+                  value={editando.monto}
+                  onChange={(v) => setEditando({ ...editando, monto: v })}
+                  decimals={false}
+                  className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-right text-sm font-semibold tabular-nums"
+                />
+              ) : (
+                <input
+                  type="number"
+                  min={0}
+                  step={tipo === "kilos" ? 0.1 : 1}
+                  inputMode="decimal"
+                  value={editando.monto || ""}
+                  onChange={(e) => setEditando({ ...editando, monto: Number(e.target.value) || 0 })}
+                  className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-right text-sm font-semibold tabular-nums"
+                />
+              )}
             </label>
             <label className="text-xs font-semibold text-slate-500">Nota (opcional)
               <input
@@ -197,43 +279,49 @@ export default function MetasVentasPage() {
             </div>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Si ya hay una meta para esa persona en este mes, se reemplaza por esta.
+            Si ya hay una meta igual (misma persona{tipo !== "guaranies" ? " y producto" : ""}) en este mes, se reemplaza por esta.
+            {tipo === "kilos" ? " Kilos: suma lo vendido de los productos que se venden por kilo." : ""}
+            {tipo === "unidades" ? " Unidades: suma los productos que se venden de a uno (una caja de 10 cuenta 10)." : ""}
           </p>
         </div>
       ) : null}
 
       {/* Metas del mes */}
-      {data && data.disponible && data.metas.length === 0 ? (
+      {data && data.disponible && delTipo.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-          No hay metas cargadas para {nombreBonito(mes)}.
+          No hay metas {tipo === "guaranies" ? "en guaraníes" : `en ${tipoInfo.label.toLowerCase()}`} cargadas para {nombreBonito(mes)}.
           {esAdmin ? " Tocá «Cargar meta» para agregar una." : ""}
         </div>
       ) : null}
 
-      {total ? <MetaPrincipal meta={total} hoy={hoy} esAdmin={esAdmin} onEditar={() => setEditando({ clave: total.clave, monto: total.monto, nota: total.nota ?? "" })} onBorrar={() => void borrar(total)} /> : null}
+      {total ? <MetaPrincipal meta={total} hoy={hoy} esAdmin={esAdmin} onEditar={() => editar(total)} onBorrar={() => void borrar(total)} /> : null}
 
-      {data && data.metas.filter((m) => m.clave !== CLAVE_TOTAL).length > 0 ? (
+      {generales.filter((m) => m.clave !== CLAVE_TOTAL).length > 0 ? (
         <div>
           <p className="mb-2 text-sm font-semibold text-slate-800">Por persona</p>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {data.metas
+            {generales
               .filter((m) => m.clave !== CLAVE_TOTAL)
               .map((m) => (
-                <MetaChica
-                  key={m.id}
-                  meta={m}
-                  hoy={hoy}
-                  esAdmin={esAdmin}
-                  onEditar={() => setEditando({ clave: m.clave, monto: m.monto, nota: m.nota ?? "" })}
-                  onBorrar={() => void borrar(m)}
-                />
+                <MetaChica key={m.id} meta={m} hoy={hoy} esAdmin={esAdmin} onEditar={() => editar(m)} onBorrar={() => void borrar(m)} />
               ))}
           </div>
         </div>
       ) : null}
 
-      {/* Todos los meses con metas */}
-      {data && data.meses.length > 0 ? (
+      {porProducto.length > 0 ? (
+        <div>
+          <p className="mb-2 text-sm font-semibold text-slate-800">Por producto</p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {porProducto.map((m) => (
+              <MetaChica key={m.id} meta={m} hoy={hoy} esAdmin={esAdmin} onEditar={() => editar(m)} onBorrar={() => void borrar(m)} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Todos los meses con metas (en guaraníes) */}
+      {tipo === "guaranies" && data && data.meses.length > 0 ? (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <p className="border-b border-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-800">Metas cargadas</p>
           <table className="w-full text-sm">
@@ -307,6 +395,7 @@ function Acciones({ esAdmin, onEditar, onBorrar }: { esAdmin: boolean; onEditar:
 /** La meta de toda la empresa, grande, con el gráfico del mes. */
 function MetaPrincipal({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaVentas; hoy: string; esAdmin: boolean; onEditar: () => void; onBorrar: () => void }) {
   const c = cuentasMeta(meta.monto, meta.vendido, meta.mes, hoy);
+  const f = (n: number) => formatoMeta(meta.tipo, n);
   // Acumulado por día contra la línea pareja de la meta.
   const serie = useMemo(() => {
     const diarios = Array.from({ length: c.total }, (_, i) => meta.por_dia[`${meta.mes}-${String(i + 1).padStart(2, "0")}`] ?? 0);
@@ -314,7 +403,7 @@ function MetaPrincipal({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaV
     return acumulados.map((acum, i) => ({
       dia: i + 1,
       vendido: i < c.pasados ? acum : null,
-      ritmo: Math.round((meta.monto * (i + 1)) / c.total),
+      ritmo: Math.round(((meta.monto * (i + 1)) / c.total) * 10) / 10,
     }));
   }, [meta, c.total, c.pasados]);
 
@@ -322,8 +411,11 @@ function MetaPrincipal({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaV
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Meta de toda la empresa</p>
-          <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">Gs. {gs(meta.monto)}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Meta de toda la empresa
+            {meta.tipo === "kilos" ? " · kilos" : meta.tipo === "unidades" ? " · unidades" : ""}
+          </p>
+          <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">{f(meta.monto)}</p>
           {meta.nota ? <p className="text-xs text-slate-500">{meta.nota}</p> : null}
         </div>
         <Acciones esAdmin={esAdmin} onEditar={onEditar} onBorrar={onBorrar} />
@@ -335,16 +427,16 @@ function MetaPrincipal({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaV
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Dato titulo="Vendido" valor={`Gs. ${gs(meta.vendido)}`} />
-        <Dato titulo={c.falta > 0 ? "Falta" : "Superada por"} valor={`Gs. ${gs(c.falta > 0 ? c.falta : meta.vendido - meta.monto)}`} color={c.falta > 0 ? undefined : "text-emerald-700"} />
+        <Dato titulo="Vendido" valor={f(meta.vendido)} />
+        <Dato titulo={c.falta > 0 ? "Falta" : "Superada por"} valor={f(c.falta > 0 ? c.falta : meta.vendido - meta.monto)} color={c.falta > 0 ? undefined : "text-emerald-700"} />
         <Dato
           titulo="Hay que vender por día"
-          valor={c.restantes > 0 && c.falta > 0 ? `Gs. ${gs(c.porDiaNecesario)}` : "—"}
+          valor={c.restantes > 0 && c.falta > 0 ? f(c.porDiaNecesario) : "—"}
           detalle={c.restantes > 0 ? `Quedan ${c.restantes} día(s)` : c.pasados === 0 ? "El mes todavía no empezó" : "Mes terminado"}
         />
         <Dato
           titulo="Al ritmo actual, a fin de mes"
-          valor={c.pasados > 0 ? `Gs. ${gs(c.proyeccion)}` : "—"}
+          valor={c.pasados > 0 ? f(c.proyeccion) : "—"}
           detalle={c.pasados > 0 && c.restantes > 0 ? (c.alDia ? "Va al día con la meta" : "Va atrasado con la meta") : undefined}
           color={c.pasados > 0 && c.restantes > 0 ? (c.alDia ? "text-emerald-700" : "text-amber-700") : undefined}
         />
@@ -356,8 +448,8 @@ function MetaPrincipal({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaV
             <LineChart data={serie} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="#E2E8F0" />
               <XAxis dataKey="dia" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => millones(v)} width={72} />
-              <Tooltip formatter={(v: number, k: string) => [`Gs. ${gs(v)}`, k === "vendido" ? "Vendido (acumulado)" : "Para llegar a la meta"]} labelFormatter={(d) => `Día ${d}`} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => (meta.tipo === "guaranies" ? millones(v) : gs(v))} width={72} />
+              <Tooltip formatter={(v: number, k: string) => [f(v), k === "vendido" ? "Vendido (acumulado)" : "Para llegar a la meta"]} labelFormatter={(d) => `Día ${d}`} />
               <ReferenceLine y={meta.monto} stroke="#0B3A3D" strokeDasharray="4 4" label={{ value: "Meta", position: "insideTopLeft", fontSize: 10 }} />
               <Line type="monotone" dataKey="ritmo" stroke="#94A3B8" strokeDasharray="5 5" dot={false} />
               <Line type="monotone" dataKey="vendido" stroke="#4FAEB2" strokeWidth={3} dot={false} connectNulls={false} />
@@ -374,12 +466,16 @@ function MetaPrincipal({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaV
 
 function MetaChica({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaVentas; hoy: string; esAdmin: boolean; onEditar: () => void; onBorrar: () => void }) {
   const c = cuentasMeta(meta.monto, meta.vendido, meta.mes, hoy);
+  const f = (n: number) => formatoMeta(meta.tipo, n);
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold uppercase text-slate-900">{meta.nombre}</p>
-          <p className="text-xs text-slate-500">Meta: Gs. {gs(meta.monto)}</p>
+          <p className="truncate text-sm font-bold uppercase text-slate-900">{meta.producto_nombre ?? meta.nombre}</p>
+          <p className="text-xs text-slate-500">
+            {meta.producto_nombre ? `${meta.clave === CLAVE_TOTAL ? "Toda la empresa" : meta.nombre} · ` : ""}
+            Meta: {f(meta.monto)}
+          </p>
         </div>
         <Acciones esAdmin={esAdmin} onEditar={onEditar} onBorrar={onBorrar} />
       </div>
@@ -388,8 +484,8 @@ function MetaChica({ meta, hoy, esAdmin, onEditar, onBorrar }: { meta: MetaVenta
         <span className="w-12 text-right text-sm font-bold tabular-nums">{Math.round(c.avance)}%</span>
       </div>
       <div className="mt-2 flex justify-between text-xs text-slate-600">
-        <span>Vendido: <b className="tabular-nums">Gs. {gs(meta.vendido)}</b></span>
-        <span>{c.falta > 0 ? <>Falta: <b className="tabular-nums">Gs. {gs(c.falta)}</b></> : <b className="text-emerald-700">¡Meta cumplida!</b>}</span>
+        <span>Vendido: <b className="tabular-nums">{f(meta.vendido)}</b></span>
+        <span>{c.falta > 0 ? <>Falta: <b className="tabular-nums">{f(c.falta)}</b></> : <b className="text-emerald-700">¡Meta cumplida!</b>}</span>
       </div>
     </div>
   );

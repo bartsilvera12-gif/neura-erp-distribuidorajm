@@ -8,6 +8,28 @@ export function normalizarDocumento(v: unknown): string {
     .replace(/[^A-Z0-9]/g, "");
 }
 
+/**
+ * La identidad detrás de un RUC o una cédula: en Paraguay el RUC de una
+ * persona es su cédula más el dígito verificador (1234567-8). Sin esto, el
+ * mismo cliente cargado una vez con la cédula (1234567) y otra con el RUC
+ * (1234567-8) no se reconocía y quedaba duplicado.
+ */
+export function documentoBase(v: unknown): string {
+  const t = String(v ?? "").trim().toUpperCase();
+  const m = /^([0-9.\s]+)-\s*[0-9]$/.exec(t);
+  return m ? m[1].replace(/\D/g, "") : normalizarDocumento(t);
+}
+
+/** Todas las identidades de un cliente (RUC, cédula y RUC de factura). */
+export function documentosDe(c: Record<string, unknown>): Set<string> {
+  const out = new Set<string>();
+  for (const k of ["ruc", "documento", "ruc_factura"]) {
+    const b = documentoBase(c[k]);
+    if (b.length >= 3) out.add(b);
+  }
+  return out;
+}
+
 /** Normaliza nombre principal: sin acentos, espacios colapsados, mayúsculas, trim. */
 export function normalizarNombre(v: unknown): string {
   return String(v ?? "")
@@ -39,13 +61,13 @@ export async function buscarDuplicadosCliente(
   empresaId: string,
   input: { nombre?: string | null; documento?: string | null; excluirClienteId?: string | null }
 ): Promise<DuplicadoMatch[]> {
-  const docN = normalizarDocumento(input.documento);
+  const docN = documentoBase(input.documento);
   const nameN = normalizarNombre(input.nombre);
   if (!docN && !nameN) return [];
 
   const { data, error } = await supabase
     .from("clientes")
-    .select("id, empresa, nombre, ruc, documento, estado, tipo_servicio_cliente, deleted_at")
+    .select("*")
     .eq("empresa_id", empresaId)
     .is("deleted_at", null);
   if (error) throw new Error(error.message);
@@ -54,9 +76,9 @@ export async function buscarDuplicadosCliente(
   for (const c of (data ?? []) as Record<string, unknown>[]) {
     const cid = String(c.id ?? "");
     if (!cid || (input.excluirClienteId && cid === input.excluirClienteId)) continue;
-    const cdoc = normalizarDocumento((c.ruc as string) || (c.documento as string));
+    const cdocs = documentosDe(c);
     const cname = normalizarNombre(nombreClienteDisplay(c, ""));
-    const matchDoc = !!docN && cdoc === docN;
+    const matchDoc = docN.length >= 3 && cdocs.has(docN);
     const matchName = !!nameN && cname === nameN;
     if (!matchDoc && !matchName) continue;
     const estado = String(c.estado ?? "activo");

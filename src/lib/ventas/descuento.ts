@@ -11,8 +11,11 @@
 
 export type TipoDescuento = "porcentaje" | "monto";
 
-/** Tope: más de la mitad no es un descuento, es un error de tipeo. */
-export const DESCUENTO_MAX_PORCENTAJE = 50;
+/**
+ * Tope del descuento sobre el total. La distribuidora suele dar 5% o 6%; el
+ * tope de 10% deja margen y frena un error de tipeo (20 en vez de 2).
+ */
+export const DESCUENTO_MAX_PORCENTAJE = 10;
 
 /** Lo que se descuenta, en guaraníes enteros. */
 export function montoDescuento(total: number, tipo: TipoDescuento, valor: number): number {

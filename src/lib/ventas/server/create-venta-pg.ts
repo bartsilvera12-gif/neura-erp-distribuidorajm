@@ -59,6 +59,8 @@ export interface CreateVentaPgParams {
    * reparte acá entre las líneas y la venta queda por lo realmente cobrado.
    */
   descuento?: number;
+  /** Quién aplicó el descuento (nombre o correo), para el cierre de caja. */
+  descuentoUsuario?: string | null;
 }
 
 function qTable(schema: string, table: string): string {
@@ -289,7 +291,7 @@ export async function createVentaTransaccionalPg(
       SELECT column_name AS columna
         FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = 'ventas'
-         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio', 'descuento_monto', 'descuento_porcentaje')
+         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio', 'descuento_monto', 'descuento_porcentaje', 'descuento_usuario')
       `,
       [params.schema]
     );
@@ -323,6 +325,11 @@ export async function createVentaTransaccionalPg(
     if (columnas.has("descuento_porcentaje")) {
       extraCols.push("descuento_porcentaje");
       extraVals.push(descuento > 0 ? porcentajeDe(calcLista.total, descuento) : 0);
+    }
+    // Quién aplicó el descuento (SQL 63).
+    if (columnas.has("descuento_usuario") && descuento > 0) {
+      extraCols.push("descuento_usuario");
+      extraVals.push(params.descuentoUsuario ?? null);
     }
     // Los placeholders siguen después de los 12 fijos del INSERT.
     const extraPlaceholders = extraCols.map((_, i) => `$${13 + i}`);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, BarChart3, FileText, Lock, TrendingUp, Wallet, CalendarDays, Sheet, Target } from "lucide-react";
+import { ArrowUpRight, BarChart3, FileText, Lock, TrendingUp, Wallet, CalendarDays, Sheet, Target, BadgePercent } from "lucide-react";
 
 /**
  * Vista mobile de Reportes — menú de accesos rápidos. El detalle de cada reporte
@@ -36,6 +36,13 @@ export default function ReportesMobile() {
           tone="bg-rose-100 text-rose-700"
           title="Metas de ventas"
           subtitle="Meta del mes y cuánto se lleva vendido"
+        />
+        <ReporteItem
+          href="/reportes/descuentos"
+          icon={BadgePercent}
+          tone="bg-amber-100 text-amber-800"
+          title="Descuentos"
+          subtitle="Ventas con descuento y quién lo aplicó"
         />
         <ReporteItem
           href="/reportes/compras-semanal"
