@@ -37,6 +37,14 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/compras-semanal",
   },
   {
+    title: "Ingresos y Egresos",
+    subtitle: "Movimientos de caja",
+    description:
+      "Lo que entró y salió de caja en el período, en dos columnas: ingresos a la izquierda, egresos a la derecha. Con filtros rápidos de día, semana y mes, totales por día y por medio de pago.",
+    icon: ArrowLeftRight,
+    href: "/reportes/ingresos-egresos",
+  },
+  {
     title: "Arqueo del mes",
     subtitle: "Como la planilla",
     description:
