@@ -72,7 +72,7 @@ export default function CierresCaja() {
 
   const lista = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return (data ?? []).filter((c) => !t || (c.responsable ?? "").toLowerCase().includes(t) || String(c.numero_caja) === t);
+    return (data ?? []).filter((c) => !t || (c.responsable ?? "").toLowerCase().includes(t));
   }, [data, q]);
 
   const tot = useMemo(() => {
@@ -185,7 +185,7 @@ export default function CierresCaja() {
                 <tr key={c.caja_id} onClick={() => setAbierta(c.caja_id)} className="cursor-pointer text-slate-800 hover:bg-slate-50">
                   <td className="px-3 py-2.5">
                     <span className="font-medium">
-                      Caja {c.numero_caja} · {c.responsable ?? "—"}
+                      {c.responsable ?? "—"}
                     </span>
                     <span className="block text-[11px] text-slate-400">
                       {fechaHora(c.fecha_apertura)} → {c.estado === "abierta" ? <b className="text-emerald-600">abierta</b> : fechaHora(c.fecha_cierre)}

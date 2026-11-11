@@ -233,7 +233,7 @@ function Formulario({
         <div>
           <h2 className="text-lg font-bold tracking-tight text-slate-900">Arqueo de caja</h2>
           <p className="mt-0.5 text-sm text-slate-500">
-            {fecha(s.caja.fecha_apertura)} · Caja {s.caja.numero_caja}
+            {fecha(s.caja.fecha_apertura)}
             {s.responsable ? ` · ${s.responsable}` : ""}
             {s.camion ? ` · Camión ${s.camion}` : ""}
           </p>

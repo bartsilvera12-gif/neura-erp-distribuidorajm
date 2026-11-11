@@ -115,10 +115,11 @@ export default function PlanillasArqueo() {
                   <td className="px-3 py-3 tabular-nums text-slate-500">{fecha(p.fecha)}</td>
                   <td className="px-3 py-3 font-medium">
                     {p.responsable ?? "—"}
-                    <span className="block text-xs font-normal text-slate-400">
-                      Caja {p.numero_caja ?? "—"}
-                      {p.camion ? ` · Camión ${p.camion}` : ""}
-                    </span>
+                    {p.camion ? (
+                      <span className="block text-xs font-normal text-slate-400">
+                        Camión {p.camion}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums">{gs(p.total_ventas)}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{gs(p.total_credito)}</td>

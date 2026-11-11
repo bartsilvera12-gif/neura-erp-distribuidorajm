@@ -41,10 +41,12 @@ export default function TarjetaArqueo({
             {abierta ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
           </span>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Caja {caja.numero_caja}</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {abierta ? "Caja abierta" : "Caja cerrada"}
+            </p>
             <p className="text-xs text-slate-500">
               Abrió {horaCorta(caja.fecha_apertura)}
-              {caja.fecha_cierre ? ` · cerró ${horaCorta(caja.fecha_cierre)}` : " · abierta"}
+              {caja.fecha_cierre ? ` · cerró ${horaCorta(caja.fecha_cierre)}` : ""}
             </p>
           </div>
         </div>

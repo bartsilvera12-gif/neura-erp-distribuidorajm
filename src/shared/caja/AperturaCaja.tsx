@@ -161,7 +161,7 @@ export default function AperturaCaja({
           {abierta ? (
             <>
               <p className="text-sm font-semibold text-slate-900">
-                Caja N° {caja.numero_caja} abierta
+                Caja abierta
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
                 Abrió con {gs(caja.monto_apertura)}.

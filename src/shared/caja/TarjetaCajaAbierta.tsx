@@ -613,7 +613,7 @@ export default function TarjetaCajaAbierta({ onCambio }: { onCambio?: () => void
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-slate-900">
-                  Caja {caja.numero_caja}
+                  Caja del día
                 </h3>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                   <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />

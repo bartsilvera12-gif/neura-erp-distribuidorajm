@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
       [
         { header: "APERTURA", value: (r: CierreCaja) => fecha(r.fecha_apertura), width: 18 },
         { header: "CIERRE", value: (r: CierreCaja) => fecha(r.fecha_cierre), width: 18 },
-        { header: "CAJA", value: (r: CierreCaja) => r.numero_caja, width: 8 },
         { header: "RESPONSABLE", value: (r: CierreCaja) => r.responsable ?? "", width: 26 },
         { header: "ESTADO", value: (r: CierreCaja) => r.estado.toUpperCase(), width: 10 },
         { header: "APERTURA_GS", value: (r: CierreCaja) => r.apertura, width: 14 },

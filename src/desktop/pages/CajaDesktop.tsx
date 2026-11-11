@@ -1176,7 +1176,7 @@ function AvisoCajaViejaEnHeader({ caja }: { caja: CajaAbierta | null }) {
       <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
       <div>
         <p className="font-semibold">
-          La caja N° {caja.numero_caja} está abierta hace {dias}{" "}
+          La caja está abierta hace {dias}{" "}
           {dias === 1 ? "día" : "días"}.
         </p>
         <p className="mt-0.5 text-xs text-amber-800">

@@ -171,8 +171,8 @@ export async function POST(request: NextRequest) {
     const colDuenoAbrir = existe.has("abierta_por") ? "abierta_por" : existe.has("usuario_id") ? "usuario_id" : null;
     const yoAbrir = ctx.auth.usuarioCatalogId ?? null;
     const soloMia = colDuenoAbrir && yoAbrir ? ` AND (${colDuenoAbrir} = $2::uuid OR ${colDuenoAbrir} IS NULL)` : "";
-    const abiertaQ = await client.query<{ numero_caja: number }>(
-      `SELECT numero_caja FROM ${tC}
+    const abiertaQ = await client.query<{ id: string }>(
+      `SELECT id FROM ${tC}
         WHERE empresa_id = $1::uuid AND estado = 'abierta'${soloMia}
         FOR UPDATE`,
       soloMia ? [empresaId, yoAbrir] : [empresaId]
@@ -180,9 +180,7 @@ export async function POST(request: NextRequest) {
     if (abiertaQ.rows.length > 0) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        errorResponse(
-          `Ya hay una caja abierta (N° ${abiertaQ.rows[0].numero_caja}). Cerrala antes de abrir otra.`
-        ),
+        errorResponse("Ya hay una caja abierta. Cerrala antes de abrir otra."),
         { status: 409 }
       );
     }
