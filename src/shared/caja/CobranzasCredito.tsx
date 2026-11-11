@@ -8,7 +8,6 @@ import {
   type ClienteCobranzaCredito,
   type VentaCobranza,
 } from "@/lib/cobranzas/credito";
-import { METODOS_COBRO } from "@/lib/ventas/types";
 import ReciboCobro, { type DatosReciboCobro } from "@/shared/caja/ReciboCobro";
 import CobranzasTabs from "@/shared/cobranzas/CobranzasTabs";
 
@@ -460,29 +459,80 @@ function ModalCobro({
 }) {
   // Arranca con el saldo completo: cobrar todo es lo que pasa casi siempre, y
   // el parcial se escribe encima.
+  // Medios soportados: efectivo, transferencia (banco), cheque (número + fechas),
+  // y mixto (reparte el cobro entre los otros tres).
+  type Medio = "efectivo" | "transferencia" | "cheque" | "mixto";
+  const [medio, setMedio] = useState<Medio>("efectivo");
   const [monto, setMonto] = useState(String(Math.round(venta.saldo)));
-  const [medio, setMedio] = useState("efectivo");
+  // Datos específicos para transferencia y cheque (un solo medio).
+  const [banco, setBanco] = useState("");
+  const [numeroCheque, setNumeroCheque] = useState("");
+  const [fechaEmision, setFechaEmision] = useState("");
+  const [fechaCobro, setFechaCobro] = useState("");
+  // Datos del pago mixto (hasta 3 partes).
+  const [mixEfectivo, setMixEfectivo] = useState("");
+  const [mixTransferencia, setMixTransferencia] = useState("");
+  const [mixTransferenciaBanco, setMixTransferenciaBanco] = useState("");
+  const [mixCheque, setMixCheque] = useState("");
+  const [mixChequeNum, setMixChequeNum] = useState("");
+  const [mixChequeEmision, setMixChequeEmision] = useState("");
+  const [mixChequeCobro, setMixChequeCobro] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Una vez cobrado: los datos del recibo y si se está mirando/imprimiendo.
   const [recibo, setRecibo] = useState<DatosReciboCobro | null>(null);
   const [verRecibo, setVerRecibo] = useState(false);
 
-  const montoNum = Number(monto.replace(/\./g, "").replace(",", ".")) || 0;
+  const n = (s: string) => Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+  const montoNum = medio === "mixto"
+    ? n(mixEfectivo) + n(mixTransferencia) + n(mixCheque)
+    : n(monto);
   const parcial = montoNum > 0 && montoNum < venta.saldo - 0.5;
+
+  function pagosDelFormulario(): import("@/lib/cobranzas/credito").PagoCobro[] {
+    if (medio === "efectivo") return [{ medio: "efectivo", monto: n(monto) }];
+    if (medio === "transferencia") {
+      return [{ medio: "transferencia", monto: n(monto), banco: banco.trim() || null }];
+    }
+    if (medio === "cheque") {
+      return [{
+        medio: "cheque", monto: n(monto),
+        numero_cheque: numeroCheque.trim() || null,
+        fecha_emision: fechaEmision || null,
+        fecha_cobro: fechaCobro || null,
+      }];
+    }
+    // mixto: arma hasta 3 items con lo que tenga monto > 0.
+    const out: import("@/lib/cobranzas/credito").PagoCobro[] = [];
+    if (n(mixEfectivo) > 0) out.push({ medio: "efectivo", monto: n(mixEfectivo) });
+    if (n(mixTransferencia) > 0) out.push({ medio: "transferencia", monto: n(mixTransferencia), banco: mixTransferenciaBanco.trim() || null });
+    if (n(mixCheque) > 0) out.push({
+      medio: "cheque", monto: n(mixCheque),
+      numero_cheque: mixChequeNum.trim() || null,
+      fecha_emision: mixChequeEmision || null,
+      fecha_cobro: mixChequeCobro || null,
+    });
+    return out;
+  }
 
   async function confirmar() {
     if (guardando) return;
     setGuardando(true);
     setError(null);
-    const res = await cobrarVenta(venta.id, montoNum, medio);
+    const pagos = pagosDelFormulario();
+    // Validación mínima en cliente: cheque exige número.
+    for (const p of pagos) {
+      if (p.medio === "cheque" && !p.numero_cheque) {
+        setGuardando(false);
+        setError("Cheque: cargá el número del cheque.");
+        return;
+      }
+    }
+    const res = await cobrarVenta(venta.id, pagos);
     setGuardando(false);
     if (!res.ok) {
       setError(res.error);
       return;
     }
-    // El cobro ya quedó registrado. Preparamos el recibo para imprimir y
-    // mostramos la pantalla de "cobrado".
     setRecibo({
       cliente: clienteNombre,
       clienteRuc: res.clienteRuc,
@@ -536,38 +586,123 @@ function ModalCobro({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4">
-      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl">
+      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl max-h-[92vh] overflow-y-auto">
         <h2 className="text-base font-bold text-slate-900">Cobrar {venta.numero_control}</h2>
         <p className="mt-0.5 text-sm text-slate-500">Debe {gs(venta.saldo)}.</p>
 
         <label className="mt-4 block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Monto cobrado</span>
-          <input
-            inputMode="numeric"
-            value={monto}
-            onChange={(e) => {
-              setError(null);
-              setMonto(e.target.value);
-            }}
-            className="h-11 w-full rounded-lg border border-slate-200 px-3 text-lg font-bold tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
-            autoFocus
-          />
-        </label>
-
-        <label className="mt-3 block">
           <span className="mb-1 block text-xs font-medium text-slate-600">Con qué pagó</span>
           <select
             value={medio}
-            onChange={(e) => setMedio(e.target.value)}
+            onChange={(e) => { setMedio(e.target.value as typeof medio); setError(null); }}
             className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
           >
-            {METODOS_COBRO.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="cheque">Cheque</option>
+            <option value="mixto">Pago mixto</option>
           </select>
         </label>
+
+        {medio !== "mixto" ? (
+          <label className="mt-3 block">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Monto cobrado</span>
+            <input
+              inputMode="numeric"
+              value={monto}
+              onChange={(e) => { setError(null); setMonto(e.target.value); }}
+              className="h-11 w-full rounded-lg border border-slate-200 px-3 text-lg font-bold tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+              autoFocus
+            />
+          </label>
+        ) : null}
+
+        {medio === "transferencia" ? (
+          <label className="mt-3 block">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Banco de origen</span>
+            <input
+              type="text"
+              value={banco}
+              onChange={(e) => setBanco(e.target.value.toUpperCase())}
+              placeholder="Ej. CONTINENTAL, ITAÚ…"
+              className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm uppercase outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+            />
+          </label>
+        ) : null}
+
+        {medio === "cheque" ? (
+          <>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-xs font-medium text-slate-600">N° de cheque</span>
+              <input
+                type="text"
+                value={numeroCheque}
+                onChange={(e) => setNumeroCheque(e.target.value)}
+                className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+              />
+            </label>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Fecha emisión</span>
+                <input type="date" value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Fecha cobro</span>
+                <input type="date" value={fechaCobro} onChange={(e) => setFechaCobro(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+              </label>
+            </div>
+          </>
+        ) : null}
+
+        {medio === "mixto" ? (
+          <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Repartí el cobro — total {gs(montoNum)}
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-xs text-slate-600">Efectivo (Gs.)</span>
+              <input inputMode="numeric" value={mixEfectivo} onChange={(e) => setMixEfectivo(e.target.value)}
+                placeholder="0"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+            </label>
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-xs text-slate-600">Transferencia (Gs.)</span>
+                <input inputMode="numeric" value={mixTransferencia} onChange={(e) => setMixTransferencia(e.target.value)}
+                  placeholder="0"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+              </label>
+              {n(mixTransferencia) > 0 ? (
+                <input type="text" value={mixTransferenciaBanco} onChange={(e) => setMixTransferenciaBanco(e.target.value.toUpperCase())}
+                  placeholder="Banco de origen"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm uppercase outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-xs text-slate-600">Cheque (Gs.)</span>
+                <input inputMode="numeric" value={mixCheque} onChange={(e) => setMixCheque(e.target.value)}
+                  placeholder="0"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+              </label>
+              {n(mixCheque) > 0 ? (
+                <>
+                  <input type="text" value={mixChequeNum} onChange={(e) => setMixChequeNum(e.target.value)}
+                    placeholder="N° de cheque"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="date" value={mixChequeEmision} onChange={(e) => setMixChequeEmision(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+                    <input type="date" value={mixChequeCobro} onChange={(e) => setMixChequeCobro(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]" />
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {parcial ? (
           <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">

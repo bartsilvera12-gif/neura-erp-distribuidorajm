@@ -59,11 +59,25 @@ export async function getCobranzaCredito(): Promise<CobranzaCredito> {
   }
 }
 
+/**
+ * Una parte del cobro: medio + importe + datos propios del medio. Varios items
+ * = pago mixto (se guarda como N movimientos en la caja).
+ */
+export type PagoCobro = {
+  medio: string;
+  monto: number;
+  banco?: string | null;
+  numero_cheque?: string | null;
+  /** YYYY-MM-DD */
+  fecha_emision?: string | null;
+  /** YYYY-MM-DD */
+  fecha_cobro?: string | null;
+};
+
 /** Registra un cobro. Devuelve el saldo que queda y los datos del recibo, o el motivo del rechazo. */
 export async function cobrarVenta(
   ventaId: string,
-  monto: number,
-  medioPago: string
+  pagos: PagoCobro[]
 ): Promise<
   | { ok: true; saldo: number; reciboId: string | null; reciboNumero: string | null; clienteRuc: string | null; fecha: string }
   | { ok: false; error: string }
@@ -72,7 +86,7 @@ export async function cobrarVenta(
     const res = await fetchWithSupabaseSession("/api/cobranzas/credito/cobrar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ venta_id: ventaId, monto, medio_pago: medioPago }),
+      body: JSON.stringify({ venta_id: ventaId, pagos }),
     });
     const json = (await res.json()) as {
       success?: boolean;
