@@ -67,12 +67,12 @@ export default function GestionClientesMobile() {
       </header>
 
       <Link
-        href="/pagos"
+        href="/cobranzas"
         className="mb-4 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-3 transition-colors active:bg-amber-100"
       >
         <div>
-          <p className="text-xs font-semibold text-amber-900">Ir al flujo de cobro</p>
-          <p className="text-[11px] text-amber-700">Ver y registrar pagos por factura</p>
+          <p className="text-xs font-semibold text-amber-900">Ir a Cobranzas</p>
+          <p className="text-[11px] text-amber-700">Ver créditos y registrar cobros</p>
         </div>
         <ArrowUpRight className="h-4 w-4 text-amber-700" />
       </Link>

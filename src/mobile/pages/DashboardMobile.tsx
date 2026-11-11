@@ -70,7 +70,7 @@ export default function DashboardMobile({
             icon={ReceiptText}
             tone="warn"
             isLoading={isLoading}
-            href="/pagos"
+            href="/cobranzas"
           />
           <KpiCard
             label="Clientes activos"
@@ -100,7 +100,7 @@ export default function DashboardMobile({
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <QuickAction href="/ventas/nueva" icon={ShoppingCart} label="Nueva venta" />
           <QuickAction href="/clientes/nuevo" icon={UserPlus} label="Nuevo cliente" />
-          <QuickAction href="/pagos" icon={Wallet} label="Registrar pago" />
+          <QuickAction href="/cobranzas" icon={Wallet} label="Cobrar factura" />
           <QuickAction href="/gastos/nuevo" icon={Plus} label="Gasto" />
         </div>
       </section>
@@ -112,7 +112,7 @@ export default function DashboardMobile({
             Facturas recientes
           </h2>
           <Link
-            href="/pagos"
+            href="/cobranzas"
             className="flex items-center gap-1 text-xs font-medium text-[#0EA5E9] hover:text-[#0284C7]"
           >
             Ver todas <ArrowRight className="h-3 w-3" />

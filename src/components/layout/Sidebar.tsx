@@ -24,7 +24,6 @@ import {
   PanelLeft,
   Search,
   Receipt,
-  Banknote,
   Megaphone,
   Ticket,
   SendHorizontal,
@@ -150,7 +149,11 @@ const MENU_STRUCTURE: MenuItem[] = [
     ],
   },
   { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },
-  { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
+  // "Pagos" ocultado del menú (pedido Distribuidora JM, 11-nov-2026): la clienta
+  // registra los cobros directamente desde Cobranzas, que es más práctico. La
+  // página /pagos y sus datos siguen accesibles por URL y los registros viejos
+  // no se tocan: solo desaparece del sidebar.
+  // { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
   {
     key: "cobranzas",
     slug: "cobranzas",
