@@ -9,6 +9,7 @@ import { getReporteVentasRango, mesEnCursoAsuncion } from "@/lib/reportes/ventas
 export const runtime = "nodejs";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,8 +24,10 @@ export async function GET(request: NextRequest) {
     if (desde > hasta) {
       return NextResponse.json(errorResponse("La fecha 'desde' no puede ser posterior a 'hasta'."), { status: 400 });
     }
+    const catRaw = sp.get("categoria_id") ?? "";
+    const categoria_id = UUID.test(catRaw) ? catRaw : null;
 
-    const data = await getReporteVentasRango(schema, ctx.auth.empresa_id, desde, hasta);
+    const data = await getReporteVentasRango(schema, ctx.auth.empresa_id, desde, hasta, categoria_id);
     return NextResponse.json(successResponse(data));
   } catch (e) {
     console.error("[/api/reportes/ventas GET]", e instanceof Error ? e.message : e);

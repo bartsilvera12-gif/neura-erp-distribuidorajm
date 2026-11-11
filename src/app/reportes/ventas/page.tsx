@@ -47,15 +47,31 @@ const TD = "px-3 py-2.5 text-sm text-slate-700";
 export default function ReporteVentasPage() {
   const [desde, setDesde] = useState(primeroDelMes());
   const [hasta, setHasta] = useState(hoy());
+  const [categoriaId, setCategoriaId] = useState("");
+  const [categorias, setCategorias] = useState<{ id: string; nombre: string }[]>([]);
   const [data, setData] = useState<Reporte | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Catálogo de categorías para el filtro (mismo endpoint que usa el reporte
+  // de Compras). Se trae una sola vez al montar: el cliente puede cortar las
+  // ventas por carnicería, embutidos, lácteos, etc.
+  useEffect(() => {
+    apiFetch("/api/inventario/categorias")
+      .then((r) => r.json())
+      .then((j) => {
+        const cats = Array.isArray(j?.data?.categorias) ? j.data.categorias : [];
+        setCategorias(cats.map((c: { id: string; nombre: string }) => ({ id: c.id, nombre: c.nombre })));
+      })
+      .catch(() => setCategorias([]));
+  }, []);
 
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
-      const r = await apiFetch(`/api/reportes/ventas?desde=${desde}&hasta=${hasta}`, { cache: "no-store" });
+      const qs = `desde=${desde}&hasta=${hasta}${categoriaId ? `&categoria_id=${categoriaId}` : ""}`;
+      const r = await apiFetch(`/api/reportes/ventas?${qs}`, { cache: "no-store" });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string; data?: Reporte };
       if (!r.ok || !j.success || !j.data) {
         setError(j.error ?? `Error ${r.status}`);
@@ -68,7 +84,7 @@ export default function ReporteVentasPage() {
     } finally {
       setCargando(false);
     }
-  }, [desde, hasta]);
+  }, [desde, hasta, categoriaId]);
 
   useEffect(() => {
     void cargar();
@@ -93,7 +109,7 @@ export default function ReporteVentasPage() {
             Qué se vendió en el período, a quién, de qué producto y cómo se cobró.
           </p>
         </div>
-        <ExportExcelButton url={`/api/reportes/ventas/export?desde=${desde}&hasta=${hasta}`} />
+        <ExportExcelButton url={`/api/reportes/ventas/export?desde=${desde}&hasta=${hasta}${categoriaId ? `&categoria_id=${categoriaId}` : ""}`} />
       </div>
 
       {/* Filtros */}
@@ -105,6 +121,22 @@ export default function ReporteVentasPage() {
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Hasta</label>
           <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+        </div>
+        {/* Categoría: para ver las ventas de carnicería, embutidos, lácteos, etc.
+            por el período elegido. Con categoría los totales son solo de esos
+            ítems (no la venta entera, que podría tener otros productos). */}
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Categoría</label>
+          <select
+            value={categoriaId}
+            onChange={(e) => setCategoriaId(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
         </div>
         <button
           type="button"

@@ -84,19 +84,24 @@ export async function getReporteVentasRango(
   schema: string,
   empresaId: string,
   desde: string,
-  hasta: string
+  hasta: string,
+  categoriaId: string | null = null
 ): Promise<ReporteVentasRango> {
   const pool = getChatPostgresPool();
   if (!pool) return vacio(desde, hasta, false);
 
-  const existe = await queryWithRetry<{ v: string | null; vi: string | null; c: string | null }>(
+  const existe = await queryWithRetry<{ v: string | null; vi: string | null; c: string | null; p: string | null }>(
     pool,
-    `SELECT to_regclass($1)::text AS v, to_regclass($2)::text AS vi, to_regclass($3)::text AS c`,
-    [`${schema}.ventas`, `${schema}.ventas_items`, `${schema}.clientes`]
+    `SELECT to_regclass($1)::text AS v, to_regclass($2)::text AS vi, to_regclass($3)::text AS c, to_regclass($4)::text AS p`,
+    [`${schema}.ventas`, `${schema}.ventas_items`, `${schema}.clientes`, `${schema}.productos`]
   );
   if (!existe.rows[0]?.v) return vacio(desde, hasta, false);
   const hayItems = existe.rows[0]?.vi !== null;
   const hayClientes = existe.rows[0]?.c !== null;
+  const hayProductos = existe.rows[0]?.p !== null;
+  // El filtro por categoría exige ítems + productos: sin esos joins no se puede
+  // saber qué línea pertenece a qué categoría. Si falta, se ignora el filtro.
+  const conCategoria = Boolean(categoriaId) && hayItems && hayProductos;
 
   const colQ = await queryWithRetry<{ columna: string }>(
     pool,
@@ -115,37 +120,65 @@ export async function getReporteVentasRango(
   const tV = quoteSchemaTable(schema, "ventas");
   const tVI = quoteSchemaTable(schema, "ventas_items");
   const tCl = quoteSchemaTable(schema, "clientes");
+  const tP = quoteSchemaTable(schema, "productos");
 
   const DIA = `((v.fecha AT TIME ZONE '${TZ}')::date)`;
   // El rango incluye ambos extremos: quien pide "del 1 al 30" espera el 30.
   const EN_RANGO = `v.empresa_id = $1::uuid AND COALESCE(v.estado, '') <> 'anulada'
                     AND ${DIA} >= $2::date AND ${DIA} <= $3::date`;
-  const p = [empresaId, desde, hasta];
+  const p: unknown[] = [empresaId, desde, hasta];
+  // Con filtro de categoría: las ventas que suman son solo las que contienen un
+  // ítem de esa categoría, y los totales se arman sumando sólo esos ítems (no
+  // la venta entera: si alguien compra 10kg de carne + 2 latas de arvejas, acá
+  // van 10kg de carne, no la venta completa).
+  const pcat = conCategoria ? (p.push(categoriaId), p.length) : 0;
+  const JOIN_CAT = conCategoria
+    ? `JOIN ${tVI} i_cat ON i_cat.venta_id = v.id AND i_cat.empresa_id = v.empresa_id
+       JOIN ${tP} p_cat ON p_cat.id = i_cat.producto_id AND p_cat.empresa_id = v.empresa_id
+                        AND p_cat.categoria_principal_id = $${pcat}::uuid`
+    : "";
+  const COND_CAT = conCategoria ? ` AND p_cat.id IS NOT NULL` : "";
+  // Para el ítem corriente (sin alias _cat), filtro por categoría cuando aplica.
+  const FILTRO_ITEM_CAT = conCategoria
+    ? `AND EXISTS (SELECT 1 FROM ${tP} p2 WHERE p2.id = i.producto_id AND p2.empresa_id = i.empresa_id AND p2.categoria_principal_id = $${pcat}::uuid)`
+    : "";
+
+  // Con categoría: "el total de la venta" en los agregados pasa a ser la suma
+  // de los ítems de esa categoría dentro de la venta. "count(*)" se reemplaza
+  // por "count(DISTINCT v.id)" porque el JOIN con ítems multiplica las filas.
+  const TOT = conCategoria ? "COALESCE(sum(i_cat.total_linea), 0)" : "COALESCE(sum(v.total), 0)";
+  const CNT = conCategoria ? "count(DISTINCT v.id)" : "count(*)";
+  const TOT_CONTADO = conCategoria
+    ? `COALESCE(sum(i_cat.total_linea) FILTER (WHERE COALESCE(v.tipo_venta,'') <> 'CREDITO'), 0)`
+    : `COALESCE(sum(v.total) FILTER (WHERE COALESCE(v.tipo_venta,'') <> 'CREDITO'), 0)`;
+  const TOT_CREDITO = conCategoria
+    ? `COALESCE(sum(i_cat.total_linea) FILTER (WHERE COALESCE(v.tipo_venta,'') = 'CREDITO'), 0)`
+    : `COALESCE(sum(v.total) FILTER (WHERE COALESCE(v.tipo_venta,'') = 'CREDITO'), 0)`;
 
   const [resumenQ, diaQ, clienteQ, productoQ, metodoQ] = await Promise.all([
     queryWithRetry<{ total: string; ventas: string; contado: string; credito: string; dias: string }>(
       pool,
-      `SELECT COALESCE(sum(v.total), 0)::text AS total,
-              count(*)::text AS ventas,
-              COALESCE(sum(v.total) FILTER (WHERE COALESCE(v.tipo_venta,'') <> 'CREDITO'), 0)::text AS contado,
-              COALESCE(sum(v.total) FILTER (WHERE COALESCE(v.tipo_venta,'') = 'CREDITO'), 0)::text AS credito,
+      `SELECT ${TOT}::text AS total,
+              ${CNT}::text AS ventas,
+              ${TOT_CONTADO}::text AS contado,
+              ${TOT_CREDITO}::text AS credito,
               count(DISTINCT ${DIA})::text AS dias
-         FROM ${tV} v WHERE ${EN_RANGO}`,
+         FROM ${tV} v ${JOIN_CAT} WHERE ${EN_RANGO}${COND_CAT}`,
       p
     ),
     queryWithRetry<{ dia: string; total: string; ventas: string }>(
       pool,
-      `SELECT ${DIA}::text AS dia, COALESCE(sum(v.total),0)::text AS total, count(*)::text AS ventas
-         FROM ${tV} v WHERE ${EN_RANGO} GROUP BY 1 ORDER BY 1`,
+      `SELECT ${DIA}::text AS dia, ${TOT}::text AS total, ${CNT}::text AS ventas
+         FROM ${tV} v ${JOIN_CAT} WHERE ${EN_RANGO}${COND_CAT} GROUP BY 1 ORDER BY 1`,
       p
     ),
     hayClientes
       ? queryWithRetry<{ etiqueta: string; total: string; ventas: string }>(
           pool,
           `SELECT COALESCE(NULLIF(btrim(COALESCE(c.empresa, c.nombre_contacto, c.razon_social, '')), ''), 'Sin nombre') AS etiqueta,
-                  COALESCE(sum(v.total),0)::text AS total, count(*)::text AS ventas
-             FROM ${tV} v LEFT JOIN ${tCl} c ON c.id = v.cliente_id AND c.empresa_id = v.empresa_id
-            WHERE ${EN_RANGO} GROUP BY 1 ORDER BY sum(v.total) DESC NULLS LAST LIMIT 50`,
+                  ${TOT}::text AS total, ${CNT}::text AS ventas
+             FROM ${tV} v ${JOIN_CAT} LEFT JOIN ${tCl} c ON c.id = v.cliente_id AND c.empresa_id = v.empresa_id
+            WHERE ${EN_RANGO}${COND_CAT} GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 50`,
           p
         )
       : Promise.resolve({ rows: [] as { etiqueta: string; total: string; ventas: string }[] }),
@@ -156,7 +189,7 @@ export async function getReporteVentasRango(
                   COALESCE(sum(i.cantidad),0)::text AS cantidad,
                   COALESCE(sum(i.total_linea),0)::text AS total
              FROM ${tVI} i JOIN ${tV} v ON v.id = i.venta_id AND v.empresa_id = i.empresa_id
-            WHERE ${EN_RANGO} GROUP BY 1 ORDER BY sum(i.total_linea) DESC NULLS LAST LIMIT 50`,
+            WHERE ${EN_RANGO} ${FILTRO_ITEM_CAT} GROUP BY 1 ORDER BY sum(i.total_linea) DESC NULLS LAST LIMIT 50`,
           p
         )
       : Promise.resolve({ rows: [] as { producto: string; cantidad: string; total: string }[] }),
@@ -164,8 +197,8 @@ export async function getReporteVentasRango(
       ? queryWithRetry<{ etiqueta: string; total: string; ventas: string }>(
           pool,
           `SELECT COALESCE(NULLIF(btrim(v.metodo_pago), ''), 'Sin especificar') AS etiqueta,
-                  COALESCE(sum(v.total),0)::text AS total, count(*)::text AS ventas
-             FROM ${tV} v WHERE ${EN_RANGO} GROUP BY 1 ORDER BY sum(v.total) DESC NULLS LAST`,
+                  ${TOT}::text AS total, ${CNT}::text AS ventas
+             FROM ${tV} v ${JOIN_CAT} WHERE ${EN_RANGO}${COND_CAT} GROUP BY 1 ORDER BY 2 DESC NULLS LAST`,
           p
         )
       : Promise.resolve({ rows: [] as { etiqueta: string; total: string; ventas: string }[] }),

@@ -7,6 +7,7 @@ import { getReporteVentasRango, hoyEnAsuncion } from "@/lib/reportes/ventas-repo
 export const runtime = "nodejs";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * GET /api/reportes/ventas/export — Excel del reporte de ventas.
@@ -25,8 +26,10 @@ export async function GET(request: NextRequest) {
     const hoy = hoyEnAsuncion();
     const desde = FECHA.test(sp.get("desde") ?? "") ? sp.get("desde")! : hoy;
     const hasta = FECHA.test(sp.get("hasta") ?? "") ? sp.get("hasta")! : hoy;
+    const catRaw = sp.get("categoria_id") ?? "";
+    const categoria_id = UUID.test(catRaw) ? catRaw : null;
 
-    const r = await getReporteVentasRango(schema, ctx.auth.empresa_id, desde, hasta);
+    const r = await getReporteVentasRango(schema, ctx.auth.empresa_id, desde, hasta, categoria_id);
 
     type Fila = { a: string; b: string | number; c: string | number; d: string | number };
     const filas: Fila[] = [];
