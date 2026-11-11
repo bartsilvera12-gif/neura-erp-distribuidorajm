@@ -98,6 +98,8 @@ export async function apiCreateCliente(data: {
   pais?: string;
   condicion_pago?: string;
   moneda_preferida?: string;
+  /** Descuento fijo (%), automático en la caja y oculto en el papel. */
+  descuento_porcentaje_fijo?: number | null;
   estado?: string;
   plan_comercial_id?: string | null;
   vendedor_asignado?: string;

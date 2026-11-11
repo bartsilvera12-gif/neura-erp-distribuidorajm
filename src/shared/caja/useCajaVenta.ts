@@ -130,6 +130,20 @@ export function useCajaVenta() {
   /** Descuento sobre el total: en % o en guaraníes. Vacío = sin descuento. */
   const [descuentoTipo, setDescuentoTipo] = useState<TipoDescuento>("porcentaje");
   const [descuentoValor, setDescuentoValor] = useState("");
+  /**
+   * El descuento vino del cliente (descuento fijo por ficha): el comprobante
+   * no lo imprime y la venta queda marcada así. El cajero puede modificarlo o
+   * quitarlo igual; en cuanto lo toca a mano, deja de ser oculto.
+   */
+  const [descuentoOculto, setDescuentoOculto] = useState(false);
+  const cambiarDescuentoValor = useCallback((v: string) => {
+    setDescuentoValor(v);
+    setDescuentoOculto(false);
+  }, []);
+  const cambiarDescuentoTipo = useCallback((t: TipoDescuento) => {
+    setDescuentoTipo(t);
+    setDescuentoOculto(false);
+  }, []);
 
   /**
    * Qué comprobante sale al confirmar: factura A4 o ticket. Si nadie eligió,
@@ -431,6 +445,23 @@ export function useCajaVenta() {
     setSinNombre(false);
     // El depósito es de un cliente: si se cambia, deja de aplicarse.
     setDeposito((d) => (d && d.cliente_id !== c.id ? null : d));
+    // Descuento fijo del cliente: se precarga y queda oculto en el papel.
+    // Se guarda igual en la venta para el reporte de descuentos y el arqueo.
+    const pct = Number(c.descuento_porcentaje_fijo ?? 0);
+    if (pct > 0) {
+      setDescuentoTipo("porcentaje");
+      setDescuentoValor(pct.toLocaleString("es-PY", { maximumFractionDigits: 2 }));
+      setDescuentoOculto(true);
+    } else {
+      // Cliente sin descuento fijo: si antes había uno del cliente anterior, se limpia.
+      setDescuentoOculto((prev) => {
+        if (prev) {
+          setDescuentoValor("");
+          setDescuentoTipo("porcentaje");
+        }
+        return false;
+      });
+    }
   }, []);
 
   const elegirSinNombre = useCallback(() => {
@@ -531,6 +562,7 @@ export function useCajaVenta() {
     setPlazoDias("");
     setDescuentoValor("");
     setDescuentoTipo("porcentaje");
+    setDescuentoOculto(false);
     setDocumento(null);
     setDeposito(null);
     setError(null);
@@ -593,6 +625,7 @@ export function useCajaVenta() {
       monto_iva: lineas.reduce((acc, l) => acc + l.monto_iva, 0),
       total: totales.subtotal,
       descuento: totales.descuento,
+      descuento_oculto: totales.descuento > 0 && descuentoOculto,
       tipo_venta: aCredito ? "CREDITO" : "CONTADO",
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
       // A crédito no se cobra ahora: el medio se registra recién al cobrar.
@@ -676,6 +709,7 @@ export function useCajaVenta() {
     repartoId,
     faltaElegirReparto,
     lista,
+    descuentoOculto,
   ]);
 
   const reiniciar = useCallback(() => {
@@ -862,8 +896,9 @@ export function useCajaVenta() {
     setMixto,
     setACredito,
     setPlazoDias,
-    setDescuentoTipo,
-    setDescuentoValor,
+    setDescuentoTipo: cambiarDescuentoTipo,
+    setDescuentoValor: cambiarDescuentoValor,
+    descuentoOculto,
     setRepartoId,
     setError,
     irA,

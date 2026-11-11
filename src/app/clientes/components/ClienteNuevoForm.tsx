@@ -94,6 +94,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     instagram: "",
     linkedin: "",
     valor_cliente: "",
+    descuento_porcentaje_fijo: "",
     condicion_pago: "CONTADO",
     moneda_preferida: "GS" as "GS" | "USD",
     vendedor_usuario_id: "",
@@ -378,6 +379,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
       pais: form.pais.trim().toUpperCase() || undefined,
       condicion_pago: form.condicion_pago.trim().toUpperCase() || undefined,
       moneda_preferida: form.moneda_preferida,
+      descuento_porcentaje_fijo: (() => {
+        const t = form.descuento_porcentaje_fijo.trim().replace(",", ".");
+        if (!t) return null;
+        const n = Number(t);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      })(),
       estado: form.estado,
       plan_comercial_id: formSusc.plan_id.trim() || null,
       vendedor_usuario_id: form.vendedor_usuario_id.trim() || null,
@@ -819,6 +826,32 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                 ) : usuariosEmpresa.length === 0 ? (
                   <p className="mt-1 text-xs text-slate-500">No hay usuarios activos disponibles para asignar.</p>
                 ) : null}
+              </div>
+            </div>
+
+            {/* Descuento fijo por cliente: la caja lo aplica solo al elegirlo y
+                no sale impreso en la factura/ticket. Queda en el reporte de
+                descuentos y en el arqueo. Pensado para acuerdos permanentes. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Descuento fijo (%)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  name="descuento_porcentaje_fijo"
+                  value={form.descuento_porcentaje_fijo}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      descuento_porcentaje_fijo: e.target.value.replace(/[^\d.,]/g, "").replace(/,(?=.*,)/g, ""),
+                    }))
+                  }
+                  placeholder="Ej. 6"
+                  className={inputClass}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Se aplica automáticamente en la caja y queda oculto en el papel. Hasta 10%.
+                </p>
               </div>
             </div>
 

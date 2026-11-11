@@ -262,6 +262,7 @@ export async function POST(request: NextRequest) {
       sifen_descripcion_tipo_doc,
       condicion_pago,
       moneda_preferida,
+      descuento_porcentaje_fijo,
       estado,
       tipo_servicio_cliente,
       plan_comercial_id,
@@ -346,6 +347,11 @@ export async function POST(request: NextRequest) {
       pais:                 pais?.trim() || null,
       condicion_pago:       condicion_pago?.trim() || null,
       moneda_preferida:     moneda_preferida === "USD" ? "USD" : "GS",
+      descuento_porcentaje_fijo: (() => {
+        if (descuento_porcentaje_fijo == null || descuento_porcentaje_fijo === "") return null;
+        const n = Number(descuento_porcentaje_fijo);
+        return Number.isFinite(n) && n > 0 ? Math.min(10, n) : null;
+      })(),
       estado:               estado === "inactivo" ? "inactivo" : "activo",
       vendedor_asignado:    typeof vendedor_asignado === "string" && vendedor_asignado.trim() ? vendedor_asignado.trim() : null,
       vendedor_usuario_id:  vendedorUsuarioId,

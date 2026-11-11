@@ -105,6 +105,12 @@ export interface Venta {
   /** Descuento sobre el total (Gs. y %). El total ya es lo cobrado, con el descuento. */
   descuento_monto?: number;
   descuento_porcentaje?: number;
+  /**
+   * `true` cuando el descuento es el fijo de cliente (configurado en su ficha):
+   * el comprobante NO muestra ni la línea «Sin descuento» ni el «Descuento X%»,
+   * solo el total que paga. Igual queda en `descuento_monto` para los reportes.
+   */
+  descuento_oculto?: boolean;
 
   /** Cliente de la venta. `null` = venta sin nombre. */
   cliente_id?: string | null;

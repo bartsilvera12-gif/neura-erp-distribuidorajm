@@ -58,6 +58,7 @@ function toVentaResponse(
     monto_iva: number;
     total: number;
     descuento?: number;
+    descuento_oculto?: boolean;
   }
 ): Venta {
   const lineas: LineaVenta[] = items.map((i) => ({
@@ -88,6 +89,7 @@ function toVentaResponse(
       ? {
           descuento_monto: meta.descuento,
           descuento_porcentaje: porcentajeDe(meta.total + meta.descuento, meta.descuento),
+          descuento_oculto: meta.descuento_oculto === true,
         }
       : {}),
   };
@@ -217,6 +219,10 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(descuento) || descuento < 0) {
       return NextResponse.json(errorResponse("Descuento inválido."), { status: 400 });
     }
+    // Descuento fijo del cliente: no se imprime en el comprobante, pero queda
+    // registrado en la venta. El cajero puede modificarlo igual; si lo tocó,
+    // la caja manda false y vuelve a imprimirse normalmente.
+    const descuentoOculto = (o as { descuento_oculto?: unknown }).descuento_oculto === true;
 
     if (moneda === "USD" && tipoCambio <= 0) {
       return NextResponse.json(errorResponse("Tipo de cambio inválido para USD."), { status: 400 });
@@ -329,6 +335,7 @@ export async function POST(request: NextRequest) {
       totalDeclarado,
       descuento,
       descuentoUsuario,
+      descuentoOculto,
     });
     const { ventaId, numeroControl, fechaIso, depositoAplicado } = creada;
 
@@ -353,6 +360,7 @@ export async function POST(request: NextRequest) {
       monto_iva: iv,
       total: tot,
       descuento: creada.descuento,
+      descuento_oculto: descuentoOculto,
     });
 
     return NextResponse.json(

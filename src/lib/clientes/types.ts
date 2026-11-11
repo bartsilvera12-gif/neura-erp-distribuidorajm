@@ -51,6 +51,15 @@ export interface Cliente {
 
   valor_cliente?:      number;          // valor estimado anual en GS
 
+  /**
+   * Descuento fijo que se aplica automáticamente a todas las ventas de este
+   * cliente (porcentaje, 0..10). La caja precarga el valor cuando se elige al
+   * cliente, y lo oculta en el comprobante: el papel muestra solo el total que
+   * paga, sin la línea «Descuento X%» ni el «Sin descuento». Queda registrado
+   * en la venta (descuento_monto) para el reporte de descuentos y el arqueo.
+   */
+  descuento_porcentaje_fijo?: number | null;
+
   condicion_pago?:     string;          // CONTADO / 30 DÍAS / 60 DÍAS…
   moneda_preferida?:   "GS" | "USD";
   vendedor_asignado?:  string;

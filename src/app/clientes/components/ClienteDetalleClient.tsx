@@ -335,6 +335,7 @@ export default function ClienteDetalleClient({
     instagram:           "",
     linkedin:            "",
     valor_cliente:       "",
+    descuento_porcentaje_fijo: "",
     condicion_pago:      "",
     moneda_preferida:      "GS" as "GS" | "USD",
     vendedor_asignado:     "",
@@ -495,6 +496,10 @@ export default function ClienteDetalleClient({
         instagram:           c.instagram           ?? "",
         linkedin:            c.linkedin            ?? "",
         valor_cliente:       c.valor_cliente != null ? String(c.valor_cliente) : "",
+        descuento_porcentaje_fijo:
+          c.descuento_porcentaje_fijo != null && Number(c.descuento_porcentaje_fijo) > 0
+            ? String(c.descuento_porcentaje_fijo).replace(".", ",")
+            : "",
         condicion_pago:       c.condicion_pago      ?? "",
         moneda_preferida:     c.moneda_preferida    ?? "GS",
         vendedor_asignado:    c.vendedor_asignado   ?? "",
@@ -806,6 +811,12 @@ export default function ClienteDetalleClient({
         instagram:           form.instagram.trim()           || undefined,
         linkedin:            form.linkedin.trim()            || undefined,
         valor_cliente:       parseFloat(form.valor_cliente) || undefined,
+        descuento_porcentaje_fijo: (() => {
+          const t = form.descuento_porcentaje_fijo.trim().replace(",", ".");
+          if (!t) return null;
+          const n = Number(t);
+          return Number.isFinite(n) && n > 0 ? n : null;
+        })(),
         condicion_pago:      form.condicion_pago.trim().toUpperCase()    || undefined,
         moneda_preferida:    form.moneda_preferida,
         vendedor_asignado:   form.vendedor_asignado.trim().toUpperCase() || undefined,
@@ -1909,6 +1920,34 @@ export default function ClienteDetalleClient({
                   <div>
                     <label className={labelClass}>Valor anual estimado (Gs.)</label>
                     <MontoInput value={form.valor_cliente} onChange={(n) => setForm((p) => ({ ...p, valor_cliente: String(n) }))} className={inputClass} decimals={false} />
+                  </div>
+                </div>
+
+                {/* Descuento fijo por cliente: la caja lo aplica al elegirlo y
+                    no imprime la línea en el comprobante. Queda en el reporte
+                    de descuentos y en la planilla del arqueo. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Descuento fijo (%)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      name="descuento_porcentaje_fijo"
+                      value={form.descuento_porcentaje_fijo}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          descuento_porcentaje_fijo: e.target.value
+                            .replace(/[^\d.,]/g, "")
+                            .replace(/,(?=.*,)/g, ""),
+                        }))
+                      }
+                      placeholder="Ej. 6"
+                      className={inputClass}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Se aplica automáticamente en la caja y no se imprime en la factura. Hasta 10%.
+                    </p>
                   </div>
                 </div>
 

@@ -28,6 +28,7 @@ interface VentaRow {
   factura_id: string | null;
   descuento_monto: string | number | null;
   descuento_porcentaje: string | number | null;
+  descuento_oculto: boolean | string | null;
   observaciones: string | null;
 }
 
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
       `SELECT column_name AS c FROM information_schema.columns
         WHERE table_schema = $1 AND table_name = 'ventas'
           AND column_name IN ('metodo_pago', 'cliente_id', 'reparto_id', 'lista_precio', 'factura_id',
-                              'descuento_monto', 'descuento_porcentaje', 'observaciones')`,
+                              'descuento_monto', 'descuento_porcentaje', 'descuento_oculto', 'observaciones')`,
       [schema]
     );
     const opc = new Set(colsQ.rows.map((r) => r.c));
@@ -100,6 +101,7 @@ export async function GET(request: NextRequest) {
       "factura_id",
       "descuento_monto",
       "descuento_porcentaje",
+      "descuento_oculto",
       "observaciones",
     ]
       .map((c) => (opc.has(c) ? c : `NULL::text AS ${c}`))
@@ -337,13 +339,23 @@ export async function GET(request: NextRequest) {
  * Descuento de la venta: de sus columnas (SQL 62) o, si todavía no corrió,
  * de lo que quedó escrito en las observaciones («Descuento 2% (Gs. 52.000)…»).
  */
-function descuentoDe(r: VentaRow): { descuento_monto?: number; descuento_porcentaje?: number } {
+function descuentoDe(
+  r: VentaRow
+): { descuento_monto?: number; descuento_porcentaje?: number; descuento_oculto?: boolean } {
+  const oculto = r.descuento_oculto === true || r.descuento_oculto === "t" || r.descuento_oculto === "true";
   const monto = Number(r.descuento_monto ?? 0) || 0;
-  if (monto > 0) return { descuento_monto: monto, descuento_porcentaje: Number(r.descuento_porcentaje ?? 0) || 0 };
+  if (monto > 0) {
+    return {
+      descuento_monto: monto,
+      descuento_porcentaje: Number(r.descuento_porcentaje ?? 0) || 0,
+      ...(oculto ? { descuento_oculto: true } : {}),
+    };
+  }
   const m = /Descuento ([\d.,]+)% \(Gs\. ([\d.]+)\)/.exec(r.observaciones ?? "");
   if (!m) return {};
   return {
     descuento_monto: Number(m[2].replace(/\./g, "")) || 0,
     descuento_porcentaje: Number(m[1].replace(/\./g, "").replace(",", ".")) || 0,
+    ...(oculto ? { descuento_oculto: true } : {}),
   };
 }

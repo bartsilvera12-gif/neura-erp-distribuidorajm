@@ -51,6 +51,7 @@ interface SupabaseRow {
   valor_cliente:      number | null;
   condicion_pago:     string | null;
   moneda_preferida:   string | null;
+  descuento_porcentaje_fijo?: number | string | null;
   vendedor_asignado:  string | null;
   vendedor_usuario_id?: string | null;
   vendedor_usuario_nombre?: string | null;
@@ -109,6 +110,10 @@ function rowToCliente(row: SupabaseRow): Cliente {
     instagram:           row.instagram ?? undefined,
     linkedin:            row.linkedin ?? undefined,
     valor_cliente:       row.valor_cliente ?? undefined,
+    descuento_porcentaje_fijo:
+      row.descuento_porcentaje_fijo == null
+        ? null
+        : Number(row.descuento_porcentaje_fijo) || null,
     condicion_pago:      row.condicion_pago ?? undefined,
     moneda_preferida:    (row.moneda_preferida === "USD" ? "USD" : "GS") as "GS" | "USD",
     vendedor_asignado:   row.vendedor_asignado ?? undefined,
@@ -463,6 +468,15 @@ export function construirPatchActualizacionCliente(datos: ActualizarClienteInput
   if (datos.instagram !== undefined) patch.instagram = datos.instagram ?? null;
   if (datos.linkedin !== undefined) patch.linkedin = datos.linkedin ?? null;
   if (datos.valor_cliente !== undefined) patch.valor_cliente = datos.valor_cliente ?? null;
+  if (datos.descuento_porcentaje_fijo !== undefined) {
+    const v = datos.descuento_porcentaje_fijo;
+    if (v == null || v === 0) patch.descuento_porcentaje_fijo = null;
+    else {
+      const n = Number(v);
+      // Tope 10% igual que el descuento manual: evita un tipeo de 60 en vez de 6.
+      patch.descuento_porcentaje_fijo = Number.isFinite(n) && n > 0 ? Math.min(10, n) : null;
+    }
+  }
   if (datos.condicion_pago !== undefined) patch.condicion_pago = datos.condicion_pago ?? null;
   if (datos.moneda_preferida !== undefined) patch.moneda_preferida = datos.moneda_preferida ?? null;
   if (datos.vendedor_asignado !== undefined) patch.vendedor_asignado = datos.vendedor_asignado ?? null;

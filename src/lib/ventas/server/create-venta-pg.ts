@@ -61,6 +61,8 @@ export interface CreateVentaPgParams {
   descuento?: number;
   /** Quién aplicó el descuento (nombre o correo), para el cierre de caja. */
   descuentoUsuario?: string | null;
+  /** Descuento que NO se muestra en el papel (viene del descuento fijo del cliente). */
+  descuentoOculto?: boolean;
 }
 
 function qTable(schema: string, table: string): string {
@@ -291,7 +293,7 @@ export async function createVentaTransaccionalPg(
       SELECT column_name AS columna
         FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = 'ventas'
-         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio', 'descuento_monto', 'descuento_porcentaje', 'descuento_usuario')
+         AND column_name IN ('metodo_pago', 'caja_id', 'reparto_id', 'lista_precio', 'descuento_monto', 'descuento_porcentaje', 'descuento_usuario', 'descuento_oculto')
       `,
       [params.schema]
     );
@@ -330,6 +332,12 @@ export async function createVentaTransaccionalPg(
     if (columnas.has("descuento_usuario") && descuento > 0) {
       extraCols.push("descuento_usuario");
       extraVals.push(params.descuentoUsuario ?? null);
+    }
+    // Descuento oculto (SQL 64): no se muestra en el papel. Lo guarda solo
+    // cuando hay descuento y quien vende lo marcó así (viene del cliente).
+    if (columnas.has("descuento_oculto") && descuento > 0) {
+      extraCols.push("descuento_oculto");
+      extraVals.push(params.descuentoOculto === true);
     }
     // Los placeholders siguen después de los 12 fijos del INSERT.
     const extraPlaceholders = extraCols.map((_, i) => `$${13 + i}`);

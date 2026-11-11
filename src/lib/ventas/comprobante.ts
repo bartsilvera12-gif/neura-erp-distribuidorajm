@@ -160,6 +160,10 @@ export function comprobanteEnTexto(d: DatosComprobante): string {
 export function descuentoDeVenta(v: Venta): { monto: number; sinDescuento: number; texto: string } | null {
   const monto = Number(v.descuento_monto ?? 0);
   if (!(monto > 0)) return null;
+  // El descuento fijo de cliente va escondido en el papel: la clienta pidió
+  // mostrar solo el total a pagar. El monto sigue guardado en la venta y sale
+  // en el reporte de descuentos y en el arqueo.
+  if (v.descuento_oculto) return null;
   const pct = Number(v.descuento_porcentaje ?? 0);
   return {
     monto,

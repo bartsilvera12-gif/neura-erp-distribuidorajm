@@ -35,6 +35,8 @@ export async function saveVenta(
     deposito_id?: string | null;
     /** Descuento sobre el total, en guaraníes. */
     descuento?: number;
+    /** Descuento no visible en el papel (viene del descuento fijo del cliente). */
+    descuento_oculto?: boolean;
     /** Pago mixto: cuánto entra por cada medio. */
     pagos?: { medio: string; monto: number }[] | null;
   }
@@ -64,6 +66,7 @@ export async function saveVenta(
         deposito_id: datos.deposito_id ?? null,
         pagos: datos.pagos ?? null,
         descuento: datos.descuento ?? 0,
+        descuento_oculto: datos.descuento_oculto === true,
         observaciones: null,
       }),
     });
