@@ -110,6 +110,8 @@ export default function VentasPage() {
   const [fechaDesde, setFechaDesde] = useState<string>(hoy);
   const [fechaHasta, setFechaHasta] = useState<string>(hoy);
   const [filtroMetodo, setFiltroMetodo] = useState<MetodoPagoVenta | "">("");
+  // Origen: "caja" (sin reparto) o la etiqueta exacta del reparto ("Camion 1 · …").
+  const [filtroOrigen, setFiltroOrigen] = useState<string>("");
   const [viendo,     setViendo]     = useState<Venta | null>(null);
   const [anulando,   setAnulando]   = useState<Venta | null>(null);
   const [ticket,     setTicket]     = useState<Venta | null>(null);
@@ -159,11 +161,23 @@ export default function VentasPage() {
       return false;
     // Método de pago. "mixto" también cubre pagos combinados.
     if (filtroMetodo !== "" && v.metodo_pago !== filtroMetodo) return false;
+    // Origen: Caja (sin reparto) o un camión en particular (reparto_etiqueta).
+    if (filtroOrigen !== "") {
+      const esCaja = !v.reparto_etiqueta;
+      if (filtroOrigen === "caja" && !esCaja) return false;
+      if (filtroOrigen !== "caja" && v.reparto_etiqueta !== filtroOrigen) return false;
+    }
     return true;
   });
 
+  // Camiones que figuran en las ventas visibles: el dropdown aparece dinámicamente
+  // ("Camión 1", "Camión 2", etc.) sin tener que hardcodear la cantidad.
+  const camionesEnVentas = Array.from(
+    new Set(todas.map((v) => v.reparto_etiqueta).filter((e): e is string => !!e))
+  ).sort();
+
   const filtroFechaCambiado = fechaDesde !== hoy || fechaHasta !== hoy;
-  const hayFiltros = busqueda || filtroTipo || filtroIva || filtroMetodo || filtroFechaCambiado;
+  const hayFiltros = busqueda || filtroTipo || filtroIva || filtroMetodo || filtroOrigen || filtroFechaCambiado;
 
   return (
     <div className="space-y-6 pb-10">
@@ -273,6 +287,22 @@ export default function VentasPage() {
             <option value="">Todos los medios</option>
             {METODOS_PAGO.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+          {/* Origen: Caja (venta de mostrador) o un camión en particular. Se
+              arma con las etiquetas de reparto que ya salen en las ventas: si
+              aparece un Camión 3 en el día, aparece también en el filtro, sin
+              tocar código. */}
+          <select
+            value={filtroOrigen}
+            onChange={(e) => setFiltroOrigen(e.target.value)}
+            aria-label="Filtrar por origen de la venta"
+            className={inputFilterClass}
+          >
+            <option value="">Todos los orígenes</option>
+            <option value="caja">Caja</option>
+            {camionesEnVentas.map((etq) => (
+              <option key={etq} value={etq}>{etq}</option>
             ))}
           </select>
           <select

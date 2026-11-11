@@ -212,7 +212,6 @@ function ModalCrear({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
-      onClick={onCerrar}
     >
       <div
         className="w-full max-w-lg rounded-t-2xl bg-white p-5 sm:rounded-2xl sm:p-6"

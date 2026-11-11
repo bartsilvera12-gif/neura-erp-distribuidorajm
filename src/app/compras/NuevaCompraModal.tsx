@@ -524,7 +524,7 @@ export default function NuevaCompraModal({
     : "al salón";
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-8" onClick={onClose}>
+    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-8">
       <form onSubmit={handleSubmit}
         className="flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border"
         onClick={(e) => e.stopPropagation()}

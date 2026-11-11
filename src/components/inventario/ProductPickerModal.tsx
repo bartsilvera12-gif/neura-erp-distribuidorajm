@@ -151,7 +151,7 @@ export default function ProductPickerModal({
   const ivaMonto = iva === "10%" ? subtotal * 0.10 : iva === "5%" ? subtotal * 0.05 : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-900/60 backdrop-blur-sm pt-0 px-0 sm:pt-12 sm:px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-900/60 backdrop-blur-sm pt-0 px-0 sm:pt-12 sm:px-4">
       <div className="w-full max-w-6xl bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 flex flex-col h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[88dvh]" onClick={(e) => e.stopPropagation()}>
         {/* Header con buscador */}
         <div className="p-4 border-b border-slate-200">
