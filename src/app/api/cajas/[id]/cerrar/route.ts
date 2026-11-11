@@ -127,9 +127,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       hayColSencillo && Number.isFinite(sencilloBody) && sencilloBody >= 0
         ? Math.round(sencilloBody)
         : num(cajaQ.rows[0].sencillo);
+    // Al esperado solo entra el sencillo ya registrado en la caja. El que se
+    // escribe al contar forma parte del efectivo contado: sumarlo también acá
+    // lo cuenta dos veces (la apertura ya lo trae) y fabrica una diferencia.
     const esperado =
       num(cajaQ.rows[0].monto_apertura) +
-      sencillo +
+      num(cajaQ.rows[0].sencillo) +
       (porTipo.get("ingreso") ?? 0) -
       (porTipo.get("egreso") ?? 0) -
       (porTipo.get("retiro") ?? 0) +

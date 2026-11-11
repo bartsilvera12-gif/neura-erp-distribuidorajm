@@ -407,7 +407,9 @@ function ModalCierre({
   });
   const [tocado, setTocado] = useState(false);
   const sencillo = conteo.sencillo;
-  const esperadoConSencillo = esperado - sencilloGuardado + sencillo;
+  // El sencillo contado ya está dentro del total contado: no se suma de nuevo
+  // al esperado (solo cuenta el sencillo ya registrado en la caja).
+  const esperadoConSencillo = esperado;
 
   const valor = totalConteo(conteo);
   const valido = tocado;
@@ -467,7 +469,7 @@ function ModalCierre({
             hay que creer; con esto se puede discutir dónde no cuadra. */}
         <div className="space-y-2 rounded-xl bg-slate-50 p-4">
           <FilaDesglose label="Apertura" valor={gs(apertura)} />
-          {sencillo > 0 ? <FilaDesglose label="Sencillo (cambio)" valor={gs(sencillo)} /> : null}
+          {sencilloGuardado > 0 ? <FilaDesglose label="Sencillo (cambio)" valor={gs(sencilloGuardado)} /> : null}
           <FilaDesglose
             label={`Ventas efectivo${cantEfectivo > 0 ? ` (${cantEfectivo})` : ""}`}
             valor={gs(ventasEfectivo)}
