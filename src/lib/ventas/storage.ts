@@ -98,6 +98,31 @@ export async function saveVenta(
  * vista, marcada, porque un comprobante que desaparece es un comprobante que
  * nadie puede explicar después.
  */
+/** Corrige medios e importes de cobro de una venta ya registrada (queda auditado en caja). */
+export async function corregirPagosVenta(
+  ventaId: string,
+  pagos: { medio: string; monto: number }[],
+  motivo: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession(
+      `/api/ventas/${encodeURIComponent(ventaId)}/pagos`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pagos, motivo }),
+      }
+    );
+    const json = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !json.success) {
+      return { ok: false, error: json.error ?? "No se pudo corregir el pago." };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
 export async function anularVenta(
   ventaId: string,
   motivo?: string

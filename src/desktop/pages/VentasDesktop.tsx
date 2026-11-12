@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Printer } from "lucide-react";
 import DetalleVenta from "@/shared/ventas/DetalleVenta";
 import ModalAnularVenta from "@/shared/ventas/ModalAnularVenta";
+import ModalEditarPagoVenta from "@/shared/ventas/ModalEditarPagoVenta";
 import ReimprimirTicket from "@/shared/ventas/ReimprimirTicket";
 import ComprobanteVenta from "@/shared/ventas/ComprobanteVenta";
 import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
@@ -115,6 +116,7 @@ export default function VentasPage() {
   const [viendo,     setViendo]     = useState<Venta | null>(null);
   const [anulando,   setAnulando]   = useState<Venta | null>(null);
   const [ticket,     setTicket]     = useState<Venta | null>(null);
+  const [editandoPago, setEditandoPago] = useState<Venta | null>(null);
   const [recarga,    setRecarga]    = useState(0);
 
   useEffect(() => {
@@ -473,6 +475,14 @@ export default function VentasPage() {
           venta={viendo}
           onCerrar={() => setViendo(null)}
           onAnular={() => { setAnulando(viendo); setViendo(null); }}
+          onEditarPago={() => { setEditandoPago(viendo); setViendo(null); }}
+        />
+      ) : null}
+      {editandoPago ? (
+        <ModalEditarPagoVenta
+          venta={editandoPago}
+          onCerrar={() => setEditandoPago(null)}
+          onGuardado={() => { setEditandoPago(null); setRecarga((n) => n + 1); }}
         />
       ) : null}
       {ticket ? <ReimprimirTicket venta={ticket} onCerrar={() => setTicket(null)} /> : null}

@@ -73,11 +73,14 @@ export default function DetalleVenta({
   venta,
   onCerrar,
   onAnular,
+  onEditarPago,
 }: {
   venta: Venta;
   onCerrar: () => void;
   /** Si se pasa, aparece "Anular venta" (solo para ventas no anuladas). */
   onAnular?: () => void;
+  /** Si se pasa, aparece "Editar pago" (ventas de contado no anuladas). */
+  onEditarPago?: () => void;
 }) {
   const { emisor } = useEmisor();
   const [verComprobante, setVerComprobante] = useState(false);
@@ -147,6 +150,15 @@ export default function DetalleVenta({
               className="mr-auto h-11 whitespace-nowrap rounded-lg px-2 text-sm font-medium text-rose-600 hover:bg-rose-50 sm:px-3"
             >
               Anular<span className="hidden sm:inline"> venta</span>
+            </button>
+          ) : null}
+          {onEditarPago && !anulada && venta.tipo_venta === "CONTADO" ? (
+            <button
+              type="button"
+              onClick={onEditarPago}
+              className="h-11 whitespace-nowrap rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:px-4"
+            >
+              Editar pago
             </button>
           ) : null}
           <button
