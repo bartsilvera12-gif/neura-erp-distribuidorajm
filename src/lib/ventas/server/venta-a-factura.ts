@@ -3,6 +3,9 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { obtenerSiguienteNumeroFacturaEmpresa } from "@/lib/facturacion/factura-suscripcion-servidor";
 import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
 import { reintentarSinColumnasFaltantes } from "@/lib/supabase/columnas-faltantes";
+import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 
 /**
  * El cliente «SIN NOMBRE» de la empresa: el receptor de las facturas
@@ -99,6 +102,35 @@ function fechaPy(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Asuncion" });
 }
 
+/**
+ * Punto de expedición del camión de la venta (por su reparto) y el próximo
+ * número de ese punto. El número se reserva con un UPDATE atómico sobre el
+ * camión, así dos ventas a la vez no pueden tomar el mismo. `null` si la venta
+ * no es de un camión con punto propio (factura con el punto general).
+ */
+async function puntoDelCamion(
+  empresaId: string,
+  ventaId: string
+): Promise<{ punto: string; numero: number } | null> {
+  const pool = getChatPostgresPool();
+  if (!pool) return null;
+  const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+  const tC = quoteSchemaTable(schema, "camiones");
+  const { rows } = await pool.query<{ punto: string; numero: string }>(
+    `UPDATE ${tC} c
+        SET ultimo_numero_factura = c.ultimo_numero_factura + 1, updated_at = now()
+       FROM ${quoteSchemaTable(schema, "ventas")} v
+       JOIN ${quoteSchemaTable(schema, "repartos")} r ON r.id = v.reparto_id
+      WHERE v.id = $1::uuid AND v.empresa_id = $2::uuid
+        AND c.id = r.camion_id AND c.empresa_id = v.empresa_id
+        AND COALESCE(btrim(c.punto_expedicion), '') <> ''
+      RETURNING btrim(c.punto_expedicion) AS punto, c.ultimo_numero_factura AS numero`,
+    [ventaId, empresaId]
+  );
+  if (!rows[0]) return null;
+  return { punto: rows[0].punto.padStart(3, "0"), numero: Number(rows[0].numero) };
+}
+
 export async function facturaDeVenta(
   supabase: AppSupabaseClient,
   empresaId: string,
@@ -151,11 +183,17 @@ export async function facturaDeVenta(
   const vence = new Date(v.fecha);
   if (credito) vence.setDate(vence.getDate() + (Number(v.plazo_dias) > 0 ? Number(v.plazo_dias) : 30));
 
-  const numero = await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
+  // Venta de un reparto: si el camión tiene punto de expedición propio, la
+  // factura sale con ese punto y su numeración independiente.
+  const camion = await puntoDelCamion(empresaId, ventaId);
+  const numero = camion
+    ? `FAC-${camion.punto}-${String(camion.numero).padStart(7, "0")}`
+    : await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
   const { data: factura, error: errF } = await supabase
     .from("facturas")
     .insert([
       {
+        ...(camion ? { punto_expedicion: camion.punto } : {}),
         empresa_id: empresaId,
         cliente_id: clienteFactura,
         numero_factura: numero,

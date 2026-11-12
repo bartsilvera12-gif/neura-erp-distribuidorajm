@@ -31,7 +31,7 @@ export async function loadValidatedSifenPayload(
 
   const { data: factura, error: errFactura } = await supabase
     .from("facturas")
-    .select("id, cliente_id, numero_factura, fecha, tipo, moneda, monto, saldo")
+    .select("id, cliente_id, numero_factura, fecha, tipo, moneda, monto, saldo, punto_expedicion")
     .eq("id", fid)
     .eq("empresa_id", empresaId)
     .maybeSingle();
@@ -101,7 +101,12 @@ export async function loadValidatedSifenPayload(
     },
     items: (itemsRes.data ?? []) as BuildSifenPayloadInput["items"],
     cliente: clienteRes.data as BuildSifenPayloadInput["cliente"],
-    config: configRes.data as BuildSifenPayloadInput["config"],
+    // Factura de un camión: sale con el punto de expedición del camión.
+    config: (() => {
+      const cfg = configRes.data as BuildSifenPayloadInput["config"];
+      const pto = String((factura as { punto_expedicion?: string | null }).punto_expedicion ?? "").trim();
+      return cfg && pto ? { ...cfg, punto_expedicion: pto } : cfg;
+    })(),
     facturaElectronica: electronicaRes.data as BuildSifenPayloadInput["facturaElectronica"],
   };
 

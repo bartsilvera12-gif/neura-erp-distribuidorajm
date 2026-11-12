@@ -26,6 +26,9 @@ export function normalizarCodigoTres(val: string): string {
 
 /** dNumDoc: 7 dígitos desde número de factura ERP */
 export function normalizarNumeroDocumentoSifen(numeroFactura: string): string {
+  // Facturas de camión: "FAC-004-0000012" → el número es el último tramo (7 dígitos).
+  const camion = /-\d{3}-(\d{7})$/.exec(numeroFactura.trim());
+  if (camion) return camion[1];
   const d = numeroFactura.replace(/\D/g, "");
   if (!d) return "0000001";
   return padDigits(d, 7);
