@@ -206,7 +206,7 @@ export async function recibirDeSifenSync(params: RecibeDeSyncParams): Promise<Re
 
   const soap = construirSoapRenviDe(dId, rdeInterior);
 
-  const { privateKeyPem, certificatePem } = extractKeyAndCertFromP12(
+  const { privateKeyPem, certificateChainPem } = extractKeyAndCertFromP12(
     params.empresaConfig.certificadoP12,
     params.empresaConfig.certificadoPassword
   );
@@ -217,7 +217,7 @@ export async function recibirDeSifenSync(params: RecibeDeSyncParams): Promise<Re
     const res = await postHttpsMtls(
       serviceUrl,
       soap,
-      certificatePem,
+      certificateChainPem,
       privateKeyPem,
       CONTENT_TYPE
     );

@@ -304,7 +304,7 @@ export async function enviarLoteSifen(
   const soap = preparado.soapBodyUtf8;
   const contentTypeRequest = preparado.contentType;
 
-  const { privateKeyPem, certificatePem } = extractKeyAndCertFromP12(
+  const { privateKeyPem, certificateChainPem } = extractKeyAndCertFromP12(
     params.empresaConfig.certificadoP12,
     params.empresaConfig.certificadoPassword
   );
@@ -315,7 +315,7 @@ export async function enviarLoteSifen(
     const res = await postHttpsMtls(
       serviceUrl,
       soap,
-      certificatePem,
+      certificateChainPem,
       privateKeyPem,
       contentTypeRequest
     );

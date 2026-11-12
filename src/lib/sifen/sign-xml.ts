@@ -68,6 +68,12 @@ const SIG_ALG = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 export interface P12KeyMaterial {
   privateKeyPem: string;
   certificatePem: string;
+  /**
+   * Para el TLS mutuo con la SET: el certificado firmante seguido de las CA
+   * intermedias que traiga el .p12. Sin las intermedias el balanceador de la SET
+   * puede no validar el certificado y responde 302 a /vdesk/hangup.php3.
+   */
+  certificateChainPem: string;
 }
 
 /**
@@ -101,14 +107,25 @@ export function extractKeyAndCertFromP12(p12Buffer: Buffer, password: string): P
 
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
   const certs = certBags[forge.pki.oids.certBag];
-  const cert = certs?.[0]?.cert;
+  const todos = (certs ?? []).map((b) => b.cert).filter((c): c is forge.pki.Certificate => !!c);
+  // El firmante es el certificado cuya clave pública corresponde a la clave privada
+  // (el .p12 puede traer las CA en cualquier orden); si no se puede comparar, el primero.
+  const rsaKey = privateKey as forge.pki.rsa.PrivateKey;
+  const cert =
+    todos.find((c) => {
+      const pub = c.publicKey as forge.pki.rsa.PublicKey;
+      return !!pub?.n && !!rsaKey?.n && pub.n.equals(rsaKey.n);
+    }) ?? todos[0];
   if (!cert) {
     throw new Error("El .p12 no contiene certificado (certBag)");
   }
+  // Intermedias: las demás CA que no son raíz autofirmada.
+  const intermedias = todos.filter((c) => c !== cert && !c.isIssuer(c));
 
   return {
     privateKeyPem: forge.pki.privateKeyToPem(privateKey),
     certificatePem: forge.pki.certificateToPem(cert),
+    certificateChainPem: [cert, ...intermedias].map((c) => forge.pki.certificateToPem(c)).join(""),
   };
 }
 

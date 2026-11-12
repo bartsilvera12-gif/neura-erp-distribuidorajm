@@ -271,7 +271,7 @@ export async function consultarLoteSifen(
   const dId = params.dId ?? generarDId();
   const soap = construirSoapConsultaLote(dId, prot);
 
-  const { privateKeyPem, certificatePem } = extractKeyAndCertFromP12(
+  const { privateKeyPem, certificateChainPem } = extractKeyAndCertFromP12(
     params.empresaConfig.certificadoP12,
     params.empresaConfig.certificadoPassword
   );
@@ -284,7 +284,7 @@ export async function consultarLoteSifen(
     const res = await postHttpsMtls(
       serviceUrl,
       soap,
-      certificatePem,
+      certificateChainPem,
       privateKeyPem,
       contentType
     );
