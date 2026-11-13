@@ -56,6 +56,8 @@ export interface DatosPlanilla {
   cheques: number;
   credito: RenglonPlanilla[];
   cobranzas: RenglonPlanilla[];
+  /** Ingresos cargados a mano (repartos, etc.). Puede faltar en planillas viejas. */
+  otros_ingresos?: RenglonPlanilla[];
   gastos: RenglonPlanilla[];
   transferencias: RenglonPlanilla[];
   observaciones: string;
@@ -116,14 +118,16 @@ const sumar = (l: RenglonPlanilla[]) => l.reduce((s, r) => s + (Number(r.monto) 
 export function totalesPlanilla(d: DatosPlanilla, efectivo: number) {
   const credito = sumar(d.credito);
   const cobranzas = sumar(d.cobranzas);
+  const otrosIngresos = sumar(d.otros_ingresos ?? []);
   const gastos = sumar(d.gastos);
   const transferencias = sumar(d.transferencias);
-  const debe = (Number(d.apertura) || 0) + d.contado + cobranzas;
+  const debe = (Number(d.apertura) || 0) + d.contado + cobranzas + otrosIngresos;
   const rinde = efectivo + (Number(d.cheques) || 0) + gastos + transferencias;
   return {
     ventas: d.contado + credito,
     credito,
     cobranzas,
+    otros_ingresos: otrosIngresos,
     gastos,
     transferencias,
     debe,

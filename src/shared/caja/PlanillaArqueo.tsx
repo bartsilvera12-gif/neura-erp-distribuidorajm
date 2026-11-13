@@ -152,6 +152,7 @@ function Formulario({
       cheques: sis.cheques,
       credito: sis.credito,
       cobranzas: sis.cobranzas,
+      otros_ingresos: sis.otros_ingresos,
       gastos: sis.gastos,
       transferencias: sis.transferencias,
     }));
@@ -221,6 +222,7 @@ function Formulario({
       cheques: s.cheques,
       credito: s.credito,
       cobranzas: s.cobranzas,
+      otros_ingresos: s.otros_ingresos,
       gastos: s.gastos,
       transferencias: s.transferencias,
     }));
@@ -341,6 +343,7 @@ function Formulario({
               <Linea texto="Apertura / sencillo" ayuda="con lo que arrancó la caja" valor={d.apertura} />
               <Linea texto="Ventas de contado" ayuda="efectivo, transferencia, tarjeta y cheque" valor={d.contado} />
               <Linea texto="Cobranza de créditos" ayuda="deudas cobradas, por cualquier medio" valor={t.cobranzas} />
+              <Linea texto="Otros ingresos (repartos, etc.)" ayuda="ingresos cargados a mano en la caja" valor={t.otros_ingresos} />
               <Linea texto="Debe rendir" ayuda="todo lo de arriba (no solo efectivo)" valor={t.debe} fuerte />
               <div className="my-2 border-t border-slate-100" />
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Dónde está esa plata</p>
@@ -396,6 +399,8 @@ function Formulario({
           <ListaEditable titulo="Cobranza crédito" filas={d.cobranzas} conFactura disabled={soloLectura}
             onCambio={(f) => cambiar({ cobranzas: f })} placeholder="Cliente" />
         </div>
+        <ListaEditable titulo="Otros ingresos (repartos, etc.)" filas={d.otros_ingresos ?? []} disabled={soloLectura}
+          onCambio={(f) => cambiar({ otros_ingresos: f })} placeholder="Concepto" />
         <div className="grid gap-5 lg:grid-cols-2">
           <ListaEditable titulo="Resumen gastos - vale y otros" filas={d.gastos} disabled={soloLectura}
             onCambio={(f) => cambiar({ gastos: f })} placeholder="Concepto (salón efectivo, retención, descuento…)" />
