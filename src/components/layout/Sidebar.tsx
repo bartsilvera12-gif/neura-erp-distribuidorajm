@@ -126,7 +126,11 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/dashboard/monitoreo",
     icon: Activity,
   },
-  { key: "ventas", slug: "ventas", label: "Caja", href: "/ventas", icon: ShoppingCart },
+  { key: "ventas", slug: "ventas", label: "Caja", href: "/ventas", icon: ShoppingCart, children: [
+    { label: "Caja de ventas", href: "/ventas", exactMatch: true },
+    { label: "Cortes de efectivo", href: "/caja/cortes" },
+    { label: "Arqueo de caja", href: "/ventas/arqueo" },
+  ]},
   { key: "inventario", slug: "inventario", label: "Inventario", href: "/inventario", icon: Package, children: [
     { label: "Productos", href: "/inventario" },
     { label: "Movimientos", href: "/inventario/movimientos" },
