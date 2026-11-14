@@ -765,6 +765,7 @@ export interface CompraDetalle {
   items: CompraItemDetalle[];
   destino: string;
   destino_camion_id: string | null;
+  destino_carniceria?: boolean;
   fecha_vencimiento: string | null;
   camion_transporte_id: string | null;
   camion_transporte: string | null;
@@ -842,6 +843,18 @@ export async function getCompraDetalle(
           out.destino = `Camión ${r.destino_alias}`;
           out.destino_camion_id = r.destino_id;
           return out;
+        }
+        if (r.destino_ubicacion_id) {
+          const u = await pool().query<{ nombre: string }>(
+            `SELECT nombre FROM ${quoteSchemaTable(schema, "inventario_ubicaciones")}
+              WHERE id = $1::uuid AND empresa_id = $2::uuid AND nombre ILIKE 'carnicer%'`,
+            [r.destino_ubicacion_id, empresaId]
+          );
+          if (u.rows[0]) {
+            out.destino = "Carnicería";
+            out.destino_carniceria = true;
+            return out;
+          }
         }
       }
     }

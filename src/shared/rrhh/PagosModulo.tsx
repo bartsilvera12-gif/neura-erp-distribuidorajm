@@ -7,6 +7,7 @@ import MontoInput from "@/components/ui/MontoInput";
 import FechaSelect from "@/components/ui/FechaSelect";
 import SmartCombobox from "@/components/ui/SmartCombobox";
 import RrhhTabs from "./RrhhTabs";
+import ReciboSalario from "./ReciboSalario";
 import { Campo } from "./FuncionariosModulo";
 import {
   fechaCorta,
@@ -50,6 +51,8 @@ export default function PagosModulo({ tipo }: { tipo: TipoPago }) {
   const [modal, setModal] = useState<{ modo: "nuevo" } | { modo: "editar" | "pagar"; pago: Pago } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
+  const [recibo, setRecibo] = useState<Pago | null>(null);
+  const { funcionarios } = useFuncionarios();
   const hoy = hoyIso();
 
   const totales = useMemo(() => {
@@ -150,7 +153,7 @@ export default function PagosModulo({ tipo }: { tipo: TipoPago }) {
 
       {aviso ? <p className="no-imprimir mb-3 rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{aviso}</p> : null}
 
-      <div className="factura-imprimible">
+      <div className={recibo ? "no-imprimir" : "factura-imprimible"}>
         <div className="mb-3 hidden print:block">
           <p className="text-lg font-bold">{t.titulo}</p>
           <p className="text-sm">{periodo ? nombrePeriodo(periodo) : "Todos los meses"}</p>
@@ -240,6 +243,17 @@ export default function PagosModulo({ tipo }: { tipo: TipoPago }) {
                             Pagar
                           </button>
                         ) : null}
+                        {!esIps ? (
+                          <button
+                            type="button"
+                            onClick={() => setRecibo(p)}
+                            title="Recibo de salario"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            Recibo
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setModal({ modo: "editar", pago: p })}
@@ -269,6 +283,14 @@ export default function PagosModulo({ tipo }: { tipo: TipoPago }) {
           </div>
         )}
       </div>
+
+      {recibo ? (
+        <ReciboSalario
+          pago={recibo}
+          funcionario={funcionarios.find((f) => f.id === recibo.funcionario_id) ?? null}
+          onCerrar={() => setRecibo(null)}
+        />
+      ) : null}
 
       {modal?.modo === "nuevo" ? (
         <NuevoPago

@@ -13,6 +13,14 @@ type ReporteCard = {
 
 const REPORTES: ReporteCard[] = [
   {
+    title: "Conciliación de caja",
+    subtitle: "Egresos, cortes y rendiciones",
+    description:
+      "Cada caja del día en cuadros separados: egresos, cortes de efectivo, rendiciones externas, resumen del efectivo del salón (esperado, contado y diferencia) y consolidado por camión. Marca los movimientos de otro día y permite anular los cargados por error.",
+    icon: Wallet,
+    href: "/reportes/conciliacion-caja",
+  },
+  {
     title: "Metas de ventas",
     subtitle: "Metas del mes",
     description:

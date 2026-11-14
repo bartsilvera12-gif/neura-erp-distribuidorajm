@@ -214,6 +214,7 @@ export interface CompraDetalle {
   items: CompraItemDetalle[];
   destino: string;
   destino_camion_id: string | null;
+  destino_carniceria?: boolean;
   fecha_vencimiento: string | null;
   camion_transporte_id: string | null;
   camion_transporte: string | null;

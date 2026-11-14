@@ -149,7 +149,7 @@ export default function NuevaCompraModal({
   /** "" = salón; si no, el id del camión. */
   const [destino, setDestino] = useState("");
   /** "camion" sin camión elegido todavía: se muestra el buscador de camiones. */
-  const [tipoDestino, setTipoDestino] = useState<"salon" | "camion">("salon");
+  const [tipoDestino, setTipoDestino] = useState<"salon" | "camion" | "carniceria">("salon");
   /** Lista con la que va a vender el destino (salón o camión). */
   const [lista, setLista] = useState<"minorista" | "mayorista">("minorista");
   const [listaSalon, setListaSalon] = useState<"minorista" | "mayorista">("minorista");
@@ -221,6 +221,8 @@ export default function NuevaCompraModal({
       if (d?.destino_camion_id) {
         setTipoDestino("camion");
         elegirDestino(d.destino_camion_id);
+      } else if (d?.destino_carniceria) {
+        setTipoDestino("carniceria");
       }
       const items = d?.items?.length
         ? d.items
@@ -426,8 +428,9 @@ export default function NuevaCompraModal({
           reemplaza_compra_id: editar?.id ?? null,
           proveedor_id: String(proveedor.id),
           proveedor_nombre: proveedor.nombre,
-          destino_camion_id: destino || null,
-          lista_precio: lista,
+          destino_camion_id: tipoDestino === "camion" ? destino || null : null,
+          destino_carniceria: tipoDestino === "carniceria",
+          lista_precio: tipoDestino === "carniceria" ? null : lista,
           moneda: "PYG",
           tipo_cambio: 1,
           tipo_pago: tipoPago,
@@ -519,9 +522,11 @@ export default function NuevaCompraModal({
     setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0", categoria: "" });
   }
 
-  const destinoTexto = destino
-    ? `al camión ${camiones.find((c) => c.id === destino)?.alias ?? ""}`
-    : "al salón";
+  const destinoTexto = tipoDestino === "carniceria"
+    ? "a la carnicería"
+    : destino
+      ? `al camión ${camiones.find((c) => c.id === destino)?.alias ?? ""}`
+      : "al salón";
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-8">
@@ -665,6 +670,9 @@ export default function NuevaCompraModal({
                   <DestinoBoton activo={tipoDestino === "camion"}
                     onClick={() => setTipoDestino("camion")}
                     icono={<Truck className="h-4 w-4" />} titulo="Camión" />
+                  <DestinoBoton activo={tipoDestino === "carniceria"}
+                    onClick={() => { setTipoDestino("carniceria"); setDestino(""); }}
+                    icono={<Store className="h-4 w-4" />} titulo="Carnicería" />
                 </div>
                 {tipoDestino === "camion" ? (
                   <div className="min-w-0 flex-1">
@@ -675,6 +683,11 @@ export default function NuevaCompraModal({
                   </div>
                 ) : null}
               </div>
+              {tipoDestino === "carniceria" ? (
+                <p className="mt-3 text-[11px] text-slate-500">
+                  La mercadería entra al inventario de la Carnicería.
+                </p>
+              ) : (
               <div className="mt-3 max-w-sm">
                 <label className={SUBLABEL}>
                   {tipoDestino === "camion" ? "El camión vende con precio" : "El salón vende con precio"}
@@ -688,6 +701,7 @@ export default function NuevaCompraModal({
                     : "La caja vende con esta lista; no se elige al vender."}
                 </p>
               </div>
+              )}
             </div>
           </section>
 

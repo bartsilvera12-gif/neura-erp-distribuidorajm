@@ -84,8 +84,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       venta_id: string | null;
       devolucion_id: string | null;
       anulado_at: string | null;
+      concepto: string;
+      monto: string;
+      medio_pago: string;
     }>(
-      `SELECT id, venta_id, devolucion_id, anulado_at
+      `SELECT id, venta_id, devolucion_id, anulado_at, concepto, monto::text AS monto, medio_pago
          FROM ${tM}
         WHERE id = $1::uuid AND empresa_id = $2::uuid
         FOR UPDATE`,
@@ -113,6 +116,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (nuevos.concepto !== undefined) { params.push(nuevos.concepto); sets.push(`concepto = $${params.length}`); }
     if (nuevos.monto !== undefined)    { params.push(nuevos.monto);    sets.push(`monto = $${params.length}::numeric`); }
     if (nuevos.medio_pago !== undefined){ params.push(nuevos.medio_pago); sets.push(`medio_pago = $${params.length}`); }
+    // Historial de auditoría: el valor anterior y quién lo cambió quedan en la
+    // observación del movimiento (no se pierde nada al corregir).
+    const cambios: string[] = [];
+    if (nuevos.concepto !== undefined && nuevos.concepto !== m.concepto) cambios.push(`concepto "${m.concepto}" → "${nuevos.concepto}"`);
+    if (nuevos.monto !== undefined && nuevos.monto !== Number(m.monto)) cambios.push(`monto ${Number(m.monto)} → ${nuevos.monto}`);
+    if (nuevos.medio_pago !== undefined && nuevos.medio_pago !== m.medio_pago) cambios.push(`medio ${m.medio_pago} → ${nuevos.medio_pago}`);
+    if (cambios.length > 0) {
+      const linea = `[Editado ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC por ${ctx.auth.user?.email ?? "admin"}: ${cambios.join("; ")}]`;
+      params.push(linea);
+      sets.push(`observacion = concat_ws(E'\\n', NULLIF(observacion, ''), $${params.length}::text)`);
+    }
     params.push(id, empresaId);
     await client.query(
       `UPDATE ${tM} SET ${sets.join(", ")}
@@ -128,5 +142,54 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json(errorResponse("No se pudo editar el movimiento."), { status: 500 });
   } finally {
     client?.release();
+  }
+}
+
+/**
+ * DELETE /api/caja-movimientos/[id] — anula un movimiento manual (no lo borra).
+ * Body: { motivo }. Solo admin. Queda anulado_at / anulado_motivo / anulado_por
+ * y el movimiento deja de contar en el arqueo; el registro se conserva.
+ */
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const pool = getChatPostgresPool();
+  if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
+  try {
+    const ctx = await getTenantSupabaseFromAuthWithRol(request);
+    if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+    if (!esRolAdminEmpresaOGlobal(ctx.auth.rol)) {
+      return NextResponse.json(errorResponse("Solo un administrador puede anular movimientos de caja."), { status: 403 });
+    }
+    const { id } = await context.params;
+    if (!UUID.test(id)) return NextResponse.json(errorResponse("Movimiento inválido."), { status: 400 });
+
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const motivo = typeof body?.motivo === "string" ? body.motivo.trim() : "";
+    if (motivo === "") {
+      return NextResponse.json(errorResponse("Poné el motivo de la anulación."), { status: 400 });
+    }
+
+    const empresaId = ctx.auth.empresa_id;
+    const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+    const tM = quoteSchemaTable(schema, "caja_movimientos");
+
+    const r = await pool.query(
+      `UPDATE ${tM}
+          SET anulado_at = now(),
+              anulado_motivo = $3,
+              anulado_por = $4::uuid
+        WHERE id = $1::uuid AND empresa_id = $2::uuid
+          AND anulado_at IS NULL AND venta_id IS NULL AND devolucion_id IS NULL`,
+      [id, empresaId, motivo, ctx.auth.usuarioCatalogId ?? null]
+    );
+    if (r.rowCount === 0) {
+      return NextResponse.json(
+        errorResponse("No se pudo anular: no existe, ya estaba anulado o viene de una venta/devolución."),
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(successResponse({ movimiento_id: id, anulado: true }));
+  } catch (err) {
+    console.error("[/api/caja-movimientos/[id] DELETE]", err instanceof Error ? err.message : err);
+    return NextResponse.json(errorResponse("No se pudo anular el movimiento."), { status: 500 });
   }
 }

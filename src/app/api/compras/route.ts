@@ -106,6 +106,27 @@ async function postMultilinea(
       );
     }
     destinoUbicacionId = cam.ubicacion_id;
+  } else if (origen === "directa" && body.destino_carniceria === true) {
+    // Carnicería: depósito propio dentro del inventario (se crea la primera vez).
+    const pool = getChatPostgresPool();
+    if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
+    const tU = quoteSchemaTable(schema, "inventario_ubicaciones");
+    const ex = await pool.query<{ id: string }>(
+      `SELECT id FROM ${tU}
+        WHERE empresa_id = $1::uuid AND nombre ILIKE 'carnicer%' AND COALESCE(activo, true)
+        ORDER BY created_at LIMIT 1`,
+      [empresaId]
+    );
+    if (ex.rows[0]) {
+      destinoUbicacionId = ex.rows[0].id;
+    } else {
+      const ins = await pool.query<{ id: string }>(
+        `INSERT INTO ${tU} (empresa_id, tipo, nombre, activo)
+         VALUES ($1::uuid, 'deposito', 'CARNICERIA', true) RETURNING id`,
+        [empresaId]
+      );
+      destinoUbicacionId = ins.rows[0].id;
+    }
   }
   // Lista con la que va a vender el destino (camión o salón): se elige en la
   // compra (SQL 47 y 50).
@@ -198,7 +219,7 @@ async function postMultilinea(
         console.error("[/api/compras] categorías:", e)
       );
     }
-    if (origen === "directa" && listaDestino) {
+    if (origen === "directa" && listaDestino && body.destino_carniceria !== true) {
       await guardarListaDestino({
         schema,
         empresaId,

@@ -35,6 +35,10 @@ export type FilaCompra = {
   estado: string | null;
   items: number;
   total: number;
+  /** Vencimiento (AAAA-MM-DD): el de la compra o fecha + plazo (8 días si es a crédito sin plazo). Null en contado. */
+  vencimiento: string | null;
+  /** Contado = pagada; crédito = pendiente (o vencida si el vencimiento ya pasó). */
+  estado_pago: "pagada" | "pendiente" | "vencida";
 };
 
 export type CorteProveedor = {
@@ -156,6 +160,10 @@ export async function getReporteCompras(
                      NULLIF(btrim(c.numero_control), '')) AS numero,
             c.tipo_pago AS condicion,
             c.estado AS estado,
+            to_char(COALESCE(c.fecha_vencimiento,
+                    CASE WHEN c.tipo_pago ~* 'cr[eé]d'
+                         THEN (c.fecha AT TIME ZONE $${params.length + 1})::date + COALESCE(c.plazo_dias, 8) END),
+                    'YYYY-MM-DD') AS vencimiento,
             ${itemsExpr} AS items,
             ${totalExpr} AS total
        FROM ${tC} c
@@ -169,7 +177,14 @@ export async function getReporteCompras(
     [...params, TZ]
   );
 
+  const hoy = hoyEnAsuncion();
   const filas: FilaCompra[] = rows.map((r) => ({
+    estado_pago: !/cr[eé]d/i.test(r.condicion ?? "")
+      ? "pagada"
+      : r.vencimiento && r.vencimiento < hoy
+        ? "vencida"
+        : "pendiente",
+    vencimiento: r.vencimiento,
     id: r.id,
     fecha: r.fecha,
     proveedor: r.proveedor,

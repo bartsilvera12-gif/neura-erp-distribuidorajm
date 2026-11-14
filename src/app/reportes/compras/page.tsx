@@ -18,6 +18,8 @@ interface Fila {
   estado: string | null;
   items: number;
   total: number;
+  vencimiento: string | null;
+  estado_pago: "pagada" | "pendiente" | "vencida";
 }
 interface CorteProveedor {
   proveedor: string;
@@ -35,6 +37,34 @@ interface Reporte {
 }
 
 const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-PY");
+
+const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const ESTADO_PAGO: Record<Fila["estado_pago"], { t: string; c: string }> = {
+  pagada: { t: "Pagada", c: "bg-emerald-50 text-emerald-700" },
+  pendiente: { t: "Pendiente", c: "bg-amber-50 text-amber-700" },
+  vencida: { t: "Vencida", c: "bg-red-50 text-red-700" },
+};
+/** "2026-11-02" → "lunes 02/11/2026" (sin pasar por zona horaria). */
+function fechaLarga(iso: string | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+  if (!m) return "—";
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return `${DIAS[d.getUTCDay()]} ${m[3]}/${m[2]}/${m[1]}`;
+}
+/** Lunes de la semana de una fecha (AAAA-MM-DD). */
+function lunesDe(iso: string): string {
+  const [y, mo, da] = iso.slice(0, 10).split("-").map(Number);
+  const d = new Date(Date.UTC(y, mo - 1, da));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+function sumaDias(iso: string, n: number): string {
+  const [y, mo, da] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, mo - 1, da + n)).toISOString().slice(0, 10);
+}
+function ddmm(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+}
 
 function firstOfMonth(): string {
   const d = new Date();
@@ -119,6 +149,22 @@ export default function ReporteComprasPage() {
   const resumen = data?.resumen;
   const filas = data?.filas ?? [];
   const porProveedor = data?.por_proveedor ?? [];
+
+  // Semanas (lunes a domingo) por fecha de compra, de la más reciente a la más antigua.
+  const semanas = useMemo(() => {
+    const m = new Map<string, Fila[]>();
+    for (const f of filas) {
+      const k = lunesDe((f.fecha ?? "").slice(0, 10) || "1970-01-01");
+      m.set(k, [...(m.get(k) ?? []), f]);
+    }
+    return [...m.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([lunes, items]) => ({
+        lunes,
+        items,
+        total: items.reduce((s, x) => s + x.total, 0),
+      }));
+  }, [filas]);
 
   return (
     <div className="w-full min-w-0 space-y-5">
@@ -215,37 +261,50 @@ export default function ReporteComprasPage() {
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[820px] text-xs">
+        <table className="w-full min-w-[980px] text-xs">
           <thead className="border-b bg-slate-50 uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-2 py-2 text-left">Fecha</th>
+              <th className="px-2 py-2 text-left">Compra</th>
+              <th className="px-2 py-2 text-left">Vencimiento</th>
               <th className="px-2 py-2 text-left">Proveedor</th>
-              <th className="px-2 py-2 text-left">RUC</th>
-              <th className="px-2 py-2 text-left">Comprobante</th>
+              <th className="px-2 py-2 text-left">Factura</th>
               <th className="px-2 py-2 text-left">Cond.</th>
               <th className="px-2 py-2 text-right">Ítems</th>
-              <th className="px-2 py-2 text-right">Total</th>
-              <th className="px-2 py-2 text-center">Estado</th>
+              <th className="px-2 py-2 text-right">Importe</th>
+              <th className="px-2 py-2 text-center">Estado del pago</th>
             </tr>
           </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-400">Cargando…</td></tr>
-            ) : filas.length === 0 ? (
-              <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-400">Sin compras en el período/filtros.</td></tr>
-            ) : filas.map((r) => (
-              <tr key={r.id} className="border-b last:border-0 hover:bg-slate-50/60">
-                <td className="px-2 py-1.5">{(r.fecha ?? "").slice(0, 10)}</td>
-                <td className="px-2 py-1.5">{r.proveedor ?? "—"}</td>
-                <td className="px-2 py-1.5">{r.ruc ?? "—"}</td>
-                <td className="px-2 py-1.5 font-mono">{r.numero ?? "—"}</td>
-                <td className="px-2 py-1.5">{r.condicion ?? "—"}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{r.items}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
-                <td className="px-2 py-1.5 text-center text-slate-500">{r.estado ?? "—"}</td>
+          {loading ? (
+            <tbody><tr><td colSpan={8} className="px-2 py-8 text-center text-slate-400">Cargando…</td></tr></tbody>
+          ) : filas.length === 0 ? (
+            <tbody><tr><td colSpan={8} className="px-2 py-8 text-center text-slate-400">Sin compras en el período/filtros.</td></tr></tbody>
+          ) : semanas.map((s) => (
+            <tbody key={s.lunes}>
+              <tr className="border-b bg-slate-100 font-semibold text-slate-700">
+                <td className="px-2 py-1.5" colSpan={6}>
+                  Semana del {ddmm(s.lunes)} al {ddmm(sumaDias(s.lunes, 6))} · {s.items.length} compras
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(s.total)}</td>
+                <td />
               </tr>
-            ))}
-          </tbody>
+              {s.items.map((r) => (
+                <tr key={r.id} className="border-b last:border-0 hover:bg-slate-50/60">
+                  <td className="px-2 py-1.5 whitespace-nowrap">{fechaLarga(r.fecha)}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{fechaLarga(r.vencimiento)}</td>
+                  <td className="px-2 py-1.5">{r.proveedor ?? "—"}</td>
+                  <td className="px-2 py-1.5 font-mono">{r.numero ?? "—"}</td>
+                  <td className="px-2 py-1.5">{r.condicion ?? "—"}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{r.items}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
+                  <td className="px-2 py-1.5 text-center">
+                    <span className={`rounded-full px-2 py-0.5 font-semibold ${ESTADO_PAGO[r.estado_pago].c}`}>
+                      {ESTADO_PAGO[r.estado_pago].t}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
           {resumen && filas.length > 0 && (
             <tfoot className="border-t bg-slate-50 font-semibold text-slate-800">
               <tr>
