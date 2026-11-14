@@ -53,6 +53,14 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/ingresos-egresos",
   },
   {
+    title: "Consolidado de caja",
+    subtitle: "Salón + Camiones",
+    description:
+      "Cuánta plata corresponde al salón y cuánta a cada camión en el período, lado a lado. Evita sumar dos veces cobros ya contabilizados — cada venta queda en su origen.",
+    icon: Layers,
+    href: "/reportes/consolidado-caja",
+  },
+  {
     title: "Arqueo del mes",
     subtitle: "Como la planilla",
     description:
