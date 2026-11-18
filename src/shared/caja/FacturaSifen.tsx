@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2, MessageCircle, Printer, RefreshCw } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { abrirPdfParaImprimir, esDispositivoMovil } from "@/lib/ventas/imprimir-movil";
 import KudeTicket from "@/shared/caja/KudeTicket";
 
 /**
@@ -416,6 +417,10 @@ function KudePdf({ facturaId }: { facturaId: string }) {
   }
 
   function imprimir() {
+    if (url && esDispositivoMovil()) {
+      abrirPdfParaImprimir(url, `factura-${facturaId.slice(0, 8)}.pdf`);
+      return;
+    }
     const w = frame.current?.contentWindow;
     if (w) {
       w.focus();

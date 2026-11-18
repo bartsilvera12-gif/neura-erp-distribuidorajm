@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, Printer } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { esDispositivoMovil, imprimirKudeEnMovil } from "@/lib/ventas/imprimir-movil";
 import { LOGO_FACTURA } from "@/lib/ventas/comprobante";
 import { emailVisible, telefonoVisible } from "@/lib/sifen/contacto-relleno";
 import type { KudeParsedFromXml } from "@/lib/sifen/parse-kude-from-signed-xml";
@@ -133,7 +134,13 @@ export default function KudeTicket({ facturaId }: { facturaId: string }) {
       <div className="no-imprimir flex items-center gap-4">
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            if (esDispositivoMovil()) {
+              imprimirKudeEnMovil(facturaId).catch(() => window.print());
+            } else {
+              window.print();
+            }
+          }}
           className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
         >
           <Printer className="h-4 w-4" />
