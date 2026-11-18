@@ -88,6 +88,8 @@ type ItemRow = {
   precio_venta: number | string;
   tipo_iva: string | null;
   total_linea: number | string;
+  producto_id?: string | null;
+  sku?: string | null;
 };
 
 function tasaDe(tipoIva: string | null): 0 | 5 | 10 {
@@ -169,12 +171,27 @@ export async function facturaDeVenta(
 
   const { data: itemsData, error: errI } = await supabase
     .from("ventas_items")
-    .select("producto_nombre, cantidad, precio_venta, tipo_iva, total_linea")
+    .select("producto_nombre, cantidad, precio_venta, tipo_iva, total_linea, producto_id, sku")
     .eq("venta_id", ventaId)
     .eq("empresa_id", empresaId);
   if (errI) return { ok: false, status: 400, message: errI.message };
   const items = (itemsData ?? []) as ItemRow[];
   if (items.length === 0) return { ok: false, status: 400, message: "La venta no tiene productos." };
+
+  // Código real del inventario (SKU) de cada producto vendido.
+  const skuPorProducto = new Map<string, string>();
+  const idsProd = [...new Set(items.map((i) => i.producto_id).filter((x): x is string => Boolean(x)))];
+  if (idsProd.length > 0) {
+    const { data: prods } = await supabase
+      .from("productos")
+      .select("id, sku")
+      .eq("empresa_id", empresaId)
+      .in("id", idsProd);
+    for (const p of (prods ?? []) as { id: string; sku: string | null }[]) {
+      const s = (p.sku ?? "").trim();
+      if (s) skuPorProducto.set(p.id, s);
+    }
+  }
 
   const moneda = v.moneda === "USD" ? "USD" : "GS";
   const total = Number(v.total) || 0;
@@ -231,6 +248,8 @@ export async function facturaDeVenta(
       subtotal: m.subtotal,
       iva: m.iva,
       total: m.total,
+      codigo_producto:
+        ((it.producto_id ? skuPorProducto.get(it.producto_id) : null) ?? (it.sku ?? "").trim()) || null,
     };
   });
   const { error: errItems } = await supabase.from("factura_items").insert(filas);

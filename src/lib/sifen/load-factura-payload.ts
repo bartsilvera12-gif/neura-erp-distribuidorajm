@@ -48,7 +48,7 @@ export async function loadValidatedSifenPayload(
   const [itemsRes, clienteRes, configRes, electronicaRes] = await Promise.all([
     supabase
       .from("factura_items")
-      .select("descripcion, cantidad, precio_unitario, subtotal, iva, total")
+      .select("descripcion, cantidad, precio_unitario, subtotal, iva, total, codigo_producto")
       .eq("factura_id", fid)
       .eq("empresa_id", empresaId)
       .order("created_at", { ascending: true }),

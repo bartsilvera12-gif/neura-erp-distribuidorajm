@@ -655,7 +655,12 @@ export function buildOfficialRdeFacturaElectronicaXml(
     const iAfec = tasa === 0 ? "3" : "1";
 
     itemsXml.push("<gCamItem>");
-    itemsXml.push(textEl("dCodInt", `L${idx + 1}`.slice(0, 20)));
+    // dCodInt: alfanumérico de 1 a 20 caracteres. Se usa el SKU real del inventario.
+    const codInt = String(it.codigo ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 20);
+    itemsXml.push(textEl("dCodInt", codInt || `L${idx + 1}`));
     const dDesProSer =
       esAmbienteTest && idx === 0
         ? SIFEN_TEST_LITERAL_DOCUMENTO

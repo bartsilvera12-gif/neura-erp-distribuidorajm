@@ -30,6 +30,8 @@ export type MovConc = {
   tipo: string;
   /** Una rendición/ingreso externo identificado con un camión; null = otros. */
   grupo?: string;
+  /** Néstor / William / Osvaldo / Milciades si el concepto lo nombra; "" = otro ingreso manual. */
+  repartidor?: string;
 };
 
 export type CajaConc = {
@@ -44,6 +46,8 @@ export type CajaConc = {
   cortes: MovConc[];
   ingresos_externos: MovConc[];
   ajustes: MovConc[];
+  rendiciones: RendicionResumen[];
+  otros_manuales: { efectivo: number; otros: number };
   totales: {
     egresos: number;
     cortes: number;
@@ -65,6 +69,8 @@ export type Conciliacion = {
     salon_otros_medios: number;
     camiones: { nombre: string; efectivo: number; otros: number }[];
     otros_externos: { efectivo: number; otros: number };
+    rendiciones: RendicionResumen[];
+    otros_manuales: { efectivo: number; otros: number };
     total_general: number;
   };
 };
@@ -86,6 +92,29 @@ function distancia(a: string, b: string): number {
   }
   return prev[n];
 }
+
+/** Repartidores que rinden efectivo en el cajón; se reconocen por el nombre en el concepto. */
+export const REPARTIDORES_RENDICION = ["Néstor", "William", "Osvaldo", "Milciades"] as const;
+const REPARTIDOR_PALABRAS: Record<(typeof REPARTIDORES_RENDICION)[number], string[]> = {
+  "Néstor": ["nestor"],
+  William: ["william", "wilian", "wuilian", "wiliam", "willian"],
+  Osvaldo: ["osvaldo"],
+  Milciades: ["milciades", "milciade"],
+};
+
+function repartidorDe(concepto: string): string | null {
+  const palabras = sinTilde(concepto).split(/[^a-z0-9]+/).filter(Boolean);
+  for (const nombre of REPARTIDORES_RENDICION) {
+    for (const t of REPARTIDOR_PALABRAS[nombre]) {
+      for (const p of palabras) {
+        if (p === t || (t.length >= 6 && p.length >= 5 && distancia(p, t) <= 1)) return nombre;
+      }
+    }
+  }
+  return null;
+}
+
+export type RendicionResumen = { nombre: string; efectivo: number; otros: number };
 
 type CamionTokens = { nombre: string; numero: string | null; tokens: string[] };
 
@@ -205,7 +234,11 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
       };
       if (m.tipo === "retiro" || (m.tipo === "egreso" && esCorteConcepto(concepto))) cortes.push(base);
       else if (m.tipo === "egreso") egresos.push(base);
-      else if (m.tipo === "ingreso") externos.push({ ...base, grupo: camionDe(concepto, camiones) ?? "" });
+      else if (m.tipo === "ingreso") externos.push({
+          ...base,
+          grupo: camionDe(concepto, camiones) ?? "",
+          repartidor: repartidorDe(concepto) ?? "",
+        });
       else if (m.tipo === "ajuste") ajustes.push(base);
     }
 
@@ -213,6 +246,15 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
     const todo = (l: MovConc[]) => l.reduce((s, x) => s + x.monto, 0);
     const extEf = ef(externos);
     const extOtros = todo(externos) - extEf;
+    const resumenRend = (e: MovConc[]) => ({
+      efectivo: e.filter((x) => x.medio === "efectivo").reduce((s, x) => s + x.monto, 0),
+      otros: e.filter((x) => x.medio !== "efectivo").reduce((s, x) => s + x.monto, 0),
+    });
+    const rendiciones = REPARTIDORES_RENDICION.map((nombre) => ({
+      nombre,
+      ...resumenRend(externos.filter((x) => x.repartidor === nombre)),
+    }));
+    const otrosManuales = resumenRend(externos.filter((x) => !x.repartidor));
     const efectivoIngresado = ventasEf + extEf;
     // Misma cuenta que el arqueo: egresos y cortes salen del efectivo una sola vez.
     const esperado = apertura + sencillo + efectivoIngresado - ef(egresos) - ef(cortes) + ef(ajustes);
@@ -229,6 +271,8 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
       cortes,
       ingresos_externos: externos,
       ajustes,
+      rendiciones,
+      otros_manuales: otrosManuales,
       totales: {
         egresos: ef(egresos),
         cortes: ef(cortes),
@@ -248,9 +292,17 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
   const otros = { efectivo: 0, otros: 0 };
   let salonEf = 0;
   let salonOtros = 0;
+  const rendTotal: RendicionResumen[] = REPARTIDORES_RENDICION.map((nombre) => ({ nombre, efectivo: 0, otros: 0 }));
+  const manualesTotal = { efectivo: 0, otros: 0 };
   for (const c of cajas) {
     salonEf += c.ventas_efectivo;
     salonOtros += c.ventas_otros_medios;
+    c.rendiciones.forEach((r, i) => {
+      rendTotal[i].efectivo += r.efectivo;
+      rendTotal[i].otros += r.otros;
+    });
+    manualesTotal.efectivo += c.otros_manuales.efectivo;
+    manualesTotal.otros += c.otros_manuales.otros;
     for (const e of c.ingresos_externos) {
       const destino = e.grupo ? (porCamion.get(e.grupo) ?? { efectivo: 0, otros: 0 }) : otros;
       if (e.medio === "efectivo") destino.efectivo += e.monto;
@@ -270,6 +322,8 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
       salon_otros_medios: salonOtros,
       camiones: lista,
       otros_externos: otros,
+      rendiciones: rendTotal,
+      otros_manuales: manualesTotal,
       total_general: total,
     },
   };

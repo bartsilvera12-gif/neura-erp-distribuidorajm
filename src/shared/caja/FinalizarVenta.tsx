@@ -37,6 +37,7 @@ import type { Cliente } from "@/lib/clientes/types";
 
 type Modo = "sin-nombre" | "con-nombre";
 type Pago = MetodoPagoVenta | "credito";
+type Comprobante = "factura-sin-nombre" | "factura-con-nombre" | "ticket";
 
 const ICONOS: Partial<Record<Pago, typeof Banknote>> = {
   efectivo: Banknote,
@@ -136,6 +137,21 @@ export default function FinalizarVenta({
     }
   }
 
+  /** Las tres opciones de la pantalla principal: factura sin nombre, con nombre o ticket. */
+  const comprobante: Comprobante =
+    modo === "sin-nombre" ? "ticket" : facturaSinNombre && !caja.cliente ? "factura-sin-nombre" : "factura-con-nombre";
+
+  function elegirComprobante(c: Comprobante) {
+    if (c === "ticket") elegirModo("sin-nombre");
+    else if (c === "factura-con-nombre") {
+      elegirModo("con-nombre");
+      foco.cliente();
+    } else {
+      setModo("con-nombre");
+      facturarSinNombre();
+    }
+  }
+
   /** Factura sin cliente: innominada. */
   function facturarSinNombre() {
     setAviso(null);
@@ -218,23 +234,31 @@ export default function FinalizarVenta({
         <FilaOpciones
           grupoRef={grupoComprobante}
           etiqueta="Comprobante"
-          valor={modo}
-          onCambiar={elegirModo}
+          valor={comprobante}
+          onCambiar={elegirComprobante}
           onEnter={() => (faltaCliente ? foco.cliente() : foco.pago())}
+          ultimaAncha
           opciones={[
             {
-              valor: "sin-nombre",
-              texto: "Ticket",
-              detalle: sifen ? "interno · no va a la SET" : "sin nombre",
-              Icono: Receipt,
+              valor: "factura-sin-nombre",
+              texto: "Factura sin nombre",
+              detalle: sifen ? "consumidor final · va a la SET" : "sin datos del cliente",
+              Icono: FileText,
               // El depósito es de un cliente: la venta va a su nombre.
               deshabilitado: Boolean(caja.deposito),
             },
             {
-              valor: "con-nombre",
-              texto: "Factura",
-              detalle: sifen ? "va a la SET · con o sin nombre" : "con nombre del cliente",
-              Icono: FileText,
+              valor: "factura-con-nombre",
+              texto: "Factura con nombre",
+              detalle: sifen ? "buscar cliente · va a la SET" : "con nombre del cliente",
+              Icono: UserPlus,
+            },
+            {
+              valor: "ticket",
+              texto: "Ticket",
+              detalle: sifen ? "interno · no va a la SET" : "sin nombre",
+              Icono: Receipt,
+              deshabilitado: Boolean(caja.deposito),
             },
           ]}
         />
@@ -390,6 +414,7 @@ function FilaOpciones<T extends string>({
   onEnter,
   grupoRef,
   columnas = 2,
+  ultimaAncha = false,
 }: {
   etiqueta: string;
   opciones: Opcion<T>[];
@@ -398,6 +423,8 @@ function FilaOpciones<T extends string>({
   onEnter: () => void;
   grupoRef: React.RefObject<HTMLDivElement | null>;
   columnas?: 2 | 4 | 5;
+  /** La última opción ocupa todo el ancho, debajo de las demás. */
+  ultimaAncha?: boolean;
 }) {
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
@@ -425,8 +452,9 @@ function FilaOpciones<T extends string>({
       onKeyDown={onKeyDown}
       className={`grid gap-2 ${columnas === 5 ? "grid-cols-5" : columnas === 4 ? "grid-cols-4" : "grid-cols-2"}`}
     >
-      {opciones.map(({ valor: v, texto, detalle, ayuda, Icono, deshabilitado }) => {
+      {opciones.map(({ valor: v, texto, detalle, ayuda, Icono, deshabilitado }, idx) => {
         const elegido = v === valor;
+        const ancha = ultimaAncha && idx === opciones.length - 1;
         return (
           <button
             key={v}
@@ -438,7 +466,7 @@ function FilaOpciones<T extends string>({
             disabled={deshabilitado}
             onClick={() => onCambiar(v)}
             title={ayuda}
-            className={`flex min-w-0 flex-col items-center justify-center rounded-xl border-2 px-1.5 font-semibold outline-none ${
+            className={`${ancha ? "col-span-2 " : ""}flex min-w-0 flex-col items-center justify-center rounded-xl border-2 px-1.5 font-semibold outline-none ${
               columnas !== 2 ? "h-16 gap-1 text-[13px]" : "gap-0.5 py-2.5 text-sm"
             } transition-colors focus-visible:ring-2 focus-visible:ring-[#4FAEB2] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${
               elegido

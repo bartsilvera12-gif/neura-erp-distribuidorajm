@@ -29,6 +29,8 @@ type Caja = {
   cortes: Mov[];
   ingresos_externos: Mov[];
   ajustes: Mov[];
+  rendiciones: { nombre: string; efectivo: number; otros: number }[];
+  otros_manuales: { efectivo: number; otros: number };
   totales: {
     egresos: number;
     cortes: number;
@@ -49,6 +51,8 @@ type Datos = {
     salon_otros_medios: number;
     camiones: { nombre: string; efectivo: number; otros: number }[];
     otros_externos: { efectivo: number; otros: number };
+    rendiciones: { nombre: string; efectivo: number; otros: number }[];
+    otros_manuales: { efectivo: number; otros: number };
     total_general: number;
   };
 };
@@ -227,45 +231,59 @@ export default function ConciliacionCajaPage() {
             <Fila k="Transferencias y otros medios (no entran al cajón)" v={k.totales.ingresos_externos_otros} />
           </Cuadro>
 
-          <Cuadro titulo="D. Resumen del efectivo del salón" color="border-slate-300 text-slate-800">
-            <Fila k="Apertura de caja" v={k.apertura} />
+          <Cuadro titulo="D. Resumen del salón" color="border-slate-300 text-slate-800">
+            <Fila k="Apertura de caja (efectivo físico con el que se inició)" v={k.apertura} />
             {k.sencillo > 0 ? <Fila k="Sencillo" v={k.sencillo} /> : null}
-            <Fila k="Ventas cobradas en efectivo" v={k.ventas_efectivo} />
-            <Fila k="Otros ingresos de efectivo al salón" v={k.totales.ingresos_externos_efectivo} />
-            <Fila k="Total de efectivo ingresado" v={k.totales.efectivo_ingresado} fuerte />
-            <Fila k="Egresos en efectivo" v={k.totales.egresos} signo="-" />
-            <Fila k="Cortes y retiros de efectivo" v={k.totales.cortes} signo="-" />
+            <Fila k="Ventas en efectivo" v={k.ventas_efectivo} />
+            <Fila k="Ventas por transferencia y otros medios (no entran al cajón)" v={k.ventas_otros_medios} />
+            <Fila k="Ventas totales" v={k.ventas_efectivo + k.ventas_otros_medios} fuerte />
+            <Fila k="Rendiciones e ingresos manuales en efectivo (ver cuadro E)" v={k.totales.ingresos_externos_efectivo} />
+            <Fila k="Gastos y egresos en efectivo" v={k.totales.egresos} signo="-" />
+            <Fila k="Retiros, cortes y depósitos de efectivo" v={k.totales.cortes} signo="-" />
             {k.totales.ajustes !== 0 ? <Fila k="Ajustes" v={k.totales.ajustes} /> : null}
-            <Fila k="Efectivo esperado al cierre" v={k.totales.esperado} fuerte />
-            <Fila k="Efectivo contado (arqueo)" v={k.totales.contado === null ? "Sin cerrar" : `Gs. ${fmt(k.totales.contado)}`} />
+            <Fila k="Cierre teórico (efectivo que debería haber)" v={k.totales.esperado} fuerte />
+            <Fila k="Rendición física (efectivo contado al cerrar)" v={k.totales.contado === null ? "Sin cerrar" : `Gs. ${fmt(k.totales.contado)}`} />
             <Fila
-              k="Diferencia (faltante / sobrante)"
+              k="Diferencia entre cierre teórico y efectivo físico"
               v={k.totales.diferencia === null ? "—" : `Gs. ${fmt(k.totales.diferencia)}`}
               fuerte
             />
+          </Cuadro>
+
+          <Cuadro titulo="E. Rendiciones e ingresos manuales" color="border-emerald-200 text-emerald-800">
+            {k.rendiciones.map((r) => (
+              <Fila
+                key={r.nombre}
+                k={`${r.nombre} – Rendición${r.otros > 0 ? ` (transferencias: Gs. ${fmt(r.otros)}, no entran al cajón)` : ""}`}
+                v={r.efectivo}
+              />
+            ))}
+            <Fila
+              k={`Otros ingresos manuales${k.otros_manuales.otros > 0 ? ` (transferencias: Gs. ${fmt(k.otros_manuales.otros)}, no entran al cajón)` : ""}`}
+              v={k.otros_manuales.efectivo}
+            />
+            <Fila k="Total rendiciones e ingresos manuales en efectivo" v={k.totales.ingresos_externos_efectivo} fuerte />
+            <p className="px-3 py-2 text-[11px] text-slate-500">
+              Los cobros de ventas ya están en el cuadro D y no se suman de nuevo acá. La apertura del día siguiente toma el efectivo contado al cerrar, no el cierre teórico.
+            </p>
           </Cuadro>
         </div>
       ))}
 
       {c && data && data.cajas.length > 0 ? (
-        <Cuadro titulo="E. Resumen consolidado del día" color="border-sky-200 text-sky-900">
-          <div className="grid gap-px bg-slate-100 sm:grid-cols-2">
-            <div className="bg-white">
-              <Fila k="1. Efectivo del salón (ventas)" v={c.salon_efectivo} />
-              <Fila k="    Ventas del salón por otros medios" v={c.salon_otros_medios} />
-            </div>
-            {c.camiones.map((x, i) => (
-              <div key={x.nombre} className="bg-white">
-                <Fila k={`${i + 2}. Rendiciones ${x.nombre}`} v={x.efectivo + x.otros} />
-                <Fila k="    Efectivo / otros medios" v={`${fmt(x.efectivo)} / ${fmt(x.otros)}`} />
-              </div>
-            ))}
-            <div className="bg-white">
-              <Fila k={`${c.camiones.length + 2}. Otros ingresos externos`} v={c.otros_externos.efectivo + c.otros_externos.otros} />
-              <Fila k="    Efectivo / otros medios" v={`${fmt(c.otros_externos.efectivo)} / ${fmt(c.otros_externos.otros)}`} />
-            </div>
-          </div>
-          <Fila k="Total general cobrado" v={c.total_general} fuerte />
+        <Cuadro titulo="F. Resumen consolidado del día" color="border-sky-200 text-sky-900">
+          <Fila k="Ventas del salón en efectivo" v={c.salon_efectivo} />
+          <Fila k="Ventas del salón por transferencia y otros medios" v={c.salon_otros_medios} />
+          {c.rendiciones.map((r) => (
+            <Fila key={r.nombre} k={`${r.nombre} – Rendición (efectivo)`} v={r.efectivo} />
+          ))}
+          <Fila k="Otros ingresos manuales (efectivo)" v={c.otros_manuales.efectivo} />
+          <Fila
+            k="Efectivo teórico disponible (sin transferencias)"
+            v={data.cajas.reduce((s, x) => s + x.totales.esperado, 0)}
+            fuerte
+          />
+          <Fila k="Total general cobrado (incluye transferencias)" v={c.total_general} fuerte />
         </Cuadro>
       ) : null}
     </div>

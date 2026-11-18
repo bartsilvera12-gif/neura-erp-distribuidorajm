@@ -51,6 +51,7 @@ export interface SifenBuildItemRow {
   subtotal: unknown;
   iva: unknown;
   total: unknown;
+  codigo_producto?: string | null;
 }
 
 export interface SifenBuildClienteRow {
@@ -385,6 +386,7 @@ function mapItems(rows: SifenBuildItemRow[]): SifenPayloadItem[] {
     subtotal: num(r.subtotal),
     iva: num(r.iva),
     total: num(r.total),
+    codigo: trimStr(r.codigo_producto) || null,
   }));
 }
 

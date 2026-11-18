@@ -277,6 +277,8 @@ export interface SifenPayloadItem {
   subtotal: number;
   iva: number;
   total: number;
+  /** Código del producto en inventario (SKU); si falta se usa L1, L2… */
+  codigo?: string | null;
 }
 
 export interface SifenPayloadMeta {
