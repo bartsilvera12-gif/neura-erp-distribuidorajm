@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownLeft,
@@ -15,7 +15,14 @@ import {
 } from "lucide-react";
 import { useArqueo } from "@/shared/hooks/useArqueo";
 import { useCajaAbierta } from "@/shared/hooks/useCajaAbierta";
-import { cerrarCaja, registrarMovimientoCaja, type TipoMovimientoCaja } from "@/lib/cajas/storage";
+import {
+  agregarRepartidorCaja,
+  cerrarCaja,
+  listarRepartidoresCaja,
+  registrarMovimientoCaja,
+  type RepartidorCaja,
+  type TipoMovimientoCaja,
+} from "@/lib/cajas/storage";
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 import AperturaCaja from "./AperturaCaja";
 import ModalCaja from "./ModalCaja";
@@ -214,11 +221,33 @@ function ModalMovimiento({
   const [medio, setMedio] = useState("efectivo");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repartidores, setRepartidores] = useState<RepartidorCaja[]>([]);
+  const [repartidorId, setRepartidorId] = useState("");
+  const [nuevoRep, setNuevoRep] = useState("");
+  // Aviso de posible cobro duplicado: el cajero confirma y se guarda igual.
+  const [avisoDuplicado, setAvisoDuplicado] = useState<string | null>(null);
+
+  useEffect(() => {
+    void listarRepartidoresCaja().then(setRepartidores);
+  }, []);
 
   const valor = Number(monto);
   const listo = concepto.trim() !== "" && Number.isFinite(valor) && valor > 0;
 
-  async function guardar() {
+  async function agregarRepartidor() {
+    const nombre = nuevoRep.trim();
+    if (!nombre) return;
+    const r = await agregarRepartidorCaja(nombre);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setRepartidores(await listarRepartidoresCaja());
+    setRepartidorId(r.id);
+    setNuevoRep("");
+  }
+
+  async function guardar(confirmarDuplicado = false) {
     if (guardando || !listo) return;
     setGuardando(true);
     setError(null);
@@ -227,9 +256,15 @@ function ModalMovimiento({
       concepto: concepto.trim(),
       monto: valor,
       medio_pago: medio,
+      repartidor_id: tipo === "ingreso" ? repartidorId : undefined,
+      confirmar_duplicado: confirmarDuplicado,
     });
     setGuardando(false);
     if (!res.ok) {
+      if (res.requiereConfirmacion) {
+        setAvisoDuplicado(res.error);
+        return;
+      }
       setError(res.error);
       return;
     }
@@ -252,12 +287,12 @@ function ModalMovimiento({
           </button>
           <button
             type="button"
-            onClick={guardar}
+            onClick={() => void guardar(avisoDuplicado !== null)}
             disabled={guardando || !listo}
             className="h-11 rounded-lg px-6 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
           >
-            {guardando ? "Guardando…" : "Registrar"}
+            {guardando ? "Guardando…" : avisoDuplicado ? "Sí, registrar igual" : "Registrar"}
           </button>
         </>
       }
@@ -311,6 +346,7 @@ function ModalMovimiento({
               value={conMiles(monto)}
               onChange={(e) => {
                 setError(null);
+                setAvisoDuplicado(null);
                 setMonto(soloDigitos(e.target.value));
               }}
               placeholder="0"
@@ -328,6 +364,48 @@ function ModalMovimiento({
             </select>
           </label>
         </div>
+
+        {tipo === "ingreso" ? (
+          <div>
+            <label className="block">
+              <span className={ETIQUETA}>Repartidor</span>
+              <select
+                value={repartidorId}
+                onChange={(e) => setRepartidorId(e.target.value)}
+                className={CAMPO}
+              >
+                <option value="">Ninguno (otro ingreso manual)</option>
+                {repartidores.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={nuevoRep}
+                onChange={(e) => setNuevoRep(e.target.value)}
+                placeholder="Agregar otro repartidor a la lista"
+                className={CAMPO}
+              />
+              <button
+                type="button"
+                onClick={() => void agregarRepartidor()}
+                disabled={nuevoRep.trim() === ""}
+                className="h-11 shrink-0 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Agregar
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {avisoDuplicado ? (
+          <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            {avisoDuplicado} Si es otro ingreso distinto, tocá «Sí, registrar igual».
+          </p>
+        ) : null}
 
         {error ? (
           <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">

@@ -178,23 +178,68 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     );
     const conCategoria = colExiste.rows.length > 0 && categoria;
 
-    const alta = conCategoria
-      ? await client.query<{ id: string }>(
-          `INSERT INTO ${tM} (empresa_id, caja_id, tipo, concepto, monto, medio_pago, categoria)
-           VALUES ($1::uuid, $2::uuid, $3, $4, $5::numeric, $6, $7)
-           RETURNING id`,
-          [empresaId, id, tipo, concepto, monto, medio, categoria]
-        )
-      : await client.query<{ id: string }>(
-          `INSERT INTO ${tM} (empresa_id, caja_id, tipo, concepto, monto, medio_pago)
-           VALUES ($1::uuid, $2::uuid, $3, $4, $5::numeric, $6)
-           RETURNING id`,
-          [empresaId, id, tipo, concepto, monto, medio]
+    // Repartidor al que pertenece la rendición (solo ingresos). Sale de la lista
+    // editable caja_repartidores; vacío = otro ingreso manual.
+    const repartidorRaw = texto(body?.repartidor_id);
+    let repartidorId: string | null = null;
+    if (tipo === "ingreso" && repartidorRaw) {
+      if (!UUID_RE.test(repartidorRaw)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(errorResponse("Repartidor inválido."), { status: 400 });
+      }
+      const rq = await client.query(
+        `SELECT 1 FROM ${quoteSchemaTable(schema, "caja_repartidores")} WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+        [repartidorRaw, empresaId]
+      );
+      if (rq.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(errorResponse("Ese repartidor no existe en la lista."), { status: 400 });
+      }
+      repartidorId = repartidorRaw;
+    }
+
+    // Aviso (no bloqueo) de posible duplicado: ya hay en esta caja, hoy, un cobro de
+    // venta o de cuenta corriente por el mismo monto. El cajero confirma y se guarda.
+    if (tipo === "ingreso" && body?.confirmar_duplicado !== true) {
+      const dup = await client.query<{ hora: string }>(
+        `SELECT to_char(created_at AT TIME ZONE 'America/Asuncion', 'HH24:MI') AS hora
+           FROM ${tM}
+          WHERE empresa_id = $1::uuid AND caja_id = $2::uuid AND tipo = 'ingreso'
+            AND venta_id IS NOT NULL AND anulado_at IS NULL AND monto = $3::numeric
+            AND (created_at AT TIME ZONE 'America/Asuncion')::date = (now() AT TIME ZONE 'America/Asuncion')::date
+          ORDER BY created_at DESC LIMIT 1`,
+        [empresaId, id, monto]
+      );
+      if (dup.rows.length > 0) {
+        await client.query("ROLLBACK");
+        const montoTxt = Math.round(monto).toLocaleString("es-PY");
+        return NextResponse.json(
+          {
+            ...errorResponse(`Ya hay un cobro de Gs. ${montoTxt} a las ${dup.rows[0].hora}, ¿es el mismo?`),
+            requiere_confirmacion: true,
+          },
+          { status: 409 }
         );
+      }
+    }
+
+    const cols = ["empresa_id", "caja_id", "tipo", "concepto", "monto", "medio_pago"];
+    const vals: unknown[] = [empresaId, id, tipo, concepto, monto, medio];
+    if (conCategoria) { cols.push("categoria"); vals.push(categoria); }
+    if (repartidorId) { cols.push("repartidor_id"); vals.push(repartidorId); }
+    const alta = await client.query<{ id: string }>(
+      `INSERT INTO ${tM} (${cols.join(", ")})
+       VALUES (${cols.map((c, i) => `$${i + 1}${i < 2 || c === "repartidor_id" ? "::uuid" : c === "monto" ? "::numeric" : ""}`).join(", ")})
+       RETURNING id`,
+      vals
+    );
 
     await client.query("COMMIT");
     return NextResponse.json(
-      successResponse({ movimiento_id: alta.rows[0].id, tipo, concepto, monto, medio_pago: medio, categoria })
+      successResponse({
+        movimiento_id: alta.rows[0].id, tipo, concepto, monto, medio_pago: medio, categoria,
+        repartidor_id: repartidorId,
+      })
     );
   } catch (err) {
     if (client) await client.query("ROLLBACK").catch(() => {});

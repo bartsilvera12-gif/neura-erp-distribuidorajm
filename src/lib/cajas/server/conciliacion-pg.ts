@@ -30,7 +30,7 @@ export type MovConc = {
   tipo: string;
   /** Una rendición/ingreso externo identificado con un camión; null = otros. */
   grupo?: string;
-  /** Néstor / William / Osvaldo / Milciades si el concepto lo nombra; "" = otro ingreso manual. */
+  /** Repartidor elegido al cargar el ingreso (o reconocido por el concepto en los viejos); "" = otro ingreso manual. */
   repartidor?: string;
 };
 
@@ -187,16 +187,42 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
     // Sin tabla de camiones: todas las rendiciones van a "otros ingresos externos".
   }
 
+  // Lista editable de repartidores (caja_repartidores). Si la tabla no existe,
+  // se usan los cuatro de siempre.
+  let todosRep: { id: string; nombre: string; activo: boolean }[] = [];
+  try {
+    const rq = await queryWithRetry<{ id: string; nombre: string; activo: boolean }>(
+      pool,
+      `SELECT id, nombre, activo FROM ${quoteSchemaTable(schema, "caja_repartidores")}
+        WHERE empresa_id = $1::uuid ORDER BY orden, nombre`,
+      [empresaId]
+    );
+    todosRep = rq.rows;
+  } catch {
+    todosRep = [];
+  }
+  if (todosRep.length === 0) todosRep = REPARTIDORES_RENDICION.map((n) => ({ id: "", nombre: n, activo: true }));
+  const nombrePorId = new Map(todosRep.filter((r) => r.id).map((r) => [r.id, r.nombre]));
+  const nombresRep = todosRep.filter((r) => r.activo).map((r) => r.nombre);
+
+  const repColQ = await queryWithRetry<{ c: string }>(
+    pool,
+    `SELECT column_name AS c FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'caja_movimientos' AND column_name = 'repartidor_id'`,
+    [schema]
+  );
+  const tieneRepCol = repColQ.rows.length > 0;
+
   const ids = cajasQ.rows.map((c) => c.id);
   const movs = ids.length
     ? (
         await queryWithRetry<{
           id: string; caja_id: string; tipo: string; concepto: string | null; medio: string; monto: string;
-          es_venta: boolean; fecha: string; hora: string; responsable: string | null;
+          es_venta: boolean; fecha: string; hora: string; responsable: string | null; repartidor_id: string | null;
         }>(
           pool,
           `SELECT id, caja_id, tipo, concepto, lower(btrim(COALESCE(medio_pago, ''))) AS medio, monto::text AS monto,
-                  (venta_id IS NOT NULL) AS es_venta,
+                  (venta_id IS NOT NULL) AS es_venta, ${tieneRepCol ? "repartidor_id::text" : "NULL::text"} AS repartidor_id,
                   to_char(created_at AT TIME ZONE $3, 'YYYY-MM-DD') AS fecha,
                   to_char(created_at AT TIME ZONE $3, 'HH24:MI') AS hora,
                   usuario_email AS responsable
@@ -237,7 +263,15 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
       else if (m.tipo === "ingreso") externos.push({
           ...base,
           grupo: camionDe(concepto, camiones) ?? "",
-          repartidor: repartidorDe(concepto) ?? "",
+          // Primero el repartidor elegido al cargar el movimiento; los viejos sin
+          // repartidor se reconocen por el concepto (respaldo).
+          repartidor:
+            (m.repartidor_id ? nombrePorId.get(m.repartidor_id) : undefined) ??
+            (() => {
+              const n = repartidorDe(concepto);
+              return n && nombresRep.some((x) => sinTilde(x) === sinTilde(n)) ? nombresRep.find((x) => sinTilde(x) === sinTilde(n)) : "";
+            })() ??
+            "",
         });
       else if (m.tipo === "ajuste") ajustes.push(base);
     }
@@ -250,7 +284,8 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
       efectivo: e.filter((x) => x.medio === "efectivo").reduce((s, x) => s + x.monto, 0),
       otros: e.filter((x) => x.medio !== "efectivo").reduce((s, x) => s + x.monto, 0),
     });
-    const rendiciones = REPARTIDORES_RENDICION.map((nombre) => ({
+    const nombresCaja = [...nombresRep, ...[...new Set(externos.map((x) => x.repartidor ?? ""))].filter((n) => n && !nombresRep.includes(n))];
+    const rendiciones = nombresCaja.map((nombre) => ({
       nombre,
       ...resumenRend(externos.filter((x) => x.repartidor === nombre)),
     }));
@@ -292,15 +327,20 @@ export async function getConciliacionCaja(schemaRaw: string, empresaId: string, 
   const otros = { efectivo: 0, otros: 0 };
   let salonEf = 0;
   let salonOtros = 0;
-  const rendTotal: RendicionResumen[] = REPARTIDORES_RENDICION.map((nombre) => ({ nombre, efectivo: 0, otros: 0 }));
+  const rendTotal: RendicionResumen[] = nombresRep.map((nombre) => ({ nombre, efectivo: 0, otros: 0 }));
   const manualesTotal = { efectivo: 0, otros: 0 };
   for (const c of cajas) {
     salonEf += c.ventas_efectivo;
     salonOtros += c.ventas_otros_medios;
-    c.rendiciones.forEach((r, i) => {
-      rendTotal[i].efectivo += r.efectivo;
-      rendTotal[i].otros += r.otros;
-    });
+    for (const r of c.rendiciones) {
+      let t = rendTotal.find((x) => x.nombre === r.nombre);
+      if (!t) {
+        t = { nombre: r.nombre, efectivo: 0, otros: 0 };
+        rendTotal.push(t);
+      }
+      t.efectivo += r.efectivo;
+      t.otros += r.otros;
+    }
     manualesTotal.efectivo += c.otros_manuales.efectivo;
     manualesTotal.otros += c.otros_manuales.otros;
     for (const e of c.ingresos_externos) {

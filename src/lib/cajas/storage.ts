@@ -111,8 +111,15 @@ export type TipoMovimientoCaja = "ingreso" | "egreso" | "retiro" | "ajuste";
  */
 export async function registrarMovimientoCaja(
   cajaId: string,
-  mov: { tipo: TipoMovimientoCaja; concepto: string; monto: number; medio_pago?: string }
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  mov: {
+    tipo: TipoMovimientoCaja;
+    concepto: string;
+    monto: number;
+    medio_pago?: string;
+    repartidor_id?: string;
+    confirmar_duplicado?: boolean;
+  }
+): Promise<{ ok: true } | { ok: false; error: string; requiereConfirmacion?: boolean }> {
   try {
     const res = await fetchWithSupabaseSession(
       `/api/cajas/${encodeURIComponent(cajaId)}/movimientos`,
@@ -124,14 +131,53 @@ export async function registrarMovimientoCaja(
           concepto: mov.concepto,
           monto: mov.monto,
           medio_pago: mov.medio_pago ?? "efectivo",
+          repartidor_id: mov.repartidor_id || undefined,
+          confirmar_duplicado: mov.confirmar_duplicado || undefined,
         }),
       }
     );
-    const json = (await res.json()) as { success?: boolean; error?: string };
+    const json = (await res.json()) as { success?: boolean; error?: string; requiere_confirmacion?: boolean };
     if (!res.ok || !json.success) {
-      return { ok: false, error: json.error ?? "No se pudo registrar el movimiento." };
+      return {
+        ok: false,
+        error: json.error ?? "No se pudo registrar el movimiento.",
+        requiereConfirmacion: json.requiere_confirmacion === true,
+      };
     }
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
+export type RepartidorCaja = { id: string; nombre: string };
+
+/** Repartidores activos que rinden efectivo en caja (lista editable, tabla caja_repartidores). */
+export async function listarRepartidoresCaja(): Promise<RepartidorCaja[]> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/caja-repartidores", { cache: "no-store" });
+    const json = (await res.json()) as { success?: boolean; data?: { repartidores?: RepartidorCaja[] } };
+    return res.ok && json.success ? (json.data?.repartidores ?? []) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Agrega un repartidor a la lista (si ya existía, lo reactiva). */
+export async function agregarRepartidorCaja(
+  nombre: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/caja-repartidores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre }),
+    });
+    const json = (await res.json()) as { success?: boolean; error?: string; data?: { id?: string } };
+    if (!res.ok || !json.success || !json.data?.id) {
+      return { ok: false, error: json.error ?? "No se pudo agregar el repartidor." };
+    }
+    return { ok: true, id: json.data.id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
   }
