@@ -17,6 +17,7 @@ export default function ComprasMobile() {
   const { compras, isLoading, error, mutate } = useCompras();
   const [query, setQuery] = useState("");
   const [modalNueva, setModalNueva] = useState(false);
+  const [editando, setEditando] = useState<Compra | null>(null);
 
   const totalMonto = useMemo(() => compras.reduce((s, c) => s + Number(c.total ?? 0), 0), [compras]);
 
@@ -77,9 +78,17 @@ export default function ComprasMobile() {
       ) : (
         <ul className="space-y-2">
           {filtradas.map((c) => (
-            <CompraCard key={c.id} compra={c} />
+            <CompraCard key={c.id} compra={c} onEditar={() => setEditando(c)} />
           ))}
         </ul>
+      )}
+
+      {editando && (
+        <NuevaCompraModal
+          editar={editando}
+          onClose={() => setEditando(null)}
+          onSaved={() => { setEditando(null); mutate(); }}
+        />
       )}
 
       {modalNueva && (
@@ -92,7 +101,7 @@ export default function ComprasMobile() {
   );
 }
 
-function CompraCard({ compra }: { compra: Compra }) {
+function CompraCard({ compra, onEditar }: { compra: Compra; onEditar: () => void }) {
   return (
     <li>
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
@@ -109,6 +118,17 @@ function CompraCard({ compra }: { compra: Compra }) {
           </div>
           <div className="shrink-0 text-right">
             <p className="text-base font-bold tabular-nums text-slate-900">{formatGs(compra.total)}</p>
+            {compra.estado === "anulada" ? (
+              <span className="mt-1 inline-block rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">Anulada</span>
+            ) : (
+              <button
+                type="button"
+                onClick={onEditar}
+                className="mt-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 active:bg-slate-50"
+              >
+                Editar
+              </button>
+            )}
           </div>
         </div>
       </div>

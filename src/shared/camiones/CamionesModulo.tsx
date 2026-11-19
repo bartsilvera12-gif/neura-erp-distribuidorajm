@@ -5,6 +5,7 @@ import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Package, RefreshCw, S
 import CamionesPanel from "@/shared/caja/CamionesPanel";
 import InventarioCamion from "./InventarioCamion";
 import ComprasCamion from "./ComprasCamion";
+import VentasCamion from "./VentasCamion";
 import { useCamiones, useObjetivos } from "@/shared/hooks/useRepartos";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { compararPorCodigo, formatCantidad, parseCantidad } from "@/lib/inventario/unidades";
@@ -88,7 +89,7 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const [version, setVersion] = useState(0);
   /** Qué se mira del camión: sus compras (cada una se despliega) o el inventario. */
-  const [vista, setVista] = useState<"compras" | "inventario">("compras");
+  const [vista, setVista] = useState<"compras" | "ventas" | "inventario">("compras");
 
   // Al contar se pueden encontrar productos que no figuraban: con "ver todos"
   // aparece el catálogo entero. Al cargar del salón también se ve todo, porque
@@ -280,6 +281,7 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
             {(
               [
                 ["compras", "Compras"],
+                ["ventas", "Ventas"],
                 ["inventario", "Inventario"],
               ] as const
             ).map(([v, texto]) => (
@@ -297,6 +299,8 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
           </div>
           {vista === "compras" ? (
             <ComprasCamion camionId={camionId} version={version} />
+          ) : vista === "ventas" ? (
+            <VentasCamion camionId={camionId} version={version} />
           ) : (
             <InventarioCamion camionId={camionId} version={version} />
           )}
