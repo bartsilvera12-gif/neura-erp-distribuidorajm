@@ -52,6 +52,7 @@ interface SupabaseRow {
   condicion_pago:     string | null;
   moneda_preferida:   string | null;
   descuento_porcentaje_fijo?: number | string | null;
+  descuento_productos?: unknown;
   vendedor_asignado:  string | null;
   vendedor_usuario_id?: string | null;
   vendedor_usuario_nombre?: string | null;
@@ -114,7 +115,12 @@ function rowToCliente(row: SupabaseRow): Cliente {
       row.descuento_porcentaje_fijo == null
         ? null
         : Number(row.descuento_porcentaje_fijo) || null,
-    condicion_pago:      row.condicion_pago ?? undefined,
+    descuento_productos: Array.isArray(row.descuento_productos)
+      ? (row.descuento_productos as { producto_id?: unknown; porcentaje?: unknown }[])
+          .map((d) => ({ producto_id: String(d?.producto_id ?? ""), porcentaje: Number(d?.porcentaje) || 0 }))
+          .filter((d) => d.producto_id && d.porcentaje > 0)
+      : null,
+    condicion_pago:     row.condicion_pago ?? undefined,
     moneda_preferida:    (row.moneda_preferida === "USD" ? "USD" : "GS") as "GS" | "USD",
     vendedor_asignado:   row.vendedor_asignado ?? undefined,
     vendedor_usuario_id: row.vendedor_usuario_id ?? undefined,

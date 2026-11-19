@@ -172,7 +172,7 @@ export default function KudeTicket({ facturaId }: { facturaId: string }) {
       <article
         ref={ref}
         className="factura-imprimible bg-white font-mono text-black shadow-sm ring-1 ring-slate-200 print:shadow-none print:ring-0"
-        style={{ width: `${ancho}mm`, fontSize: angosto ? "9.5px" : "11px", lineHeight: 1.35 }}
+        style={{ width: `${ancho}mm`, fontSize: angosto ? "9.5px" : "11px", lineHeight: 1.35, fontWeight: 600, color: "#000", WebkitTextStroke: "0.3px #000" }}
       >
         <div style={{ padding: "1.5mm 3mm 3mm" }}>
           {/* Emisor y timbrado */}

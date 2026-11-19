@@ -288,7 +288,18 @@ export function useCajaVenta() {
   const totales = useMemo(() => {
     // Subtotal a precio de lista; el total es lo que se cobra, con el descuento.
     const subtotal = lineas.reduce((acc, l) => acc + l.subtotal, 0);
-    const descuento = montoDescuento(subtotal, descuentoTipo, descuentoNum);
+    // Descuento por producto del cliente (ej. 1% solo en muslo): se calcula sobre
+    // el importe de esas líneas y se resta del total; los precios no se tocan.
+    const reglas = cliente?.descuento_productos ?? [];
+    const porProducto = descuentoNum > 0 || reglas.length === 0
+      ? 0
+      : lineas.reduce((acc, l) => {
+          const r = reglas.find((x) => x.producto_id === l.producto_id);
+          return r ? acc + Math.round((l.subtotal * r.porcentaje) / 100) : acc;
+        }, 0);
+    const descuento = porProducto > 0
+      ? Math.min(porProducto, Math.round(subtotal))
+      : montoDescuento(subtotal, descuentoTipo, descuentoNum);
     const conDescuento = descuento > 0 ? aplicarDescuento(lineas, descuento) : lineas;
     const montoIva = conDescuento.reduce((acc, l) => acc + l.monto_iva, 0);
     return {
@@ -308,7 +319,11 @@ export function useCajaVenta() {
       ),
       renglones: carrito.length,
     };
-  }, [lineas, carrito, descuentoTipo, descuentoNum]);
+  }, [lineas, carrito, descuentoTipo, descuentoNum, cliente]);
+
+  /** Descuento que viene de la ficha del cliente (fijo o por producto): no se ve en el papel. */
+  const descuentoDeFicha =
+    descuentoOculto || (descuentoNum <= 0 && (cliente?.descuento_productos?.length ?? 0) > 0);
 
   /** Lo que el depósito paga de esta venta, y lo que queda por cobrar. */
   const depositoAplicado = deposito && !aCredito ? Math.min(deposito.saldo, totales.total) : 0;
@@ -625,7 +640,7 @@ export function useCajaVenta() {
       monto_iva: lineas.reduce((acc, l) => acc + l.monto_iva, 0),
       total: totales.subtotal,
       descuento: totales.descuento,
-      descuento_oculto: totales.descuento > 0 && descuentoOculto,
+      descuento_oculto: totales.descuento > 0 && descuentoDeFicha,
       tipo_venta: aCredito ? "CREDITO" : "CONTADO",
       plazo_dias: Number.isFinite(plazo) && plazo > 0 ? plazo : undefined,
       // A crédito no se cobra ahora: el medio se registra recién al cobrar.
@@ -709,7 +724,7 @@ export function useCajaVenta() {
     repartoId,
     faltaElegirReparto,
     lista,
-    descuentoOculto,
+    descuentoDeFicha,
   ]);
 
   const reiniciar = useCallback(() => {
@@ -898,7 +913,7 @@ export function useCajaVenta() {
     setPlazoDias,
     setDescuentoTipo: cambiarDescuentoTipo,
     setDescuentoValor: cambiarDescuentoValor,
-    descuentoOculto,
+    descuentoOculto: descuentoDeFicha,
     setRepartoId,
     setError,
     irA,

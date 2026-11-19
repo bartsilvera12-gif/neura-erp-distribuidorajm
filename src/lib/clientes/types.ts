@@ -59,6 +59,8 @@ export interface Cliente {
    * en la venta (descuento_monto) para el reporte de descuentos y el arqueo.
    */
   descuento_porcentaje_fijo?: number | null;
+  /** Descuento % solo para ciertos productos (automático en la caja; lo carga el administrador). */
+  descuento_productos?: { producto_id: string; porcentaje: number }[] | null;
 
   condicion_pago?:     string;          // CONTADO / 30 DÍAS / 60 DÍAS…
   moneda_preferida?:   "GS" | "USD";
