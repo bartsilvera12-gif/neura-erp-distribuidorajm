@@ -378,7 +378,9 @@ export async function GET(request: NextRequest) {
                 WHERE p.empresa_id = $1::uuid AND p.activo = true
                 ORDER BY p.nombre`;
 
-    const { rows } = camionSinUbicacion
+    // Si falló resolver el camión del vendedor, NO se cae al salón: se le
+    // mostraría mercadería que no tiene arriba. Lista vacía con el motivo.
+    const { rows } = camionSinUbicacion || errorCamion !== null
       ? { rows: [] as Record<string, unknown>[] }
       : await queryWithRetry(
           pool,
