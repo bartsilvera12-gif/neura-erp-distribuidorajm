@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFacturasSupabaseFromAuth } from "@/lib/facturacion/facturas-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
+import { esRolAdminEmpresa } from "@/lib/modulos/resolve-effective-modules";
 import { facturaDeVenta } from "@/lib/ventas/server/venta-a-factura";
 import { correrPaso, estadoSifen, pasosPendientes } from "@/lib/ventas/server/sifen-pasos";
 import { soltarFactura, tomarFactura } from "@/lib/ventas/server/sifen-vigilante";
@@ -35,7 +38,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(successResponse({ sifen_activo: false }));
     }
 
-    const fac = await facturaDeVenta(supabase, auth.empresa_id, ventaId);
+    // Quien vende desde un camión factura con el punto de su camión; el
+    // administrador, con el punto general.
+    const schema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
+    const yo = await usuarioDelSchema({
+      schema,
+      empresaId: auth.empresa_id,
+      email: auth.user.email,
+      catalogId: auth.usuarioCatalogId ?? null,
+    });
+    const usuarioCamion = yo && !esRolAdminEmpresa(yo.rol) ? yo.id : null;
+
+    const fac = await facturaDeVenta(supabase, auth.empresa_id, ventaId, usuarioCamion);
     if (!fac.ok) return NextResponse.json(errorResponse(fac.message), { status: fac.status });
 
     // Si el vigilante ya la está mandando, no se manda dos veces: la caja

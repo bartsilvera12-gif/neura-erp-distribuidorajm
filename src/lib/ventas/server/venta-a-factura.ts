@@ -112,7 +112,8 @@ function fechaPy(d: Date): string {
  */
 async function puntoDelCamion(
   empresaId: string,
-  ventaId: string
+  ventaId: string,
+  usuarioId: string | null
 ): Promise<{ punto: string; numero: number } | null> {
   const pool = getChatPostgresPool();
   if (!pool) return null;
@@ -129,14 +130,28 @@ async function puntoDelCamion(
       RETURNING btrim(c.punto_expedicion) AS punto, c.ultimo_numero_factura AS numero`,
     [ventaId, empresaId]
   );
-  if (!rows[0]) return null;
-  return { punto: rows[0].punto.padStart(3, "0"), numero: Number(rows[0].numero) };
+  if (rows[0]) return { punto: rows[0].punto.padStart(3, "0"), numero: Number(rows[0].numero) };
+
+  // Sin reparto (el camión es del usuario): el punto es el del camión asignado
+  // a quien vende. El administrador factura con el punto general.
+  if (!usuarioId) return null;
+  const { rows: porUsuario } = await pool.query<{ punto: string; numero: string }>(
+    `UPDATE ${tC} c
+        SET ultimo_numero_factura = c.ultimo_numero_factura + 1, updated_at = now()
+      WHERE c.empresa_id = $1::uuid AND c.repartidor_id = $2::uuid AND c.activo = true
+        AND COALESCE(btrim(c.punto_expedicion), '') <> ''
+      RETURNING btrim(c.punto_expedicion) AS punto, c.ultimo_numero_factura AS numero`,
+    [empresaId, usuarioId]
+  );
+  if (!porUsuario[0]) return null;
+  return { punto: porUsuario[0].punto.padStart(3, "0"), numero: Number(porUsuario[0].numero) };
 }
 
 export async function facturaDeVenta(
   supabase: AppSupabaseClient,
   empresaId: string,
-  ventaId: string
+  ventaId: string,
+  usuarioId: string | null = null
 ): Promise<FacturaDeVenta> {
   const { data: venta, error: errV } = await supabase
     .from("ventas")
@@ -202,7 +217,7 @@ export async function facturaDeVenta(
 
   // Venta de un reparto: si el camión tiene punto de expedición propio, la
   // factura sale con ese punto y su numeración independiente.
-  const camion = await puntoDelCamion(empresaId, ventaId);
+  const camion = await puntoDelCamion(empresaId, ventaId, usuarioId);
   const numero = camion
     ? `FAC-${camion.punto}-${String(camion.numero).padStart(7, "0")}`
     : await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
