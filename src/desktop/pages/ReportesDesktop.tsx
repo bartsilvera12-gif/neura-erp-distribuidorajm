@@ -29,6 +29,14 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/metas-ventas",
   },
   {
+    title: "Ventas por camión",
+    subtitle: "Productos, cantidades e importes",
+    description:
+      "Lo vendido en el período por cada camión: productos, cantidades e importes, con el total de cada camión.",
+    icon: Package,
+    href: "/reportes/ventas-camion",
+  },
+  {
     title: "Descuentos",
     subtitle: "Control",
     description:

@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import AppShell from "../components/AppShell";
 import MobileAppShell from "../mobile/layout/MobileAppShell";
 import DeviceRouter from "../shared/device/DeviceRouter";
+import DeviceSync from "../shared/device/DeviceSync";
 import SWRPersistedProvider from "../shared/swr/SWRPersistedProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import AuthGuard from "../components/AuthGuard";
@@ -59,6 +60,7 @@ export default function RootLayout({
         <ThemeProvider>
           <SWRPersistedProvider>
             <AuthGuard>
+              <DeviceSync />
               <DeviceRouter
                 desktop={<AppShell>{children}</AppShell>}
                 mobile={<MobileAppShell>{children}</MobileAppShell>}

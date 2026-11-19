@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import {
   ArrowLeftRight,
+  BarChart3,
   Boxes,
   ClipboardCheck,
   FileText,
@@ -55,6 +56,7 @@ const TILES: Tile[] = [
   { href: "/notas-credito", label: "Devoluciones", icon: ArrowLeftRight, fondo: "#B04B4B" },
   { href: "/ventas/arqueo", label: "Arqueo de caja", icon: ClipboardCheck, fondo: "#4FAEB2" },
   { href: "/camiones", label: "Camiones", icon: Truck, fondo: "#5B6B7A" },
+  { href: "/reportes", label: "Reportes", icon: BarChart3, fondo: "#6B5B95" },
   { href: "/inventario", label: "Inventario", icon: Boxes, fondo: "#3F8E91", soloAdmin: true },
   { href: "/compras", label: "Compras", icon: ShoppingCart, fondo: "#8A5A44", soloAdmin: true },
 ];

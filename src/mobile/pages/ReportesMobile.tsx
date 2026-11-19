@@ -31,6 +31,13 @@ export default function ReportesMobile() {
           subtitle="KPIs comerciales, top clientes y categorías"
         />
         <ReporteItem
+          href="/reportes/ventas-camion"
+          icon={FileText}
+          tone="bg-sky-100 text-sky-700"
+          title="Ventas por camión"
+          subtitle="Productos vendidos por camión, con cantidades e importes"
+        />
+        <ReporteItem
           href="/reportes/metas-ventas"
           icon={Target}
           tone="bg-rose-100 text-rose-700"

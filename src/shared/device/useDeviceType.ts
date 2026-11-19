@@ -31,8 +31,13 @@ export function useDeviceType(initial: DeviceType): DeviceType {
     apply(decide(mq));
 
     const listener = (e: MediaQueryListEvent) => apply(decide(e));
-    mq.addEventListener("change", listener);
-    return () => mq.removeEventListener("change", listener);
+    // Safari viejo (iPad con iPadOS < 14) no tiene addEventListener en matchMedia.
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", listener);
+      return () => mq.removeEventListener("change", listener);
+    }
+    mq.addListener(listener);
+    return () => mq.removeListener(listener);
   }, []);
 
   return device;
