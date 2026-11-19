@@ -38,6 +38,13 @@ export default function ReportesMobile() {
           subtitle="Productos vendidos por camión, con cantidades e importes"
         />
         <ReporteItem
+          href="/reportes/ranking-camion"
+          icon={BarChart3}
+          tone="bg-sky-100 text-sky-700"
+          title="Ranking por camión"
+          subtitle="Productos más vendidos y clientes que más compran"
+        />
+        <ReporteItem
           href="/reportes/metas-ventas"
           icon={Target}
           tone="bg-rose-100 text-rose-700"

@@ -37,6 +37,14 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/ventas-camion",
   },
   {
+    title: "Ranking por camión",
+    subtitle: "Productos y clientes",
+    description:
+      "Productos más vendidos y clientes que más compran, de cada camión o de todos juntos, por día, semana, mes o rango de fechas.",
+    icon: Package,
+    href: "/reportes/ranking-camion",
+  },
+  {
     title: "Descuentos",
     subtitle: "Control",
     description:
