@@ -79,6 +79,13 @@ export const getGastoDetalle = (id: string) => call<GastoDetalle>(`/api/gastos/$
 export const confirmarNuevo = (h: GastoHeaderForm, idempotencyKey: string) =>
   call<GastoResult>(`/api/gastos`, jsonInit("POST", { ...h, idempotency_key: idempotencyKey }));
 
+/** Carga simple: guarda como borrador pendiente de clasificación contable (sin asiento). */
+export const guardarPendiente = (h: GastoHeaderForm, idempotencyKey: string) =>
+  call<GastoResult>(`/api/gastos`, jsonInit("POST", { ...h, idempotency_key: idempotencyKey, pendiente_clasificacion: true }));
+
+/** `true` si el usuario ve el formulario contable completo (contabilidad / admin). */
+export const getAccesoContable = () => call<{ contable: boolean }>(`/api/gastos/acceso-contable`);
+
 /** Guarda + confirma un documento existente (borrador o histórico → confirmado). */
 export const confirmarExistente = (id: string, h: GastoHeaderForm) =>
   call<GastoResult>(`/api/gastos/${id}/confirmar`, jsonInit("POST", h));

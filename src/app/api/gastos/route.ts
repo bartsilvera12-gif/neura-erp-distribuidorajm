@@ -3,8 +3,8 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { requireContabilidadApiAccess } from "@/lib/contabilidad/contabilidad-auth";
-import { listGastos, confirmarDirecto, parseGastoHeaderInput, GastoError } from "@/lib/gastos/server/gastos-pg";
+import { requireContabilidadApiAccess, requireModulosApiAccess } from "@/lib/contabilidad/contabilidad-auth";
+import { listGastos, confirmarDirecto, crearBorradorPendiente, parseGastoHeaderInput, GastoError } from "@/lib/gastos/server/gastos-pg";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -32,14 +32,25 @@ export async function GET(request: NextRequest) {
 
 /** POST /api/gastos — crea y CONFIRMA en un solo paso (requiere permiso contabilidad). */
 export async function POST(request: NextRequest) {
-  const auth = await requireContabilidadApiAccess(request);
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  // Carga simple: queda como borrador pendiente de clasificación (sin asiento). La puede
+  // hacer quien tenga el módulo Gastos; confirmar con datos contables sigue siendo de contabilidad.
+  const pendiente = body.pendiente_clasificacion === true;
+  const auth = pendiente
+    ? await requireModulosApiAccess(request, ["contabilidad", "gastos"], "Gastos")
+    : await requireContabilidadApiAccess(request);
   if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
   try {
     const schema = await fetchDataSchemaForEmpresaId(auth.empresaId);
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const input = parseGastoHeaderInput(body);
     const idemRaw = body.idempotency_key != null ? String(body.idempotency_key).trim() : "";
     const idempotencyKey = UUID_RE.test(idemRaw) ? idemRaw : null;
+    if (pendiente) {
+      const gasto = await crearBorradorPendiente(schema, auth.empresaId, {
+        header: input, userId: auth.usuarioCatalogId, idempotencyKey,
+      });
+      return NextResponse.json(successResponse({ gasto }), { status: 201 });
+    }
     const header = await confirmarDirecto(schema, auth.empresaId, {
       header: input,
       userId: auth.usuarioCatalogId,

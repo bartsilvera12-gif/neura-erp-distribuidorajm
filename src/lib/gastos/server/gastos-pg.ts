@@ -496,6 +496,59 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
   }
 }
 
+/**
+ * Guarda un gasto como BORRADOR "pendiente de clasificación contable" (carga simple
+ * de usuarios operativos). No reserva número GS, no genera asiento y no entra al
+ * Libro de Compras: queda esperando que contabilidad lo abra, complete cuenta
+ * contable / fecha contable / IVA y lo confirme. Idempotente por `idempotencyKey`.
+ */
+export async function crearBorradorPendiente(
+  schemaRaw: string, empresaId: string,
+  opts: { header: GastoHeaderInput; userId: string | null; idempotencyKey?: string | null }
+): Promise<GastoRow> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const h = opts.header;
+  const idem = opts.idempotencyKey ?? null;
+  const faltan: string[] = [];
+  if (!h.proveedor_id) faltan.push("proveedor");
+  if (!txt(h.numero_comprobante)) faltan.push("número de factura");
+  if (!h.fecha_comprobante) faltan.push("fecha");
+  if (!txt(h.tipo_pago)) faltan.push("condición de pago");
+  if (!txt(h.descripcion)) faltan.push("concepto del gasto");
+  if (faltan.length > 0) throw new GastoError(`Faltan datos: ${faltan.join(", ")}.`);
+  validateItemsForConfirm(h.items);
+  const { computed, totals } = sumTotals(h.items);
+
+  if (idem) {
+    const existingId = await fetchGastoIdByIdempotency(schema, empresaId, idem);
+    if (existingId) return (await getGasto(schema, empresaId, existingId))!.header;
+  }
+
+  const tG = quoteSchemaTable(schema, "gastos");
+  const tI = quoteSchemaTable(schema, "gasto_items");
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const a = headerAssignments(h, totals);
+    const cols = [...a.cols, "estado", "tipo", "fecha", "idempotency_key"];
+    const vals = [...a.vals, "borrador", "variable", h.fecha_comprobante, idem];
+    const ph = vals.map((_, i) => `$${i + 2}`);
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO ${tG} (empresa_id, ${cols.join(", ")}) VALUES ($1::uuid, ${ph.join(", ")}) RETURNING id`,
+      [empresaId, ...vals]
+    );
+    const gastoId = rows[0].id;
+    await insertItems(client, tI, empresaId, gastoId, computed);
+    await client.query("COMMIT");
+    return (await getGasto(schema, empresaId, gastoId))!.header;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 export async function updateBorrador(
   schemaRaw: string, empresaId: string, id: string, h: GastoHeaderInput
 ): Promise<GastoRow> {

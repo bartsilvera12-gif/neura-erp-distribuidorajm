@@ -7,7 +7,7 @@ import { getProveedores } from "@/lib/proveedores/storage";
 import type { Proveedor } from "@/lib/proveedores/types";
 import MontoInput from "@/components/ui/MontoInput";
 import {
-  confirmarNuevo, confirmarExistente, eliminarBorrador, anularGasto, getGastoDetalle,
+  confirmarNuevo, confirmarExistente, eliminarBorrador, anularGasto, getGastoDetalle, guardarPendiente, getAccesoContable,
   type GastoHeaderForm, type GastoItemForm, type IvaTipo, type GastoEstado,
 } from "@/lib/gastos/servicios-client";
 import { FechaSelect } from "@/components/ui/FechaSelect";
@@ -65,6 +65,8 @@ export default function GastosServiciosClient() {
   const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
 
+  // Perfil contable (contabilidad / admin): ve el formulario completo y clasifica los pendientes.
+  const [contable, setContable] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("nuevo");
   const [editId, setEditId] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export default function GastosServiciosClient() {
 
   useEffect(() => {
     load();
+    getAccesoContable().then((r) => setContable(r.ok && r.data.contable));
     getCuentasContablesOpciones().then(setCuentas);
     getProveedores().then((p) => setProveedores(p.filter((x) => x.estado === "activo")));
   }, [load]);
@@ -213,21 +216,21 @@ export default function GastosServiciosClient() {
                 <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-800">{fmt(g.total ?? g.monto ?? 0)}</td>
                 <td className="px-3 py-2 text-center">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ESTADO_BADGE[(g.estado ?? "historico") as GastoEstado]}`}>
-                    {g.estado ?? "—"}
+                    {g.estado === "borrador" ? "Pendiente de clasificación" : (g.estado ?? "—")}
                   </span>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-1.5 text-xs">
-                    {g.estado === "borrador" && (
+                    {g.estado === "borrador" && contable && (
                       <>
                         <button onClick={() => abrirEditar(g.id)} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700">Abrir y confirmar</button>
                         <button onClick={() => accionEliminar(g)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">Eliminar</button>
                       </>
                     )}
-                    {g.estado === "confirmado" && (
+                    {g.estado === "confirmado" && contable && (
                       <button onClick={() => accionAnular(g)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">Anular</button>
                     )}
-                    {g.estado === "historico" && (
+                    {g.estado === "historico" && contable && (
                       <button onClick={() => abrirCompletar(g.id)} className="rounded bg-amber-500 px-2 py-1 font-semibold text-white hover:bg-amber-600">Completar</button>
                     )}
                   </div>
@@ -242,6 +245,7 @@ export default function GastosServiciosClient() {
         <GastoFormModal
           mode={mode}
           gastoId={editId}
+          contable={contable}
           cuentas={cuentas}
           proveedores={proveedores}
           onClose={() => setFormOpen(false)}
@@ -257,10 +261,11 @@ function emptyItem(): GastoItemForm {
 }
 
 function GastoFormModal({
-  mode, gastoId, cuentas, proveedores, onClose, onSaved,
+  mode, gastoId, contable, cuentas, proveedores, onClose, onSaved,
 }: {
   mode: Mode;
   gastoId: string | null;
+  contable: boolean;
   cuentas: CuentaContableOpcion[];
   proveedores: Proveedor[];
   onClose: () => void;
@@ -276,6 +281,9 @@ function GastoFormModal({
   const [loadingDetalle, setLoadingDetalle] = useState(mode !== "nuevo");
   const [doneNumero, setDoneNumero] = useState<string | null>(null);
   const [idemKey] = useState(() => genIdemKey());
+  // Carga simple: usuarios operativos (siempre) o contabilidad si la elige. Solo en alta nueva.
+  const [vistaSimple, setVistaSimple] = useState(false);
+  const simple = mode === "nuevo" && (!contable || vistaSimple);
 
   // Sugerencia de cuenta de pago por defecto (Caja/Banco) desde Configuración Contable.
   useEffect(() => {
@@ -303,7 +311,8 @@ function GastoFormModal({
         numero_comprobante: h.numero_comprobante ?? null,
         timbrado: h.timbrado ?? null,
         fecha_comprobante: h.fecha_comprobante ? String(h.fecha_comprobante).slice(0, 10) : null,
-        fecha_contable: h.fecha_contable ? String(h.fecha_contable).slice(0, 10) : null,
+        // Pendientes de clasificación vienen sin fecha contable: se sugiere la del comprobante.
+        fecha_contable: (h.fecha_contable ?? h.fecha_comprobante) ? String(h.fecha_contable ?? h.fecha_comprobante).slice(0, 10) : null,
         tipo_pago: (h.tipo_pago as "contado" | "credito") ?? "contado",
         plazo_dias: h.plazo_dias ?? null,
         fecha_vencimiento: h.fecha_vencimiento ? String(h.fecha_vencimiento).slice(0, 10) : null,
@@ -360,6 +369,31 @@ function GastoFormModal({
     return form.items.every((it) => it.descripcion.trim() && it.cuenta_contable_id && Number(it.subtotal) > 0);
   }, [form]);
 
+  const canSubmitSimple = useMemo(() => {
+    const has = (v: string | null) => !!v && String(v).trim() !== "";
+    return has(form.proveedor_id) && has(form.numero_comprobante) && has(form.fecha_comprobante)
+      && has(form.tipo_pago) && has(form.descripcion) && Number(form.items[0]?.subtotal) > 0;
+  }, [form]);
+
+  async function guardarSimple() {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const concepto = (form.descripcion ?? "").trim();
+      const payload: GastoHeaderForm = {
+        ...form,
+        descripcion: concepto,
+        timbrado: null,
+        fecha_contable: null,
+        cuenta_contrapartida_id: null,
+        items: [{ descripcion: concepto, cuenta_contable_id: null, subtotal: Number(form.items[0]?.subtotal) || 0, iva_tipo: "10" }],
+      };
+      const r = await guardarPendiente(payload, idemKey);
+      if (!r.ok) { setError(r.error); return; }
+      setDoneNumero("");
+    } finally { setBusy(false); }
+  }
+
   async function confirmar() {
     if (busy) return; // evita doble clic
     setBusy(true); setError(null);
@@ -384,9 +418,18 @@ function GastoFormModal({
           {doneNumero !== null ? (
             <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-600">✓</div>
-              <p className="text-lg font-semibold text-slate-800">Gasto o servicio confirmado</p>
-              <p className="text-sm text-slate-500">Número generado: <b className="font-mono text-[#3F8E91]">{doneNumero || "—"}</b></p>
-              <p className="text-xs text-slate-400">Ya aparece en el Libro de Compras.</p>
+              {simple ? (
+                <>
+                  <p className="text-lg font-semibold text-slate-800">Gasto guardado</p>
+                  <p className="text-sm text-slate-500">Quedó pendiente de clasificación contable. Contabilidad lo completa y lo confirma.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-semibold text-slate-800">Gasto o servicio confirmado</p>
+                  <p className="text-sm text-slate-500">Número generado: <b className="font-mono text-[#3F8E91]">{doneNumero || "—"}</b></p>
+                  <p className="text-xs text-slate-400">Ya aparece en el Libro de Compras.</p>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -399,6 +442,40 @@ function GastoFormModal({
                       había hablaba de una "Fase 3" del proyecto original, que
                       no significa nada para quien está cargando una factura. */}
 
+                  {mode === "nuevo" && contable && (
+                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 text-xs font-semibold">
+                      <button type="button" onClick={() => setVistaSimple(true)} className={`rounded-md px-3 py-1 ${simple ? "bg-[#4FAEB2] text-white" : "text-slate-600"}`}>Carga simple</button>
+                      <button type="button" onClick={() => setVistaSimple(false)} className={`rounded-md px-3 py-1 ${!simple ? "bg-[#4FAEB2] text-white" : "text-slate-600"}`}>Formulario completo</button>
+                    </div>
+                  )}
+
+                  {simple ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Proveedor *">
+                        <select className={INPUT} value={form.proveedor_id ?? ""} onChange={(e) => setField("proveedor_id", e.target.value || null)}>
+                          <option value="">(Elegir proveedor)</option>
+                          {proveedores.map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}{p.ruc ? ` — ${p.ruc}` : ""}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Número de factura *"><input className={INPUT} inputMode="numeric" value={form.numero_comprobante ?? ""} onChange={(e) => setField("numero_comprobante", formatComprobante(e.target.value) || null)} placeholder="001-001-0000001" /></Field>
+                      <Field label="Fecha *"><FechaSelect className={INPUT} value={form.fecha_comprobante ?? ""} onChange={(e) => setField("fecha_comprobante", e.target.value || null)} /></Field>
+                      <Field label="Condición de pago *">
+                        <select className={INPUT} value={form.tipo_pago ?? "contado"} onChange={(e) => setField("tipo_pago", e.target.value as "contado" | "credito")}>
+                          <option value="contado">Contado</option>
+                          <option value="credito">Crédito</option>
+                        </select>
+                      </Field>
+                      <Field label="Concepto del gasto *"><input className={INPUT} placeholder="Ej. Combustible camión" value={form.descripcion ?? ""} onChange={(e) => setField("descripcion", e.target.value || null)} /></Field>
+                      <Field label="Monto total *">
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">₲</span>
+                          <MontoInput value={form.items[0]?.subtotal ?? 0} onChange={(n) => setItem(0, { subtotal: n })} decimals={false} placeholder="0" className={`${INPUT} pl-6 text-right tabular-nums`} />
+                        </div>
+                      </Field>
+                      <p className="text-xs text-slate-400 sm:col-span-2">Se guarda como pendiente de clasificación contable: contabilidad completa cuenta, IVA y fecha contable.</p>
+                    </div>
+                  ) : (
+                  <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Proveedor *">
                       <select className={INPUT} value={form.proveedor_id ?? ""} onChange={(e) => setField("proveedor_id", e.target.value || null)}>
@@ -495,6 +572,8 @@ function GastoFormModal({
                       <span className="text-slate-600">Total de la operación: <b className="text-base text-slate-900">{fmt(totals.total)}</b></span>
                     </div>
                   </div>
+                  </>
+                  )}
                 </>
               )}
             </>
@@ -507,9 +586,15 @@ function GastoFormModal({
           ) : (
             <>
               <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Cancelar</button>
+              {simple ? (
+                <button onClick={guardarSimple} disabled={busy || !canSubmitSimple} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
+                  {busy ? "Guardando…" : "Guardar gasto"}
+                </button>
+              ) : (
               <button onClick={confirmar} disabled={busy || loadingDetalle || !canSubmit} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
                 {busy ? "Confirmando…" : "Confirmar gasto o servicio"}
               </button>
+              )}
             </>
           )}
         </div>
