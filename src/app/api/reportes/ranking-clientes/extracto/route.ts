@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(Buffer.from(bytes), {
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${safe}.pdf"`,
+          "Content-Disposition": `inline; filename="${safe}.pdf"`,
           "Cache-Control": "no-store",
         },
       });
