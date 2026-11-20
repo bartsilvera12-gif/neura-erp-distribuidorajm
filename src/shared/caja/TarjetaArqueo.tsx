@@ -44,6 +44,7 @@ export default function TarjetaArqueo({
           <div>
             <p className="text-sm font-semibold text-slate-900">
               {abierta ? "Caja abierta" : "Caja cerrada"}
+              {caja.responsable ? ` · ${caja.responsable}` : ""}
             </p>
             <p className="text-xs text-slate-500">
               Abrió {horaCorta(caja.fecha_apertura)}

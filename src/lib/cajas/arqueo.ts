@@ -22,6 +22,8 @@ export interface MovimientoManualCaja {
 export interface ArqueoCaja {
   id: string;
   numero_caja: number;
+  /** Quien abrió la caja y, si es repartidor, su camión (ej. "Camion 1 - Carlos Portillo"). */
+  responsable?: string | null;
   estado: "abierta" | "cerrada";
   fecha_apertura: string;
   fecha_cierre: string | null;

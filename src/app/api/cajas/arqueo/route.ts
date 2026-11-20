@@ -161,6 +161,7 @@ export async function GET(request: NextRequest) {
     const cajasQ = await queryWithRetry<{
       id: string;
       numero_caja: number;
+      dueno: string | null;
       estado: string;
       fecha_apertura: string;
       fecha_cierre: string | null;
@@ -173,6 +174,7 @@ export async function GET(request: NextRequest) {
     }>(
       pool,
       `SELECT id, numero_caja, estado,
+              ${colDueno ? `${colDueno}::text` : "NULL::text"} AS dueno,
               fecha_apertura::text AS fecha_apertura,
               fecha_cierre::text   AS fecha_cierre,
               monto_apertura::text AS monto_apertura,
@@ -388,6 +390,35 @@ export async function GET(request: NextRequest) {
       console.error("[/api/cajas/arqueo] por producto:", e instanceof Error ? e.message : e);
     }
 
+    // Quién abrió cada caja (y su camión): el administrador que mira todas las
+    // cajas del día necesita saber cuál es la de cada repartidor. Es solo un
+    // rótulo: si algo falla, el arqueo sale igual sin él.
+    const responsables = new Map<string, string>();
+    try {
+      const duenos = [...new Set(cajasQ.rows.map((c) => c.dueno).filter((x): x is string => !!x))];
+      if (duenos.length > 0) {
+        const rq = await queryWithRetry<{ id: string; nombre: string | null; camion: string | null }>(
+          pool,
+          `SELECT u.id::text AS id, u.nombre,
+                  (SELECT btrim(cm.alias) FROM ${quoteSchemaTable(schema, "camiones")} cm
+                    WHERE cm.repartidor_id = u.id AND cm.empresa_id = $1::uuid
+                    ORDER BY cm.activo DESC LIMIT 1) AS camion
+             FROM ${quoteSchemaTable(schema, "usuarios")} u
+            WHERE u.id = ANY($2::uuid[])`,
+          [empresaId, duenos]
+        );
+        for (const u of rq.rows) {
+          const nombre = (u.nombre ?? "").trim();
+          const txt = u.camion && nombre && !u.camion.toLowerCase().includes(nombre.toLowerCase())
+            ? `${u.camion} (${nombre})`
+            : u.camion || nombre;
+          if (txt) responsables.set(u.id, txt);
+        }
+      }
+    } catch (e) {
+      console.error("[/api/cajas/arqueo] responsables:", e instanceof Error ? e.message : e);
+    }
+
     const cajas = cajasQ.rows.map((c) => {
       const movs = porCaja.get(c.id) ?? [];
       const apertura = num(c.monto_apertura);
@@ -442,6 +473,7 @@ export async function GET(request: NextRequest) {
       return {
         id: c.id,
         numero_caja: Number(c.numero_caja),
+        responsable: c.dueno ? (responsables.get(c.dueno) ?? null) : null,
         estado: c.estado === "cerrada" ? ("cerrada" as const) : ("abierta" as const),
         fecha_apertura: c.fecha_apertura,
         fecha_cierre: c.fecha_cierre,
