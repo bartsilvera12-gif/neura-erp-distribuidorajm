@@ -229,10 +229,10 @@ export default function RankingClientesPage() {
                   </select>
                 </label>
                 <div className="ml-auto flex gap-2">
-                  <button type="button" onClick={() => window.open(extractoUrl("pdf"), "_blank")}
-                    className="rounded-lg bg-[#4FAEB2] px-3 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">Descargar PDF</button>
-                  <button type="button" onClick={() => window.open(extractoUrl("xlsx"), "_blank")}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Descargar Excel</button>
+                  <a href={extractoUrl("pdf")} download
+                    className="rounded-lg bg-[#4FAEB2] px-3 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">Descargar PDF</a>
+                  <a href={extractoUrl("xlsx")} download
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Descargar Excel</a>
                 </div>
               </div>
             )}
