@@ -1,7 +1,9 @@
 "use client";
 
 import TablaDescuentos from "@/shared/ventas/TablaDescuentos";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { DesgloseDeVentas, VentasPorProducto } from "@/shared/caja/ArqueoProductos";
+import TicketArqueo, { ANCHO_TICKET_MM } from "@/shared/caja/TicketArqueo";
 import useSWR from "swr";
 import { CheckCircle2, Plus, Printer, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -162,9 +164,28 @@ function Formulario({
 
   // Puede faltar si el navegador trae una respuesta vieja en cache (SWR
   // persistido): sin esto, `.length` rompe la pantalla hasta que revalida.
-  const porCategoria = s.por_categoria ?? [];
+  const porProducto = s.por_producto ?? [];
   const efectivo = totalConteo(d.conteo);
   const t = totalesPlanilla(d, efectivo);
+
+  // Impresión en ticket térmico: se arma el ticket de 80 mm, se mide su alto
+  // (así el papel no se parte en páginas) y recién ahí se imprime.
+  const [ticket, setTicket] = useState(false);
+  const [largoMm, setLargoMm] = useState(200);
+  const refTicket = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ticket) return;
+    const fin = () => setTicket(false);
+    window.addEventListener("afterprint", fin);
+    const alto = refTicket.current?.getBoundingClientRect().height ?? 0;
+    if (alto > 0) setLargoMm(Math.max(60, Math.ceil(alto / (96 / 25.4)) + 6));
+    const id = window.setTimeout(() => window.print(), 250);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("afterprint", fin);
+    };
+  }, [ticket]);
+  const noImprimir = ticket ? "print:hidden" : "";
   const cambiar = (patch: Partial<DatosPlanilla>) => {
     if (Object.keys(patch).some((k) => !["conteo", "observaciones", "apertura"].includes(k))) setTocado(true);
     setD((x) => ({ ...x, ...patch }));
@@ -229,9 +250,24 @@ function Formulario({
   }
 
   return (
-    <div className="factura-imprimible rounded-2xl border border-slate-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
+    <div className={`factura-imprimible ${ticket ? "ticket-activo" : ""} rounded-2xl border border-slate-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none`}>
       {/* Encabezado */}
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+      {ticket ? (
+        <>
+          {/* Con varias cajas en la página, solo esta va al papel. */}
+          <style>{`@media print { @page { size: ${ANCHO_TICKET_MM}mm ${largoMm}mm; margin: 0; } body { margin: 0 !important; } .factura-imprimible:not(.ticket-activo) { display: none !important; } }`}</style>
+          <div className="pointer-events-none fixed left-[-9999px] top-0 print:static print:left-0">
+            <TicketArqueo
+              ref={refTicket}
+              s={s}
+              t={{ debe: t.debe, rinde: t.rinde, diferencia: t.diferencia, efectivo }}
+              titulo={emisor?.razon_social ?? emisor?.nombre_fantasia ?? "Distribuidora JM"}
+              fecha={fecha(s.caja.fecha_apertura)}
+            />
+          </div>
+        </>
+      ) : null}
+      <div className={`flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 ${noImprimir}`}>
         <div>
           <h2 className="text-lg font-bold tracking-tight text-slate-900">Arqueo de caja</h2>
           <p className="mt-0.5 text-sm text-slate-500">
@@ -257,9 +293,13 @@ function Formulario({
               <RotateCcw className="h-3.5 w-3.5" /> Traer del sistema
             </button>
           ) : null}
+          <button type="button" onClick={() => setTicket(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <Printer className="h-3.5 w-3.5" /> Imprimir ticket
+          </button>
           <button type="button" onClick={() => window.print()}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            <Printer className="h-3.5 w-3.5" /> Imprimir
+            <Printer className="h-3.5 w-3.5" /> Imprimir hoja
           </button>
           {onCerrar ? (
             <button type="button" onClick={onCerrar} aria-label="Cerrar"
@@ -276,7 +316,7 @@ function Formulario({
         </p>
       ) : null}
 
-      <div className="space-y-5 p-5">
+      <div className={`space-y-5 p-5 ${noImprimir}`}>
         {/* Totales de arriba */}
         <div className="grid gap-3 sm:grid-cols-3">
           <CampoMonto etiqueta="Total s/ factura contado" valor={d.contado} onCambio={(v) => cambiar({ contado: v })} disabled={soloLectura}
@@ -290,34 +330,11 @@ function Formulario({
           </div>
         </div>
 
-        {/* Vendido por categoría: la venta del día por rubro (congelados,
-            cárnicos, lácteos…). Es informativo; lo que rinde sale de la cuenta. */}
-        {porCategoria.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <div className="flex items-center justify-between bg-slate-50 px-3 py-2">
-              <p className="text-sm font-semibold text-slate-800">Vendido por categoría</p>
-              <p className="text-sm font-bold tabular-nums text-slate-900">
-                {gs(porCategoria.reduce((a, f) => a + f.total, 0))}
-              </p>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {porCategoria.map((f) => {
-                const tot = porCategoria.reduce((a, x) => a + x.total, 0);
-                return (
-                  <div key={f.categoria} className="flex items-center justify-between gap-3 px-3 py-1.5">
-                    <span className="min-w-0 truncate text-sm text-slate-600">{f.categoria}</span>
-                    <span className="flex shrink-0 items-baseline gap-2">
-                      <span className="text-xs tabular-nums text-slate-400">
-                        {tot > 0 ? `${Math.round((f.total / tot) * 100)}%` : ""}
-                      </span>
-                      <span className="text-sm font-medium tabular-nums text-slate-900">{gs(f.total)}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
+        {/* Desglose de ventas (condición de venta aparte del medio de cobro) y
+            vendido por producto con lo cargado y devuelto del camión. Es
+            informativo; lo que rinde sale de la cuenta. */}
+        {s.desglose ? <DesgloseDeVentas d={s.desglose} /> : null}
+        <VentasPorProducto filas={porProducto} />
 
         {/* Descuentos: resaltados para que el encargado los controle. */}
         <TablaDescuentos filas={s.descuentos ?? []} />

@@ -12,6 +12,7 @@ import { limpiarConteo, totalConteo } from "@/lib/cajas/conteo";
 import { cerrarUna } from "@/lib/cajas/server/cierre-automatico";
 import { ventasConDescuento } from "@/lib/ventas/server/descuentos-pg";
 import type { VentaConDescuento } from "@/lib/ventas/descuentos-reporte";
+import { ventasPorProducto } from "@/lib/cajas/server/por-producto";
 
 async function columnas(pool: Pool, schema: string, tabla: string): Promise<Set<string>> {
   const r = await pool.query<{ c: string }>(
@@ -103,12 +104,26 @@ export async function planillaArqueo(
   let contado = 0;
   let cheques = 0;
   let otrosMedios = 0;
+  // Cobros de ventas por medio y efectivo que debería haber en el cajón.
+  let cobroEfectivo = 0;
+  let cobroTransferencia = 0;
+  let cobroOtros = 0;
+  let efectivoEsperado = Number(c.monto_apertura) + Number(c.sencillo);
   const cobranzas: RenglonPlanilla[] = [];
   const otros: RenglonPlanilla[] = [];
   const gastos: RenglonPlanilla[] = [];
   const transferencias: RenglonPlanilla[] = [];
   for (const m of movs.rows) {
     const monto = Number(m.monto);
+    if (m.medio === "efectivo") {
+      if (m.tipo === "ingreso" || m.tipo === "ajuste") efectivoEsperado += monto;
+      else if (m.tipo === "egreso" || m.tipo === "retiro") efectivoEsperado -= monto;
+    }
+    if (m.tipo === "ingreso" && m.venta_id) {
+      if (m.medio === "efectivo") cobroEfectivo += monto;
+      else if (m.medio === "transferencia") cobroTransferencia += monto;
+      else cobroOtros += monto;
+    }
     if (m.tipo === "ingreso") {
       const nombre = m.venta_id ? (m.cliente ?? "Sin nombre") : (m.concepto ?? "Ingreso");
       if (m.venta_id && m.tipo_venta === "CREDITO") {
@@ -142,6 +157,30 @@ export async function planillaArqueo(
       [empresaId, cajaId]
     );
     credito = cr.rows.map((r) => ({ nombre: r.cliente ?? "Sin nombre", factura: facturaCorta(r.factura), monto: Number(r.total) }));
+  }
+
+  // Total vendido por condición de venta (contado / crédito), sin anuladas.
+  let ventasContado = 0;
+  let ventasCredito = 0;
+  if (colsV.has("caja_id")) {
+    const vt = await pool.query<{ tipo_venta: string; total: string }>(
+      `SELECT tipo_venta, COALESCE(sum(total), 0)::text AS total FROM ${tV}
+        WHERE empresa_id = $1::uuid AND caja_id = $2::uuid AND COALESCE(estado, '') <> 'anulada'
+        GROUP BY tipo_venta`,
+      [empresaId, cajaId]
+    );
+    for (const r of vt.rows) {
+      if (r.tipo_venta === "CREDITO") ventasCredito += Number(r.total);
+      else ventasContado += Number(r.total);
+    }
+  }
+
+  // Cargado al camión, devuelto y vendido por producto.
+  let porProducto: PlanillaArqueo["por_producto"] = [];
+  try {
+    porProducto = (await ventasPorProducto(pool, schema, empresaId, [cajaId])).get(cajaId) ?? [];
+  } catch (e) {
+    console.error("[planillaArqueo] por producto:", e instanceof Error ? e.message : e);
   }
 
   // Lo vendido en esta caja por categoría (mayor primero), como en la vista
@@ -255,6 +294,16 @@ export async function planillaArqueo(
     cheques,
     otros_medios: otrosMedios,
     por_categoria: porCategoria,
+    por_producto: porProducto,
+    desglose: {
+      total: ventasContado + ventasCredito,
+      contado: ventasContado,
+      credito: ventasCredito,
+      cobro_efectivo: cobroEfectivo,
+      cobro_transferencia: cobroTransferencia,
+      cobro_otros: cobroOtros,
+      efectivo_esperado: efectivoEsperado,
+    },
     descuentos,
     cuentas,
   };

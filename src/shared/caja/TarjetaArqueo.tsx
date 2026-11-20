@@ -8,6 +8,7 @@ import { fechaLarga, horaCorta, iconoMedio } from "@/shared/caja/arqueo-ui";
 import type { ArqueoCaja, MovimientoManualCaja } from "@/lib/cajas/arqueo";
 import ConteoEfectivoTabla from "./ConteoEfectivo";
 import PlanillaArqueo from "./PlanillaArqueo";
+import { DesgloseDeVentas, VentasPorProducto } from "./ArqueoProductos";
 
 /**
  * Arqueo de una caja: con cuánto abrió, qué entró y por qué medio, qué salió, y
@@ -103,7 +104,8 @@ export default function TarjetaArqueo({
           <p className="mt-3 text-sm text-slate-400">Todavía no hubo ventas cobradas.</p>
         )}
 
-        <VentasPorCategoria filas={caja.por_categoria ?? []} />
+        {caja.desglose ? <DesgloseDeVentas d={caja.desglose} /> : null}
+        <VentasPorProducto filas={caja.por_producto ?? []} />
 
         <MovimientosCaja movimientos={caja.movimientos_manuales ?? []} />
 

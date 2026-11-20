@@ -111,10 +111,22 @@ export default function FinalizarVenta({
   useEffect(() => {
     confirmarRef.current = confirmar;
   });
+  // F9 con el cursor en el comprobante elige «Factura sin nombre» (sin mouse);
+  // ya elegida, o desde cualquier otra sección, F9 registra la venta como siempre.
+  const f9ComprobanteRef = useRef<() => boolean>(() => false);
+  useEffect(() => {
+    f9ComprobanteRef.current = () => {
+      const enComprobante = grupoComprobante.current?.contains(document.activeElement) ?? false;
+      if (!enComprobante || caja.deposito || comprobante === "factura-sin-nombre") return false;
+      elegirComprobante("factura-sin-nombre");
+      return true;
+    };
+  });
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "F9" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
         e.preventDefault();
+        if (e.key === "F9" && f9ComprobanteRef.current()) return;
         void confirmarRef.current();
       }
     }
@@ -242,7 +254,7 @@ export default function FinalizarVenta({
             {
               valor: "factura-sin-nombre",
               texto: "Factura sin nombre",
-              detalle: sifen ? "consumidor final · va a la SET" : "sin datos del cliente",
+              detalle: sifen ? "consumidor final · va a la SET · F9" : "sin datos del cliente · F9",
               Icono: FileText,
               // El depósito es de un cliente: la venta va a su nombre.
               deshabilitado: Boolean(caja.deposito),

@@ -10,6 +10,8 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import type { ConteoEfectivo } from "@/lib/cajas/conteo";
 import { cerrarCajasVencidas } from "@/lib/cajas/server/cierre-automatico";
+import { ventasPorProducto } from "@/lib/cajas/server/por-producto";
+import type { DesgloseVentas, FilaProducto } from "@/lib/cajas/por-producto";
 
 const TZ = "America/Asuncion";
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -359,6 +361,33 @@ export async function GET(request: NextRequest) {
       console.error("[/api/cajas/arqueo] ventas por categoría:", e instanceof Error ? e.message : e);
     }
 
+    // Por producto (cargado, devuelto, vendido) y total vendido por condición
+    // de venta. Son agregados de solo lectura: si algo falla, el arqueo sale igual.
+    let porProducto = new Map<string, FilaProducto[]>();
+    const condicion = new Map<string, { contado: number; credito: number }>();
+    try {
+      porProducto = await ventasPorProducto(pool, schema, empresaId, ids);
+      if (hayVentas.rows[0]?.t) {
+        const vq = await queryWithRetry<{ caja_id: string; tipo_venta: string; total: string }>(
+          pool,
+          `SELECT caja_id, tipo_venta, COALESCE(sum(total), 0)::text AS total
+             FROM ${quoteSchemaTable(schema, "ventas")}
+            WHERE empresa_id = $1::uuid AND caja_id = ANY($2::uuid[])
+              AND COALESCE(estado, '') <> 'anulada'
+            GROUP BY caja_id, tipo_venta`,
+          [empresaId, ids]
+        );
+        for (const row of vq.rows) {
+          const acc = condicion.get(row.caja_id) ?? { contado: 0, credito: 0 };
+          if (row.tipo_venta === "CREDITO") acc.credito += num(row.total);
+          else acc.contado += num(row.total);
+          condicion.set(row.caja_id, acc);
+        }
+      }
+    } catch (e) {
+      console.error("[/api/cajas/arqueo] por producto:", e instanceof Error ? e.message : e);
+    }
+
     const cajas = cajasQ.rows.map((c) => {
       const movs = porCaja.get(c.id) ?? [];
       const apertura = num(c.monto_apertura);
@@ -393,6 +422,23 @@ export async function GET(request: NextRequest) {
 
       const contado = c.monto_cierre_contado === null ? null : num(c.monto_cierre_contado);
 
+      // Condición de venta (contado / crédito) por un lado; medio de cobro
+      // (efectivo / transferencia) por otro: así nada se cuenta dos veces.
+      const cond = condicion.get(c.id) ?? { contado: 0, credito: 0 };
+      const cobroMedio = (medio: string) =>
+        ingresosVentas.filter((m) => m.medio === medio).reduce((acc, m) => acc + num(m.total), 0);
+      const cobroEfectivo = cobroMedio("efectivo");
+      const cobroTransferencia = cobroMedio("transferencia");
+      const desglose: DesgloseVentas = {
+        total: cond.contado + cond.credito,
+        contado: cond.contado,
+        credito: cond.credito,
+        cobro_efectivo: cobroEfectivo,
+        cobro_transferencia: cobroTransferencia,
+        cobro_otros: sumar(ingresosVentas, false) - cobroEfectivo - cobroTransferencia,
+        efectivo_esperado: esperadoEfectivo,
+      };
+
       return {
         id: c.id,
         numero_caja: Number(c.numero_caja),
@@ -403,6 +449,8 @@ export async function GET(request: NextRequest) {
         sencillo,
         conteo: c.conteo ?? null,
         por_categoria: porCategoria.get(c.id) ?? [],
+        por_producto: porProducto.get(c.id) ?? [],
+        desglose,
         ingresos: {
           total: sumar(ingresosVentas, false),
           por_medio: [...porMedio.entries()]

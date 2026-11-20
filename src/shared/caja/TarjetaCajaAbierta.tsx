@@ -28,7 +28,7 @@ import AperturaCaja from "./AperturaCaja";
 import ModalCaja from "./ModalCaja";
 import ConteoEfectivoTabla from "./ConteoEfectivo";
 import { totalConteo, type ConteoEfectivo } from "@/lib/cajas/conteo";
-import { VentasPorCategoria } from "./TarjetaArqueo";
+import { DesgloseDeVentas, VentasPorProducto } from "./ArqueoProductos";
 
 const TEAL = "#4FAEB2";
 
@@ -571,11 +571,8 @@ function ModalCierre({
           <FilaDesglose label="Efectivo esperado" valor={gs(esperadoConSencillo)} destacado />
         </div>
 
-        {(detalle?.por_categoria ?? []).length > 0 ? (
-          <div className="rounded-xl border border-slate-100 px-4 pb-3">
-            <VentasPorCategoria filas={detalle?.por_categoria ?? []} />
-          </div>
-        ) : null}
+        {detalle?.desglose ? <DesgloseDeVentas d={detalle.desglose} /> : null}
+        <VentasPorProducto filas={detalle?.por_producto ?? []} />
 
         <div>
           <span className={ETIQUETA}>Contá el efectivo del cajón</span>

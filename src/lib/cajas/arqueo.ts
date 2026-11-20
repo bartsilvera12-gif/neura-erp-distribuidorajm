@@ -1,4 +1,5 @@
 import type { ConteoEfectivo } from "./conteo";
+import type { DesgloseVentas, FilaProducto } from "./por-producto";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 export interface IngresoPorMedio {
@@ -31,6 +32,10 @@ export interface ArqueoCaja {
   conteo?: ConteoEfectivo | null;
   /** Lo vendido en esta caja por categoría de producto (mayor primero). */
   por_categoria?: { categoria: string; total: number }[];
+  /** Lo cargado, devuelto y vendido por producto (cargas y devoluciones del camión). */
+  por_producto?: FilaProducto[];
+  /** Total vendido, contado, crédito y cobros por medio. */
+  desglose?: DesgloseVentas;
   ingresos: { total: number; por_medio: IngresoPorMedio[] };
   salidas: { total: number; cantidad: number };
   /** Lo que se cargó a mano (no vino de una venta). */
