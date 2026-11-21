@@ -133,6 +133,7 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
 
   function cambiarModo(m: Modo) {
     setModo(m);
+    setResumen(false);
     setBuscar("");
     setValores({});
     setMotivos({});
@@ -145,9 +146,13 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
     return parseCantidad(raw, i.unidad);
   }
 
+  /** Resumen previo a confirmar el pase al salón. */
+  const [resumen, setResumen] = useState(false);
+
   async function guardar() {
     if (guardando) return;
     setAviso(null);
+    setResumen(false);
     let url: string;
     let payload: unknown[];
     if (modo === "contar") {
@@ -426,18 +431,52 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
         </p>
       ) : null}
 
+      {modo === "salon" && resumen ? (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="mb-2 text-sm font-semibold text-slate-900">
+            Resumen: esto baja de {alias} al salón
+          </p>
+          <ul className="divide-y divide-slate-200 text-xs text-slate-700">
+            {items
+              .filter((i) => valorDe(i) > 0)
+              .map((i) => (
+                <li key={i.producto_id} className="flex justify-between gap-3 py-1">
+                  <span>
+                    {i.codigo ? `${i.codigo} ` : ""}
+                    {i.nombre}
+                  </span>
+                  <span className="tabular-nums font-medium">
+                    {formatCantidad(valorDe(i), i.unidad)} {i.unidad}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+
       {modo !== "ver" ? (
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"
-            onClick={() => cambiarModo("ver")}
+            onClick={() => (modo === "salon" && resumen ? setResumen(false) : cambiarModo("ver"))}
             className="h-10 rounded-lg px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"
           >
-            Cancelar
+            {modo === "salon" && resumen ? "Volver" : "Cancelar"}
           </button>
           <button
             type="button"
-            onClick={guardar}
+            onClick={() => {
+              if (modo === "salon" && !resumen) {
+                if (!items.some((i) => valorDe(i) > 0)) {
+                  setAviso({ ok: false, texto: "Poné cuánto pasar al salón de algún producto." });
+                  return;
+                }
+                setAviso(null);
+                setResumen(true);
+                return;
+              }
+              void guardar();
+            }}
             disabled={guardando}
             className="h-10 rounded-lg px-5 text-sm font-semibold text-white disabled:opacity-40"
             style={{ backgroundColor: TEAL }}
@@ -447,7 +486,9 @@ function StockDe({ camionId, alias }: { camionId: string; alias: string }) {
               : modo === "contar"
                 ? "Guardar conteo"
                 : modo === "salon"
-                  ? "Pasar al salón"
+                  ? resumen
+                    ? "Confirmar pase al salón"
+                    : "Pasar al salón"
                   : "Cargar al camión"}
           </button>
         </div>
