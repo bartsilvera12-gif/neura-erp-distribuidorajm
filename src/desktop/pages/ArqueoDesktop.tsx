@@ -10,6 +10,7 @@ import TarjetaCajaAbierta from "@/shared/caja/TarjetaCajaAbierta";
 import { useSoloCaja } from "@/shared/hooks/useSoloCaja";
 import { AvisoSinCajas, fechaLarga, hoyEnAsuncion, TEAL } from "@/shared/caja/arqueo-ui";
 import ResumenArqueoRango from "@/shared/caja/ResumenArqueoRango";
+import PanelCajas from "@/shared/caja/PanelCajas";
 
 /** Arqueo de caja desktop: las cajas del día en grilla, o resumen de un rango. */
 export default function ArqueoDesktop() {
@@ -115,21 +116,10 @@ export default function ArqueoDesktop() {
       </div>
 
 
-      {isAdmin && !esRango ? (
-        esHoy ? (
-          <button
-            type="button"
-            onClick={() => setTodas(!todas)}
-            className="mb-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            {todas ? "Ver solo mi caja" : "Ver todas las cajas del día"}
-          </button>
-        ) : (
-          <p className="mb-4 text-sm text-slate-500">Mostrando todas las cajas de este día.</p>
-        )
-      ) : null}
-
-      {esRango ? (
+      {isAdmin ? (
+        // Administrador: panel separado por Caja Salón, camiones y Administración.
+        <PanelCajas desde={desde} hasta={hasta} onCambio={() => mutate()} />
+      ) : esRango ? (
         // Rango: se consultan los días en paralelo y se muestra el resumen
         // agregado por método de pago. La vista por caja individual queda
         // disponible al poner Desde=Hasta en una sola fecha.

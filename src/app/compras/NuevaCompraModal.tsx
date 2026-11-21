@@ -151,16 +151,9 @@ export default function NuevaCompraModal({
   /** "camion" sin camión elegido todavía: se muestra el buscador de camiones. */
   const [tipoDestino, setTipoDestino] = useState<"salon" | "camion" | "carniceria">("salon");
   /** Lista con la que va a vender el destino (salón o camión). */
-  const [lista, setLista] = useState<"minorista" | "mayorista">("minorista");
-  const [listaSalon, setListaSalon] = useState<"minorista" | "mayorista">("minorista");
+  const lista = "minorista" as const;
   function elegirDestino(id: string) {
     setDestino(id);
-    if (!id) {
-      setLista(listaSalon);
-      return;
-    }
-    const c = camiones.find((x) => x.id === id);
-    setLista(c?.lista_precio === "mayorista" ? "mayorista" : "minorista");
   }
   const camionOpts: ComboOption[] = useMemo(
     () => camiones.map((c) => ({ id: c.id, label: nombreCamion(c.alias), sub: c.repartidor ?? "Sin usuario asignado" })),
@@ -319,15 +312,6 @@ export default function NuevaCompraModal({
     recargarProveedores();
     recargarProductos();
     recargarCategorias();
-    // Con qué lista vende hoy el salón: es el destino que viene elegido.
-    fetch("/api/compras/lista-salon", { credentials: "include", cache: "no-store" })
-      .then((r) => r.json())
-      .then((j: { data?: { lista?: string } }) => {
-        const l = j.data?.lista === "mayorista" ? "mayorista" : "minorista";
-        setListaSalon(l);
-        setLista((prev) => (destino ? prev : l));
-      })
-      .catch(() => null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -692,13 +676,11 @@ export default function NuevaCompraModal({
                 <label className={SUBLABEL}>
                   {tipoDestino === "camion" ? "El camión vende con precio" : "El salón vende con precio"}
                 </label>
-                <Seg<"minorista" | "mayorista"> value={lista}
-                  options={[{ value: "minorista", label: "Minorista" }, { value: "mayorista", label: "Mayorista (−10%)" }]}
-                  onChange={setLista} />
+                <Seg<"minorista"> value={lista}
+                  options={[{ value: "minorista", label: "Minorista" }]}
+                  onChange={() => undefined} />
                 <p className="mt-1 text-[11px] text-slate-400">
-                  {lista === "mayorista"
-                    ? `La caja ${tipoDestino === "camion" ? "del camión" : "del salón"} cobra el precio de venta con 10% de descuento (lo ves abajo, en cada producto). Vale para todo lo que venda, no solo esta compra.`
-                    : "La caja vende con esta lista; no se elige al vender."}
+                  La caja vende con los precios normales de venta.
                 </p>
               </div>
               )}
@@ -772,7 +754,7 @@ export default function NuevaCompraModal({
                       <th className="w-24 px-2 py-2 text-right">Cantidad</th>
                       <th className="w-32 px-2 py-2 text-right">Costo</th>
                       <th className="w-32 px-2 py-2 text-right">
-                        {lista === "mayorista" ? "Precio venta (base)" : "Precio venta"}
+                        Precio venta
                       </th>
                       <th className="w-40 px-2 py-2 text-left">Categoría</th>
                       <th className="w-28 px-3 py-2 text-right">Total</th>
@@ -830,13 +812,6 @@ export default function NuevaCompraModal({
                         <td className="px-2 py-2">
                           <MontoInput id={`compra-precio-${i}`} value={l.precio} onChange={(n) => cambiar(i, { precio: String(n) })}
                             decimals={false} placeholder="—" aria-label={`Precio de venta de ${l.nombre}`} className={CELDA} />
-                          {/* Con mayorista la caja cobra el 10% menos que este precio: se muestra
-                              acá para que se vea el precio real de venta. */}
-                          {lista === "mayorista" && calc[i].precio > 0 ? (
-                            <span className="mt-0.5 block text-right text-[11px] font-semibold text-[#3F8E91]">
-                              Mayorista: {fmt(precioSegunLista(calc[i].precio, "mayorista"))}
-                            </span>
-                          ) : null}
                         </td>
                         <td className="px-2 py-2">
                           <SelectorCategoria value={l.categoria} categorias={categorias}
