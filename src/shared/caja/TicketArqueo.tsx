@@ -63,7 +63,7 @@ const TicketArqueo = forwardRef<
       <Fila a="Efectivo esperado" b={`Gs. ${miles(d.efectivo_esperado)}`} fuerte />
       <Raya />
       <p className="font-bold">PRODUCTOS</p>
-      <p className="text-[8.5pt]">Cód · Producto / Carg · Dev · Vend · Monto</p>
+      <p className="text-[8.5pt]">Cód · Producto / Carg · Dev · Vend · Dif · Monto</p>
       {s.por_producto.length === 0 ? <p>Sin productos.</p> : null}
       {s.por_producto.map((f) => (
         <div key={f.producto_id} className="mt-1" style={{ breakInside: "avoid" }}>
@@ -72,7 +72,7 @@ const TicketArqueo = forwardRef<
           </p>
           <div className="flex justify-between gap-1 pl-2 text-[9.5pt]">
             <span>
-              C {cantidadProd(f.cargada)} · D {cantidadProd(f.devuelta)} · V {cantidadProd(f.vendida)}
+              C {cantidadProd(f.cargada)} · D {cantidadProd(f.devuelta)} · V {cantidadProd(f.vendida)} · Dif {cantidadProd(f.cargada - f.devuelta - f.vendida)}
             </span>
             <span className="tabular-nums">{miles(f.monto)}</span>
           </div>
