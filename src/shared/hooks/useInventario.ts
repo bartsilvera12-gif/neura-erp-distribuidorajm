@@ -32,8 +32,18 @@ export function useProductos() {
 export function useCatalogoVenta(repartoId?: string | null) {
   const swr = useSWR<{ productos: Producto[]; origen: OrigenCatalogo; error?: string }>(
     repartoId ? `caja:catalogo:reparto:${repartoId}` : "caja:catalogo",
-    () => getProductosConOrigen(repartoId),
+    // Un corte (señal del celular, el servidor reiniciando) se lanza como
+    // error y no como "lista vacía": así SWR conserva la lista que ya estaba
+    // en pantalla y vuelve a intentar solo. Antes el corte reemplazaba la
+    // lista por una vacía y la caja quedaba sin productos hasta recargar.
+    async () => {
+      const r = await getProductosConOrigen(repartoId);
+      if (r.error) throw new Error(r.error);
+      return r;
+    },
     {
+      errorRetryCount: 5,
+      errorRetryInterval: 3_000,
       revalidateOnFocus: true,
       // Cada impresión de ticket devuelve el foco a la página: sin esto, el
       // catálogo entero se volvía a pedir después de casi cada venta.
@@ -53,7 +63,11 @@ export function useCatalogoVenta(repartoId?: string | null) {
      * porque la consulta "sale bien" devolviendo una lista vacía: sin esto, un
      * 500 se ve igual que no tener stock.
      */
-    errorCatalogo: swr.data?.error ?? null,
+    // Solo si no hay ninguna lista para mostrar: con una lista ya cargada, un
+    // corte momentáneo no frena la venta (el servidor igual controla el stock).
+    errorCatalogo: swr.data ? null : swr.error ? (swr.error as Error).message : null,
+    /** Vuelve a pedir el catálogo ahora (botón «Reintentar»). */
+    reintentar: () => void swr.mutate(),
     mutate: swr.mutate,
   };
 }

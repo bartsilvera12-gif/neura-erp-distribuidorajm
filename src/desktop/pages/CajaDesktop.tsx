@@ -197,7 +197,7 @@ export default function CajaDesktop() {
 
 function Catalogo({ caja }: { caja: CajaVenta }) {
   // Si la venta sale de un camión, el catálogo es el stock de ese camión.
-  const { productos, origen, isLoading, errorCatalogo } = useCatalogoVenta(caja.repartoId);
+  const { productos, origen, isLoading, errorCatalogo, reintentar } = useCatalogoVenta(caja.repartoId);
   const [query, setQuery] = useState("");
 
   // Los 9 más vendidos: el servidor devuelve solo los ids (ordenados de más a
@@ -446,6 +446,10 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
             <p className="text-sm font-semibold text-rose-700">No se pudo cargar la lista de productos.</p>
             <p className="mt-1 text-xs text-rose-600">{errorCatalogo}</p>
             <p className="mt-1 text-xs text-rose-600">Esto no es falta de stock: la consulta falló.</p>
+            <button type="button" onClick={reintentar}
+              className="mt-2 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
+              Reintentar
+            </button>
           </div>
         ) : null}
         {isLoading ? null : <AvisoCatalogoCaja origen={origen} ocultos={ocultosSinStock} />}

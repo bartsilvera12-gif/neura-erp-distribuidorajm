@@ -376,7 +376,7 @@ function PasoCliente({
 
 function PasoProductos({ caja }: { caja: CajaVenta }) {
   // Si la venta sale de un camión, el catálogo es el stock de ese camión.
-  const { productos, origen, isLoading, errorCatalogo } = useCatalogoVenta(caja.repartoId);
+  const { productos, origen, isLoading, errorCatalogo, reintentar } = useCatalogoVenta(caja.repartoId);
   const [query, setQuery] = useState("");
 
   // Sin stock no se ofrece, pero lo que ya está en el carrito se queda: sacarlo
@@ -430,6 +430,10 @@ function PasoProductos({ caja }: { caja: CajaVenta }) {
           <p className="mt-1 text-xs text-rose-600">
             Esto no es falta de stock: la consulta falló.
           </p>
+            <button type="button" onClick={reintentar}
+              className="mt-2 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
+              Reintentar
+            </button>
         </div>
       ) : null}
 

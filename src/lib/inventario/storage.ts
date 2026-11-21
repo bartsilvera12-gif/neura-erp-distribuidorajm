@@ -153,8 +153,14 @@ export async function getProductosConOrigen(
       origen: data.origen ?? salon,
     };
   } catch (err) {
-    const motivo = err instanceof Error ? err.message : String(err);
-    console.error("[inventario] getProductos:", motivo);
+    // «Failed to fetch» = no llegó respuesta (señal, wifi, servidor reiniciando).
+    const motivo =
+      err instanceof TypeError
+        ? "Sin conexión con el sistema. Revisá la señal o el wifi; se vuelve a intentar solo."
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    console.error("[inventario] getProductos:", err);
     return { productos: [], origen: salon, error: motivo };
   }
 }
