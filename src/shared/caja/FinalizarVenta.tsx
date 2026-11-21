@@ -68,12 +68,13 @@ export default function FinalizarVenta({
   onCerrar: () => void;
   onConfirmada: () => void;
 }) {
-  const [modo, setModo] = useState<Modo>(caja.cliente ? "con-nombre" : "sin-nombre");
+  // Sin cliente elegido, el comprobante predeterminado es «Factura sin nombre».
+  const [modo, setModo] = useState<Modo>("con-nombre");
   /**
    * Factura Sin nombre: el cliente no da sus datos. Con factura electrónica
    * sale innominada (consumidor final) y va igual a la SET.
    */
-  const [facturaSinNombre, setFacturaSinNombre] = useState(false);
+  const [facturaSinNombre, setFacturaSinNombre] = useState(!caja.cliente);
   const sifen = useSifenActivo();
   const [aviso, setAviso] = useState<string | null>(null);
   const grupoComprobante = useRef<HTMLDivElement>(null);
@@ -92,6 +93,12 @@ export default function FinalizarVenta({
 
   // Al abrir, el cursor arranca en el comprobante.
   useEffect(() => {
+    if (!caja.cliente) {
+      // Predeterminado: Factura sin nombre (el documento y el cliente quedan alineados).
+      caja.elegirSinNombre();
+      caja.setDocumento("factura");
+      if (caja.aCredito || !caja.metodoPago) caja.setMetodoPago(caja.metodoPago ?? "efectivo");
+    }
     foco.comprobante();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
