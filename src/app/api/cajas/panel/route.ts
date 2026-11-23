@@ -192,6 +192,7 @@ export async function GET(request: NextRequest) {
           WHERE m.empresa_id = $1::uuid AND m.caja_id = ANY($2::uuid[])
             AND m.tipo = 'ingreso' AND m.anulado_at IS NULL
             AND COALESCE(v.estado,'') <> 'anulada'
+            AND v.tipo_venta IS DISTINCT FROM 'CREDITO'
             AND (v.fecha AT TIME ZONE $3)::date BETWEEN $4::date AND $5::date
             AND m.id NOT IN (SELECT caja_movimiento_id FROM ${quoteSchemaTable(schema, "cobros_clientes")} WHERE caja_movimiento_id IS NOT NULL)
           GROUP BY 1, 2`,
@@ -224,19 +225,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Cobranzas de deudas (cuentas por cobrar) hechas en el período.
-    const cobQ = await queryWithRetry<{ caja_id: string | null; usuario_id: string | null; medio: string; total: string }>(
+    // Salen de caja_movimientos (ingresos de ventas a crédito, por el día en que
+    // se cobraron) y van a la caja donde se registró el cobro. Es lo mismo que
+    // muestra la planilla de cada caja.
+    const cobQ = await queryWithRetry<{ caja_id: string | null; medio: string; total: string }>(
       pool,
-      `SELECT m.caja_id::text AS caja_id, cc.usuario_id::text AS usuario_id,
-              lower(btrim(COALESCE(cc.metodo_pago,''))) AS medio, COALESCE(sum(cc.monto),0)::text AS total
-         FROM ${quoteSchemaTable(schema, "cobros_clientes")} cc
-         LEFT JOIN ${tM} m ON m.id = cc.caja_movimiento_id
-        WHERE cc.empresa_id = $1::uuid AND cc.anulado_at IS NULL
-          AND (cc.fecha_pago AT TIME ZONE $2)::date BETWEEN $3::date AND $4::date
-        GROUP BY 1, 2, 3`,
+      `SELECT m.caja_id::text AS caja_id,
+              lower(btrim(COALESCE(m.medio_pago,''))) AS medio, COALESCE(sum(m.monto),0)::text AS total
+         FROM ${tM} m
+         JOIN ${tV} v ON v.id = m.venta_id
+        WHERE m.empresa_id = $1::uuid AND m.tipo = 'ingreso' AND m.anulado_at IS NULL
+          AND v.tipo_venta = 'CREDITO' AND COALESCE(v.estado,'') <> 'anulada'
+          AND (m.created_at AT TIME ZONE $2)::date BETWEEN $3::date AND $4::date
+        GROUP BY 1, 2`,
       [empresaId, TZ, desde, hasta]
     );
     for (const r of cobQ.rows) {
-      const g = r.caja_id && grupoDeCaja.get(r.caja_id) ? grupoDeCaja.get(r.caja_id)! : grupoDeUsuario(r.usuario_id);
+      const g = r.caja_id ? grupoDeCaja.get(r.caja_id) : undefined;
+      if (!g) continue;
       const a = acum.get(g.key)!;
       a.cobranzas[medioKey(r.medio)] += n(r.total);
       a.cobranzas.total += n(r.total);

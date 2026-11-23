@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return NextResponse.json(errorResponse("Body vacío."), { status: 400 });
 
-    const nuevos: { concepto?: string; monto?: number; medio_pago?: string } = {};
+    const nuevos: { concepto?: string; monto?: number; medio_pago?: string; tipo?: string } = {};
     if (typeof body.concepto === "string") {
       const c = body.concepto.trim();
       if (c === "") return NextResponse.json(errorResponse("El concepto no puede quedar vacío."), { status: 400 });
@@ -72,6 +72,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       }
       nuevos.medio_pago = m;
     }
+    if (typeof body.tipo === "string" && body.tipo.trim() !== "") {
+      const t = body.tipo.trim().toLowerCase();
+      if (t !== "ingreso" && t !== "egreso") {
+        return NextResponse.json(errorResponse("El tipo tiene que ser ingreso o egreso."), { status: 400 });
+      }
+      nuevos.tipo = t;
+    }
     if (Object.keys(nuevos).length === 0) {
       return NextResponse.json(errorResponse("No mandaste ningún cambio."), { status: 400 });
     }
@@ -87,8 +94,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       concepto: string;
       monto: string;
       medio_pago: string;
+      tipo: string;
     }>(
-      `SELECT id, venta_id, devolucion_id, anulado_at, concepto, monto::text AS monto, medio_pago
+      `SELECT id, venta_id, devolucion_id, anulado_at, concepto, monto::text AS monto, medio_pago, tipo
          FROM ${tM}
         WHERE id = $1::uuid AND empresa_id = $2::uuid
         FOR UPDATE`,
@@ -111,8 +119,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json(errorResponse("El movimiento ya fue anulado."), { status: 409 });
     }
 
+    if (nuevos.tipo !== undefined && nuevos.tipo !== m.tipo && m.tipo !== "ingreso" && m.tipo !== "egreso" && m.tipo !== "retiro") {
+      await client.query("ROLLBACK");
+      return NextResponse.json(errorResponse("Este movimiento no se puede pasar a ingreso/egreso."), { status: 409 });
+    }
     const sets: string[] = [];
     const params: unknown[] = [];
+    if (nuevos.tipo !== undefined && nuevos.tipo !== m.tipo) { params.push(nuevos.tipo); sets.push(`tipo = $${params.length}`); }
     if (nuevos.concepto !== undefined) { params.push(nuevos.concepto); sets.push(`concepto = $${params.length}`); }
     if (nuevos.monto !== undefined)    { params.push(nuevos.monto);    sets.push(`monto = $${params.length}::numeric`); }
     if (nuevos.medio_pago !== undefined){ params.push(nuevos.medio_pago); sets.push(`medio_pago = $${params.length}`); }
@@ -122,6 +135,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (nuevos.concepto !== undefined && nuevos.concepto !== m.concepto) cambios.push(`concepto "${m.concepto}" → "${nuevos.concepto}"`);
     if (nuevos.monto !== undefined && nuevos.monto !== Number(m.monto)) cambios.push(`monto ${Number(m.monto)} → ${nuevos.monto}`);
     if (nuevos.medio_pago !== undefined && nuevos.medio_pago !== m.medio_pago) cambios.push(`medio ${m.medio_pago} → ${nuevos.medio_pago}`);
+    if (nuevos.tipo !== undefined && nuevos.tipo !== m.tipo) cambios.push(`tipo ${m.tipo} → ${nuevos.tipo}`);
     if (cambios.length > 0) {
       const linea = `[Editado ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC por ${ctx.auth.user?.email ?? "admin"}: ${cambios.join("; ")}]`;
       params.push(linea);

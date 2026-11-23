@@ -309,8 +309,27 @@ function ModalEditar({ mov, onCerrar, onGuardado }: { mov: Mov; onCerrar: () => 
   const [concepto, setConcepto] = useState(mov.concepto);
   const [monto, setMonto] = useState(String(mov.monto));
   const [medio, setMedio] = useState(mov.medio_pago ?? "efectivo");
+  const [tipo, setTipo] = useState<string>(mov.tipo === "ingreso" ? "ingreso" : "egreso");
   const [guardando, setGuardando] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  async function anular() {
+    const motivo = window.prompt("Motivo de la anulación (el movimiento queda en el historial):")?.trim();
+    if (!motivo) return;
+    setGuardando(true); setErr(null);
+    try {
+      const r = await apiFetch(`/api/caja-movimientos/${encodeURIComponent(mov.id)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) { setErr(j.error ?? `Error ${r.status}`); return; }
+      onGuardado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error de red");
+    } finally { setGuardando(false); }
+  }
 
   async function guardar() {
     setGuardando(true); setErr(null);
@@ -320,7 +339,7 @@ function ModalEditar({ mov, onCerrar, onGuardado }: { mov: Mov; onCerrar: () => 
       const r = await apiFetch(`/api/caja-movimientos/${encodeURIComponent(mov.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concepto: concepto.trim(), monto: m, medio_pago: medio }),
+        body: JSON.stringify({ concepto: concepto.trim(), monto: m, medio_pago: medio, ...(mov.tipo === "ajuste" ? {} : { tipo }) }),
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!r.ok || !j.success) { setErr(j.error ?? `Error ${r.status}`); return; }
@@ -345,6 +364,19 @@ function ModalEditar({ mov, onCerrar, onGuardado }: { mov: Mov; onCerrar: () => 
           </button>
         </div>
         <div className="mt-4 space-y-3">
+          {mov.tipo !== "ajuste" ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">Tipo de movimiento</label>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+              >
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+              </select>
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-600">Concepto</label>
             <input
@@ -382,6 +414,14 @@ function ModalEditar({ mov, onCerrar, onGuardado }: { mov: Mov; onCerrar: () => 
           </p>
         </div>
         <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => void anular()}
+            disabled={guardando}
+            className="mr-auto rounded-lg border border-rose-200 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+          >
+            Anular movimiento
+          </button>
           <button type="button" onClick={onCerrar} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
             Cancelar
           </button>
