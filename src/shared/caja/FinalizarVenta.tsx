@@ -322,7 +322,7 @@ export default function FinalizarVenta({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && !e.ctrlKey) {
                 e.preventDefault();
-                void confirmar();
+                if (!e.repeat) void confirmar();
               }
             }}
           >
@@ -335,7 +335,7 @@ export default function FinalizarVenta({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && !e.ctrlKey) {
                 e.preventDefault();
-                void confirmar();
+                if (!e.repeat) void confirmar();
               }
             }}
           >
@@ -354,7 +354,7 @@ export default function FinalizarVenta({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.ctrlKey) {
                   e.preventDefault();
-                  void confirmar();
+                  if (!e.repeat) void confirmar();
                 }
               }}
               placeholder="30"
@@ -450,6 +450,7 @@ function FilaOpciones<T extends string>({
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
+      if (e.repeat) return;
       onEnter();
       return;
     }

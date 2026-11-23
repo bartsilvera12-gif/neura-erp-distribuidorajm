@@ -323,6 +323,8 @@ function Catalogo({ caja }: { caja: CajaVenta }) {
     }
     if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
     e.preventDefault();
+    // Enter mantenido apretado: no abre ni avanza varias veces.
+    if (e.repeat) return;
     // Buscador vacío: ya está todo cargado, se pasa a finalizar la venta.
     if (!texto.trim()) {
       if (caja.carrito.length > 0) tocar("caja-cobrar");
