@@ -17,6 +17,7 @@ import AvisoDeposito from "@/shared/caja/AvisoDeposito";
 import PagoMixtoCampos from "@/shared/caja/PagoMixtoCampos";
 import DescuentoVenta from "@/shared/caja/DescuentoVenta";
 import { useSifenActivo } from "@/shared/hooks/useSifenActivo";
+import SelectorPuntoFactura from "@/shared/caja/SelectorPuntoFactura";
 import NuevoClienteRapido from "@/shared/caja/NuevoClienteRapido";
 import { useClientes } from "@/shared/hooks/useClientes";
 import { clienteNombre } from "@/lib/clientes/storage";
@@ -281,6 +282,7 @@ export default function FinalizarVenta({
             },
           ]}
         />
+        {comprobante !== "ticket" ? <SelectorPuntoFactura /> : null}
         {modo === "con-nombre" ? (
           <ElegirCliente
             caja={caja}

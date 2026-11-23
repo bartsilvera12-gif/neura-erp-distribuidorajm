@@ -147,11 +147,36 @@ async function puntoDelCamion(
   return { punto: porUsuario[0].punto.padStart(3, "0"), numero: Number(porUsuario[0].numero) };
 }
 
+/**
+ * Punto de expedición propio del administrador (ej. 001, licitaciones) y el
+ * próximo número, reservado con un UPDATE atómico. `null` si ese punto no
+ * está cargado o está inactivo.
+ */
+async function puntoDelAdmin(
+  empresaId: string,
+  punto: string
+): Promise<{ punto: string; numero: number } | null> {
+  const pool = getChatPostgresPool();
+  if (!pool) return null;
+  const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+  const { rows } = await pool.query<{ punto: string; numero: string }>(
+    `UPDATE ${quoteSchemaTable(schema, "puntos_expedicion_admin")}
+        SET ultimo_numero_factura = ultimo_numero_factura + 1, updated_at = now()
+      WHERE empresa_id = $1::uuid AND btrim(punto) = $2 AND activo = true
+      RETURNING btrim(punto) AS punto, ultimo_numero_factura AS numero`,
+    [empresaId, punto]
+  );
+  if (!rows[0]) return null;
+  return { punto: rows[0].punto.padStart(3, "0"), numero: Number(rows[0].numero) };
+}
+
 export async function facturaDeVenta(
   supabase: AppSupabaseClient,
   empresaId: string,
   ventaId: string,
-  usuarioId: string | null = null
+  usuarioId: string | null = null,
+  /** Punto elegido por el administrador (ej. "001"); solo se pasa si es admin. */
+  puntoAdmin: string | null = null
 ): Promise<FacturaDeVenta> {
   const { data: venta, error: errV } = await supabase
     .from("ventas")
@@ -217,7 +242,15 @@ export async function facturaDeVenta(
 
   // Venta de un reparto: si el camión tiene punto de expedición propio, la
   // factura sale con ese punto y su numeración independiente.
-  const camion = await puntoDelCamion(empresaId, ventaId, usuarioId);
+  let camion: { punto: string; numero: number } | null = null;
+  if (puntoAdmin) {
+    camion = await puntoDelAdmin(empresaId, puntoAdmin);
+    if (!camion) {
+      return { ok: false, status: 400, message: `El punto de expedición ${puntoAdmin} no está habilitado.` };
+    }
+  } else {
+    camion = await puntoDelCamion(empresaId, ventaId, usuarioId);
+  }
   const numero = camion
     ? `FAC-${camion.punto}-${String(camion.numero).padStart(7, "0")}`
     : await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);

@@ -49,7 +49,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     const usuarioCamion = yo && !esRolAdminEmpresa(yo.rol) ? yo.id : null;
 
-    const fac = await facturaDeVenta(supabase, auth.empresa_id, ventaId, usuarioCamion);
+    // Solo el administrador puede elegir el punto 001 (licitaciones).
+    const puntoPedido = (request.nextUrl.searchParams.get("punto") ?? "").trim();
+    const esAdmin = Boolean(yo && esRolAdminEmpresa(yo.rol));
+    const puntoAdmin = esAdmin && /^\d{3}$/.test(puntoPedido) ? puntoPedido : null;
+
+    const fac = await facturaDeVenta(supabase, auth.empresa_id, ventaId, usuarioCamion, puntoAdmin);
     if (!fac.ok) return NextResponse.json(errorResponse(fac.message), { status: fac.status });
 
     // Si el vigilante ya la está mandando, no se manda dos veces: la caja

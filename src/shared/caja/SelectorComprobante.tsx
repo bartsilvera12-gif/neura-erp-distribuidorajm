@@ -2,6 +2,7 @@
 
 import { FileText, Receipt } from "lucide-react";
 import type { CajaVenta, DocumentoVenta } from "@/shared/caja/useCajaVenta";
+import SelectorPuntoFactura from "@/shared/caja/SelectorPuntoFactura";
 
 /**
  * Qué papel sale al cobrar: factura A4 o ticket de rollo.
@@ -25,27 +26,30 @@ export default function SelectorComprobante({
 }) {
   const alto = grande ? "h-12 text-base" : "h-10 text-sm";
   return (
-    <div role="radiogroup" aria-label="Comprobante" className="grid grid-cols-2 gap-2">
-      {OPCIONES.map(({ valor, etiqueta, Icono }) => {
-        const elegido = caja.documento === valor;
-        return (
-          <button
-            key={valor}
-            type="button"
-            role="radio"
-            aria-checked={elegido}
-            onClick={() => caja.setDocumento(valor)}
-            className={`flex items-center justify-center gap-2 rounded-xl border-2 font-medium transition-colors ${alto} ${
-              elegido
-                ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <Icono className="h-4 w-4" />
-            {etiqueta}
-          </button>
-        );
-      })}
+    <div>
+      <div role="radiogroup" aria-label="Comprobante" className="grid grid-cols-2 gap-2">
+        {OPCIONES.map(({ valor, etiqueta, Icono }) => {
+          const elegido = caja.documento === valor;
+          return (
+            <button
+              key={valor}
+              type="button"
+              role="radio"
+              aria-checked={elegido}
+              onClick={() => caja.setDocumento(valor)}
+              className={`flex items-center justify-center gap-2 rounded-xl border-2 font-medium transition-colors ${alto} ${
+                elegido
+                  ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-slate-900"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Icono className="h-4 w-4" />
+              {etiqueta}
+            </button>
+          );
+        })}
+      </div>
+      {caja.documento === "factura" ? <SelectorPuntoFactura /> : null}
     </div>
   );
 }

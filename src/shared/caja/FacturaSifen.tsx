@@ -53,6 +53,23 @@ const esperaDe = (n: number) => Math.min(CADA_MS * Math.pow(1.6, n), 30_000);
 const ESTADOS_CON_KUDE = new Set(["firmado", "enviado", "en_proceso", "aprobado", "error_envio"]);
 const INTENTOS = 14; // ≈ 5 minutos, espaciando
 
+/** Punto de expedición que el administrador eligió en la caja ("001" = licitaciones; "" = el del salón). */
+export const CLAVE_PUNTO_FACTURA = "caja:punto-factura";
+
+function sufijoPunto(): string {
+  try {
+    const p = localStorage.getItem(CLAVE_PUNTO_FACTURA);
+    return p && /^\d{3}$/.test(p) ? `punto=${p}` : "";
+  } catch {
+    return "";
+  }
+}
+
+function urlEmitir(ventaId: string, extra = ""): string {
+  const q = [extra, sufijoPunto()].filter(Boolean).join("&");
+  return `/api/ventas/${ventaId}/sifen/emitir${q ? `?${q}` : ""}`;
+}
+
 export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
   const [estado, setEstado] = useState<EstadoEmision>(habilitado ? "cargando" : "inactivo");
   const [facturaId, setFacturaId] = useState<string | null>(null);
@@ -115,13 +132,13 @@ export function useEmisionSifen(ventaId: string | null, habilitado: boolean) {
     intentos.current = 0;
     try {
       // 1) Generar y firmar: lo justo para imprimir el KuDE ya.
-      const r1 = await fetchWithSupabaseSession(`/api/ventas/${ventaId}/sifen/emitir?hasta=firmado`, { method: "POST" });
+      const r1 = await fetchWithSupabaseSession(urlEmitir(ventaId, "hasta=firmado"),{ method: "POST" });
       const j1 = (await r1.json().catch(() => ({}))) as Respuesta;
       if (!vivo.current) return;
       if (aplicar(j1, r1.ok) === "fin") return;
       // 2) Mandarlo a la SET, por detrás: el pedido sigue aunque se cierre
       //    esta ventana (y si no, lo termina el vigilante del servidor).
-      const res = await fetchWithSupabaseSession(`/api/ventas/${ventaId}/sifen/emitir`, { method: "POST" });
+      const res = await fetchWithSupabaseSession(urlEmitir(ventaId), { method: "POST" });
       const j = (await res.json().catch(() => ({}))) as Respuesta;
       if (!vivo.current) return;
       if (aplicar(j, res.ok) === "fin") return;
