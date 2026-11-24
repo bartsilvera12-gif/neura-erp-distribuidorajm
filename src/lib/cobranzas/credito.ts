@@ -74,6 +74,63 @@ export type PagoCobro = {
   fecha_cobro?: string | null;
 };
 
+export type ResultadoMulticobro =
+  | {
+      ok: true;
+      cobrado: number;
+      saldo: number;
+      reciboNumero: string | null;
+      clienteRuc: string | null;
+      fecha: string;
+      detalle: { numero: string; monto: number; saldo: number }[];
+    }
+  | { ok: false; error: string };
+
+/** Cobra varias ventas del mismo cliente con un solo recibo. */
+export async function cobrarVentas(
+  items: { venta_id: string; monto: number }[],
+  pago: Omit<PagoCobro, "monto">
+): Promise<ResultadoMulticobro> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/cobranzas/credito/cobrar-multiple", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items,
+        medio_pago: pago.medio,
+        banco: pago.banco,
+        numero_cheque: pago.numero_cheque,
+        fecha_emision: pago.fecha_emision,
+        fecha_cobro: pago.fecha_cobro,
+      }),
+    });
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: {
+        cobrado?: number;
+        saldo?: number;
+        recibo_numero?: string | null;
+        cliente_ruc?: string | null;
+        fecha?: string;
+        detalle?: { numero: string; monto: number; saldo: number }[];
+      };
+      error?: string;
+    };
+    if (!res.ok || !json.success) return { ok: false, error: json.error ?? "No se pudo registrar el cobro." };
+    return {
+      ok: true,
+      cobrado: json.data?.cobrado ?? 0,
+      saldo: json.data?.saldo ?? 0,
+      reciboNumero: json.data?.recibo_numero ?? null,
+      clienteRuc: json.data?.cliente_ruc ?? null,
+      fecha: json.data?.fecha ?? new Date().toISOString(),
+      detalle: json.data?.detalle ?? [],
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red." };
+  }
+}
+
 /** Registra un cobro. Devuelve el saldo que queda y los datos del recibo, o el motivo del rechazo. */
 export async function cobrarVenta(
   ventaId: string,

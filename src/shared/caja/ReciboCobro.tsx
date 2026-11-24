@@ -35,6 +35,8 @@ export interface DatosReciboCobro {
   reciboNumero: string;
   /** Teléfono del cliente para enviar por WhatsApp (sin + ni espacios). */
   telefono?: string | null;
+  /** Multicobro: facturas abonadas con este recibo. */
+  detalle?: { numero: string; monto: number; saldo: number }[];
 }
 
 type ItemDeVenta = { producto: string; cantidad: number; empaque: string | null };
@@ -186,6 +188,16 @@ export default function ReciboCobro({
             <div>
               <p className="text-[8pt] font-bold uppercase">En concepto de</p>
               <p className="leading-tight">{concepto}</p>
+              {datos.detalle && datos.detalle.length > 0 ? (
+                <ul className="mt-1 space-y-0.5 text-[9pt] leading-tight">
+                  {datos.detalle.map((d, n) => (
+                    <li key={n}>
+                      - {d.numero}: Gs. {miles(d.monto)}
+                      {d.saldo > 0.5 ? ` (saldo Gs. ${miles(d.saldo)})` : " (cancelada)"}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {items && items.length > 0 ? (
                 <ul className="mt-1 space-y-0.5 text-[9pt] leading-tight">
                   {items.map((i, n) => (

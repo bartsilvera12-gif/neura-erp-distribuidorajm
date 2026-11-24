@@ -2,6 +2,7 @@ import "server-only";
 import type { Pool, PoolClient } from "pg";
 import { quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { sincronizarFacturaDeVenta } from "@/lib/cobranzas/server/sincronizar-factura";
 
 /**
  * Recibos de dinero (SQL 53): cada cobro a un cliente queda con un recibo
@@ -120,6 +121,64 @@ export async function emitirReciboCobro(
     );
     await client.query("COMMIT");
     const r = ins.rows[0];
+    return { id: r.id, numero: Number(r.numero), cliente: cli.nombre, cliente_ruc: cli.ruc };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Un solo recibo para el cobro de varias ventas del mismo cliente. El detalle
+ * (venta, monto, saldo que queda, movimientos de caja) va en recibos_cobro_detalle.
+ */
+export async function emitirReciboMulticobro(
+  pool: Pool,
+  schemaRaw: string,
+  empresaId: string,
+  d: {
+    clienteId: string | null;
+    monto: number;
+    medioPago: string;
+    cajaMovimientoId: string | null;
+    fecha: string | null;
+    usuario: string | null;
+    detalle: { ventaId: string; numero: string; monto: number; saldoRestante: number; movIds: string[] }[];
+  }
+): Promise<{ id: string; numero: number; cliente: string; cliente_ruc: string | null } | null> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  if (!(await hayTabla(pool, schema))) return null;
+  const cli = await datosCliente(pool, schema, d.clienteId);
+  const numeros = d.detalle.map((x) => x.numero).join(", ");
+  const saldoTotal = d.detalle.reduce((s, x) => s + x.saldoRestante, 0);
+  const concepto = `Pago de ${d.detalle.length} facturas a crédito: ${numeros}`;
+  const tR = quoteSchemaTable(schema, "recibos_cobro");
+  const tD = quoteSchemaTable(schema, "recibos_cobro_detalle");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`recibos:${schema}:${empresaId}`]);
+    const ins = await client.query<{ id: string; numero: number }>(
+      `INSERT INTO ${tR} (empresa_id, numero, fecha, cliente_id, cliente_nombre, cliente_ruc, monto, medio_pago,
+                          concepto, venta_numero, saldo_restante, caja_movimiento_id, usuario_nombre)
+       SELECT $1::uuid, COALESCE(max(numero), 0) + 1, COALESCE($2::timestamptz, now()), $3::uuid, $4, $5, $6::numeric, $7,
+              $8, $9, $10::numeric, $11::uuid, $12
+         FROM ${tR} WHERE empresa_id = $1::uuid
+       RETURNING id, numero`,
+      [empresaId, d.fecha, d.clienteId, cli.nombre, cli.ruc, d.monto, d.medioPago, concepto,
+       numeros.slice(0, 500), saldoTotal, d.cajaMovimientoId, d.usuario]
+    );
+    const r = ins.rows[0];
+    for (const x of d.detalle) {
+      await client.query(
+        `INSERT INTO ${tD} (empresa_id, recibo_id, venta_id, venta_numero, monto, saldo_restante, caja_movimiento_ids)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::numeric, $6::numeric, $7::uuid[])`,
+        [empresaId, r.id, x.ventaId, x.numero, x.monto, x.saldoRestante, x.movIds]
+      );
+    }
+    await client.query("COMMIT");
     return { id: r.id, numero: Number(r.numero), cliente: cli.nombre, cliente_ruc: cli.ruc };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
@@ -290,6 +349,29 @@ export async function anularCobro(
         [r.mov, empresaId]
       );
     }
+    // Multicobro: anula también los ingresos de caja de cada factura del detalle.
+    const tieneDetalle = (await client.query<{ t: string | null }>(`SELECT to_regclass($1)::text AS t`, [
+      `${schema}.recibos_cobro_detalle`,
+    ])).rows[0]?.t;
+    const ventasMulti: string[] = [];
+    if (tieneDetalle) {
+      const det = await client.query<{ venta_id: string; ids: string[] | null }>(
+        `SELECT venta_id::text AS venta_id, caja_movimiento_ids::text[] AS ids
+           FROM ${quoteSchemaTable(schema, "recibos_cobro_detalle")}
+          WHERE recibo_id = $1::uuid AND empresa_id = $2::uuid`,
+        [id, empresaId]
+      );
+      for (const x of det.rows) {
+        ventasMulti.push(x.venta_id);
+        if (x.ids && x.ids.length > 0) {
+          await client.query(
+            `UPDATE ${quoteSchemaTable(schema, "caja_movimientos")} SET anulado_at = now()
+              WHERE id = ANY($1::uuid[]) AND empresa_id = $2::uuid AND anulado_at IS NULL`,
+            [x.ids, empresaId]
+          );
+        }
+      }
+    }
     const nota = `ANULADO${d.usuario ? ` por ${d.usuario}` : ""}${d.motivo ? `: ${d.motivo}` : ""}`.slice(0, 500);
     const conObs = (
       await client.query(
@@ -305,6 +387,7 @@ export async function anularCobro(
       conObs ? [id, empresaId, nota] : [id, empresaId]
     );
     await client.query("COMMIT");
+    for (const vid of ventasMulti) await sincronizarFacturaDeVenta(pool, schema, empresaId, vid);
     return { numero: r.numero, ventaId: r.venta_id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => undefined);
