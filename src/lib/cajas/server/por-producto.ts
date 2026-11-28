@@ -32,10 +32,21 @@ export async function ventasPorProducto(
   const tMi = quoteSchemaTable(schema, "movimientos_inventario");
   const tK = quoteSchemaTable(schema, "camiones");
   const tP = quoteSchemaTable(schema, "productos");
+  const tSU = quoteSchemaTable(schema, "inventario_stock_ubicacion");
   const TZ = "America/Asuncion";
+  // Efecto de un movimiento sobre el saldo del camión. El conteo guarda AJUSTE
+  // con la cantidad en positivo y el signo en la referencia: "(+2)" / "(-2)".
+  const NETO = `(CASE WHEN m.tipo = 'ENTRADA' THEN m.cantidad
+                       WHEN m.tipo = 'SALIDA' THEN -m.cantidad
+                       WHEN m.tipo = 'AJUSTE' THEN (CASE WHEN COALESCE(m.referencia, '') ~ '\\(-' THEN -m.cantidad ELSE m.cantidad END)
+                       ELSE 0 END)`;
 
   const r = await pool.query<{
     caja_id: string;
+    con_camion: boolean;
+    stock_ahora: string;
+    neto_dia: string;
+    neto_post: string;
     producto_id: string;
     codigo: string | null;
     producto: string;
@@ -67,15 +78,21 @@ export async function ventasPorProducto(
      mov AS (
        SELECT cj.caja_id, m.producto_id,
               max(m.producto_nombre) AS nombre, max(m.producto_sku) AS sku,
-              sum(CASE WHEN m.tipo = 'ENTRADA' AND m.origen NOT IN ('anulacion', 'devolucion') THEN m.cantidad ELSE 0 END) AS carga,
-              sum(CASE WHEN m.tipo = 'SALIDA' AND m.origen = 'transferencia' THEN m.cantidad ELSE 0 END) AS dev
+              sum(CASE WHEN m.created_at < cj.hasta AND m.tipo = 'ENTRADA' AND m.origen NOT IN ('anulacion', 'devolucion') THEN m.cantidad ELSE 0 END) AS carga,
+              sum(CASE WHEN m.created_at < cj.hasta AND m.tipo = 'SALIDA' AND m.origen = 'transferencia' THEN m.cantidad ELSE 0 END) AS dev,
+              sum(CASE WHEN m.created_at < cj.hasta THEN ${NETO} ELSE 0 END) AS neto_dia,
+              sum(CASE WHEN m.created_at >= cj.hasta THEN ${NETO} ELSE 0 END) AS neto_post
          FROM cj
          JOIN ${tMi} m ON m.empresa_id = $1::uuid AND m.ubicacion_id = cj.ubicacion_id
-                      AND m.anulado_at IS NULL AND m.created_at >= cj.desde AND m.created_at < cj.hasta
+                      AND m.anulado_at IS NULL AND m.created_at >= cj.desde
         WHERE cj.ubicacion_id IS NOT NULL
         GROUP BY cj.caja_id, m.producto_id
      )
      SELECT COALESCE(vend.caja_id, mov.caja_id) AS caja_id,
+            (cj2.ubicacion_id IS NOT NULL) AS con_camion,
+            COALESCE(su.stock_actual, 0)::text AS stock_ahora,
+            COALESCE(mov.neto_dia, 0)::text AS neto_dia,
+            COALESCE(mov.neto_post, 0)::text AS neto_post,
             COALESCE(vend.producto_id, mov.producto_id) AS producto_id,
             COALESCE(NULLIF(btrim(p.sku), ''), vend.sku, mov.sku) AS codigo,
             COALESCE(vend.nombre, mov.nombre, p.nombre, 'Producto') AS producto,
@@ -86,6 +103,9 @@ export async function ventasPorProducto(
        FROM vend
        FULL JOIN mov ON mov.caja_id = vend.caja_id AND mov.producto_id = vend.producto_id
        LEFT JOIN ${tP} p ON p.id = COALESCE(vend.producto_id, mov.producto_id)
+       LEFT JOIN cj cj2 ON cj2.caja_id = COALESCE(vend.caja_id, mov.caja_id)
+       LEFT JOIN ${tSU} su ON su.empresa_id = $1::uuid AND su.ubicacion_id = cj2.ubicacion_id
+                          AND su.producto_id = COALESCE(vend.producto_id, mov.producto_id)
       ORDER BY 4`,
     [empresaId, cajaIds, TZ]
   );
@@ -93,11 +113,15 @@ export async function ventasPorProducto(
   for (const x of r.rows) {
     const cargada = Number(x.cargada);
     const vendida = Number(x.vendida);
-    // Al cerrar, el camión devuelve TODO lo que tiene al salón, también lo que
-    // le quedó de días anteriores. Acá solo cuenta lo devuelto de lo cargado ese
-    // día (cargado − vendido); y un producto que no se cargó ni se vendió ese
-    // día no es del camión de hoy.
-    const devuelta = Math.min(Number(x.devuelta), Math.max(cargada - vendida, 0));
+    // Lo devuelto al salón es lo que realmente se devolvió ese día (antes se
+    // recortaba a cargado − vendido y, si el camión devolvía también lo de días
+    // anteriores, el saldo mostrado no coincidía con el stock real).
+    const devuelta = Number(x.devuelta);
+    // Saldo real al final de ese día: stock vivo del camión menos lo que se
+    // movió después. Trae lo de días anteriores, ajustes y anulaciones.
+    const saldo = x.con_camion
+      ? Math.round((Number(x.stock_ahora) - Number(x.neto_post)) * 1000) / 1000
+      : undefined;
     const fila: FilaProducto = {
       producto_id: x.producto_id,
       codigo: x.codigo ?? "",
@@ -106,6 +130,7 @@ export async function ventasPorProducto(
       devuelta: Math.round(devuelta * 1000) / 1000,
       vendida,
       monto: Number(x.monto),
+      ...(saldo !== undefined ? { saldo } : {}),
     };
     if (!fila.cargada && !fila.vendida && !fila.monto) continue;
     const lista = out.get(x.caja_id) ?? [];

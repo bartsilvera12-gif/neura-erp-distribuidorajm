@@ -1,6 +1,6 @@
 "use client";
 
-import { cantidadProd, type DesgloseVentas, type FilaProducto } from "@/lib/cajas/por-producto";
+import { cantidadProd, saldoFila, type DesgloseVentas, type FilaProducto } from "@/lib/cajas/por-producto";
 
 const gs = (v: number) => `Gs. ${Math.round(v).toLocaleString("es-PY")}`;
 
@@ -26,7 +26,7 @@ export function VentasPorProducto({ filas }: { filas: FilaProducto[] }) {
               <th className="px-2 py-1.5 text-right font-semibold">Cargada</th>
               <th className="px-2 py-1.5 text-right font-semibold">Devuelta</th>
               <th className="px-2 py-1.5 text-right font-semibold">Vendida</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Diferencia</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Saldo en camión</th>
               <th className="px-2 py-1.5 text-right font-semibold">Monto vendido</th>
             </tr>
           </thead>
@@ -40,14 +40,10 @@ export function VentasPorProducto({ filas }: { filas: FilaProducto[] }) {
                 <td className="px-2 py-1 text-right tabular-nums text-slate-900">{cantidadProd(f.vendida)}</td>
                 <td
                   className={`px-2 py-1 text-right font-medium tabular-nums ${
-                    f.cargada - f.devuelta - f.vendida > 0
-                      ? "text-amber-600"
-                      : f.cargada - f.devuelta - f.vendida < 0
-                        ? "text-red-600"
-                        : "text-slate-500"
+                    saldoFila(f) > 0 ? "text-amber-600" : saldoFila(f) < 0 ? "text-red-600" : "text-slate-500"
                   }`}
                 >
-                  {cantidadProd(f.cargada - f.devuelta - f.vendida)}
+                  {cantidadProd(saldoFila(f))}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-right font-medium tabular-nums text-slate-900">
                   {gs(f.monto)}

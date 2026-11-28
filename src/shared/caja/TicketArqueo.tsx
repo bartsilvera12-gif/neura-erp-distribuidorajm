@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
-import { cantidadProd } from "@/lib/cajas/por-producto";
+import { cantidadProd, saldoFila } from "@/lib/cajas/por-producto";
 import type { PlanillaArqueo } from "@/lib/cajas/planilla";
 
 /** Ancho del papel térmico en mm. */
@@ -72,7 +72,7 @@ const TicketArqueo = forwardRef<
           </p>
           <div className="flex justify-between gap-1 pl-2 text-[9.5pt]">
             <span>
-              C {cantidadProd(f.cargada)} · D {cantidadProd(f.devuelta)} · V {cantidadProd(f.vendida)} · Dif {cantidadProd(f.cargada - f.devuelta - f.vendida)}
+              C {cantidadProd(f.cargada)} · D {cantidadProd(f.devuelta)} · V {cantidadProd(f.vendida)} · Saldo {cantidadProd(saldoFila(f))}
             </span>
             <span className="tabular-nums">{miles(f.monto)}</span>
           </div>
