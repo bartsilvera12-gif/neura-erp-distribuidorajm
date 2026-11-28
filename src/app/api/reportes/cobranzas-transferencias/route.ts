@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data = await getReporteTransferencias(schema, ctx.auth.empresa_id, { desde, hasta });
+    const data = await getReporteTransferencias(schema, ctx.auth.empresa_id, { desde, hasta, boca: sp.get("boca") ?? "todas" });
     return NextResponse.json(successResponse(data));
   } catch (e) {
     console.error("[/api/reportes/cobranzas-transferencias GET]", e instanceof Error ? e.message : e);

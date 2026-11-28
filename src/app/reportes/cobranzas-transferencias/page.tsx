@@ -13,7 +13,9 @@ interface Fila {
   es_venta: boolean;
   monto: number;
 }
+interface Boca { id: string; label: string; operaciones: number; total: number }
 interface Reporte {
+  bocas?: Boca[];
   desde: string;
   hasta: string;
   disponible: boolean;
@@ -49,6 +51,7 @@ export default function ReporteTransferenciasPage() {
   const [[d0, h0]] = useState(rangoMes);
   const [desde, setDesde] = useState(d0);
   const [hasta, setHasta] = useState(h0);
+  const [boca, setBoca] = useState("todas");
   const [imprimiendo, setImprimiendo] = useState(false);
 
   const { emisor } = useEmisor();
@@ -60,8 +63,9 @@ export default function ReporteTransferenciasPage() {
     const p = new URLSearchParams();
     if (desde) p.set("desde", desde);
     if (hasta) p.set("hasta", hasta);
+    if (boca !== "todas") p.set("boca", boca);
     return p.toString();
-  }, [desde, hasta]);
+  }, [desde, hasta, boca]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +100,7 @@ export default function ReporteTransferenciasPage() {
         emisorRuc={emisor?.ruc ?? null}
         desde={desde}
         hasta={hasta}
+        bocaLabel={boca === "todas" ? "Todas las bocas" : (data.bocas ?? []).find((b) => b.id === boca)?.label ?? ""}
         filas={filas}
         total={resumen?.total ?? 0}
         onVolver={() => setImprimiendo(false)}
@@ -140,6 +145,18 @@ export default function ReporteTransferenciasPage() {
             </button>
           ))}
         </div>
+        <label className="block text-xs font-semibold text-slate-500">Boca
+          <select
+            value={boca}
+            onChange={(e) => setBoca(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm sm:max-w-xs"
+          >
+            <option value="todas">Todas las bocas (consolidado)</option>
+            {(data?.bocas ?? []).map((b) => (
+              <option key={b.id} value={b.id}>{b.label}</option>
+            ))}
+          </select>
+        </label>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <label className="text-xs font-semibold text-slate-500">Desde
             <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
@@ -219,10 +236,12 @@ function TicketTransferencias({
   emisorRuc,
   desde,
   hasta,
+  bocaLabel,
   filas,
   total,
   onVolver,
 }: {
+  bocaLabel: string;
   emisorNombre: string;
   emisorRuc: string | null;
   desde: string;
@@ -257,6 +276,7 @@ function TicketTransferencias({
             {emisorRuc ? <p>RUC: {emisorRuc}</p> : null}
             <p className="mt-2 font-bold">CONCILIACIÓN BANCARIA</p>
             <p>Transferencias recibidas</p>
+            {bocaLabel ? <p>{bocaLabel}</p> : null}
             <p>Del {desde} al {hasta}</p>
           </div>
 
