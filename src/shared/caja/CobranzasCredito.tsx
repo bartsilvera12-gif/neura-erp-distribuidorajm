@@ -249,7 +249,7 @@ export default function CobranzasCredito() {
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Ventas a crédito con saldo y tramos de mora
-            {cobranza?.alcance === "propias" ? ", de tus repartos" : ""} · al {hoyEnAsuncion()}.
+            {cobranza?.alcance === "propias" ? ", de tu camión" : ""} · al {hoyEnAsuncion()}.
           </p>
         </div>
         <button

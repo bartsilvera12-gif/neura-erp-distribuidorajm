@@ -6,8 +6,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { usuarioDelSchema } from "@/lib/repartos/server/repartos-pg";
-import { alcanceRepartos } from "@/lib/usuarios/erp-rol-normalize";
+import { alcanceCobranza, condicionAlcance } from "@/lib/cobranzas/server/alcance-cobranza";
 
 const TZ = "America/Asuncion";
 
@@ -65,13 +64,15 @@ export async function GET(request: NextRequest) {
     const exprTelefono = colCliente.has("telefono") ? "c.telefono" : "NULL::text";
 
     // El vendedor móvil cobra lo suyo: las ventas que salieron de sus repartos.
-    const yo = await usuarioDelSchema({ schema, empresaId, email: ctx.auth.user?.email, catalogId: ctx.auth.usuarioCatalogId ?? null });
-    const soloPropias =
-      alcanceRepartos(yo?.rol) === "propios" && yo !== null && colVenta.has("reparto_id");
-    const filtroPropias = soloPropias
-      ? ` AND v.reparto_id IN (SELECT id FROM ${quoteSchemaTable(schema, "repartos")}
-                                WHERE empresa_id = $1::uuid AND repartidor_id = $2::uuid)`
-      : "";
+    // y las facturas de su punto de expedición (el de su camión).
+    const alcance = await alcanceCobranza(pool, {
+      schema,
+      empresaId,
+      email: ctx.auth.user?.email,
+      catalogId: ctx.auth.usuarioCatalogId ?? null,
+    });
+    const soloPropias = !alcance.todas && colVenta.has("reparto_id");
+    const filtroPropias = soloPropias ? condicionAlcance(schema, 1, 2, 4) : "";
 
     const cobrado = hayCaja
       ? `COALESCE((SELECT sum(m.monto) FROM ${quoteSchemaTable(schema, "caja_movimientos")} m
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
           AND COALESCE(v.estado, '') <> 'anulada'
           ${filtroPropias}
         ORDER BY 4, v.numero_control`,
-      soloPropias ? [empresaId, yo!.id, TZ] : [empresaId, TZ]
+      soloPropias && !alcance.todas ? [empresaId, alcance.usuarioId, TZ, alcance.puntos] : [empresaId, TZ]
     );
 
     type VentaCobranza = {

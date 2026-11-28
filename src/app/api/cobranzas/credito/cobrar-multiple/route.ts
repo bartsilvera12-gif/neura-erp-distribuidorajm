@@ -6,6 +6,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { asegurarCajaAbierta } from "@/lib/cajas/server/asegurar-caja";
+import { alcanceCobranza, ventasEnAlcance } from "@/lib/cobranzas/server/alcance-cobranza";
 import { emitirReciboMulticobro, numeroRecibo } from "@/lib/cobranzas/server/recibos-pg";
 import { sincronizarFacturaDeVenta } from "@/lib/cobranzas/server/sincronizar-factura";
 
@@ -62,6 +63,12 @@ export async function POST(request: NextRequest) {
     const tV = quoteSchemaTable(schema, "ventas");
     const tM = quoteSchemaTable(schema, "caja_movimientos");
 
+    const alcance = await alcanceCobranza(pool, {
+      schema,
+      empresaId,
+      email: ctx.auth.user?.email,
+      catalogId: ctx.auth.usuarioCatalogId ?? null,
+    });
     const cajaId = await asegurarCajaAbierta(schema, empresaId, ctx.auth.usuarioCatalogId ?? null);
     if (!cajaId) return NextResponse.json(errorResponse("No hay caja donde registrar el cobro."), { status: 409 });
 
@@ -89,6 +96,10 @@ export async function POST(request: NextRequest) {
     if (ventasQ.rows.length !== items.length) {
       await client.query("ROLLBACK");
       return NextResponse.json(errorResponse("Alguna de las ventas no existe."), { status: 404 });
+    }
+    if (!(await ventasEnAlcance(client, schema, empresaId, alcance, items.map(([id]) => id)))) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(errorResponse("Alguna factura es de otro punto de expedición."), { status: 403 });
     }
     const clientes = new Set(ventasQ.rows.map((v) => v.cliente_id ?? ""));
     if (clientes.size !== 1 || clientes.has("")) {
