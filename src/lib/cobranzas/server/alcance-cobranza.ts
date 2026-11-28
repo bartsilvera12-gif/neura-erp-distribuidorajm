@@ -59,10 +59,11 @@ export async function ventasEnAlcance(
  * y la lista de puntos.
  */
 export function condicionAlcance(schema: string, iEmpresa: number, iUsuario: number, iPuntos: number): string {
-  return ` AND (
-      v.reparto_id IN (SELECT id FROM ${quoteSchemaTable(schema, "repartos")}
-                        WHERE empresa_id = $${iEmpresa}::uuid AND repartidor_id = $${iUsuario}::uuid)
-      OR EXISTS (SELECT 1 FROM ${quoteSchemaTable(schema, "facturas")} f
-                  WHERE f.id = v.factura_id AND f.punto_expedicion = ANY($${iPuntos}::text[]))
-    )`;
+  // Solo cuenta la numeración fiscal real de la factura (001-002, 001-003…):
+  // ni el reparto ni el usuario habilitan cobrar la factura de otro camión.
+  void iEmpresa;
+  void iUsuario;
+  return ` AND EXISTS (SELECT 1 FROM ${quoteSchemaTable(schema, "facturas")} f
+                  WHERE f.id = v.factura_id AND f.empresa_id = v.empresa_id
+                    AND f.punto_expedicion = ANY($${iPuntos}::text[]))`;
 }
